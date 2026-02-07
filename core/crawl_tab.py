@@ -905,7 +905,7 @@ class CrawlTab(QWidget):
         all_achievements = current_achievements + to_add
         
         # 使用ManageTab的智能重新编码方法来重新生成编号和绝对编号
-        all_achievements = manage_tab._smart_reencode_achievements(all_achievements)
+        all_achievements, _ = manage_tab._smart_reencode_achievements(all_achievements)
         
         # 直接更新管理器的数据，而不是调用load_data
         manage_tab.manager.achievements = all_achievements
