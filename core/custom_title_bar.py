@@ -1,4 +1,5 @@
 ﻿# ui/custom_title_bar.py
+import logging
 import math
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QApplication
 from PySide6.QtCore import Qt, QPoint, Signal, QPropertyAnimation, QEasingCurve, Property, QEvent, QTimer, QPointF, QRectF
@@ -6,6 +7,8 @@ from PySide6.QtGui import QPainter, QColor, QPaintEvent, QMouseEvent, QBrush, QP
 
 from core.config import config
 from core.signal_bus import signal_bus
+
+logger = logging.getLogger(__name__)
 
 
 class SunMoonButton(QWidget):
@@ -842,10 +845,10 @@ class CustomTitleBar(QWidget):
         """打开网站"""
         try:
             import webbrowser
-            print("正在打开网站...")
+            logger.info("正在打开网站...")
             webbrowser.open("https://space.bilibili.com/3461562331302242")
         except Exception as e:
-            print(f"打开网址失败: {e}")
+            logger.error("打开网址失败: %s", e)
 
     def eventFilter(self, obj, event):
         """事件过滤器，用于处理图标点击"""

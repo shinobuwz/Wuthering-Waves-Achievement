@@ -3,6 +3,7 @@
 检查GitHub仓库是否有新版本发布
 """
 
+import logging
 import requests
 import json
 from datetime import datetime, timedelta
@@ -11,6 +12,8 @@ from packaging import version
 import webbrowser
 import os
 import urllib3
+
+logger = logging.getLogger(__name__)
 
 # 禁用SSL警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -66,8 +69,8 @@ class UpdateChecker:
         }
         
         try:
-            print("正在检查更新...")
-            print(f"API URL: {api_url}")
+            logger.info("正在检查更新...")
+            logger.info("API URL: %s", api_url)
             
             # 发送GET请求，禁用SSL验证（解决证书问题）
             response = requests.get(
@@ -83,29 +86,29 @@ class UpdateChecker:
             # 解析JSON响应
             release_data = response.json()
             
-            print(f"获取到Release: {release_data.get('tag_name')}")
+            logger.info("获取到Release: %s", release_data.get('tag_name'))
             return release_data
-            
+
         except requests.exceptions.Timeout:
-            print("请求超时，请检查网络连接")
+            logger.warning("请求超时，请检查网络连接")
             return None
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 404:
-                print("未找到该仓库或没有Release")
+                logger.warning("未找到该仓库或没有Release")
             elif e.response.status_code == 403:
                 # 可能是速率限制
                 limit = e.response.headers.get('X-RateLimit-Limit', '?')
                 remaining = e.response.headers.get('X-RateLimit-Remaining', '?')
                 reset_time = e.response.headers.get('X-RateLimit-Reset', '?')
-                print(f"API限制：{remaining}/{limit} 次，重置时间：{reset_time}")
+                logger.warning("API限制：%s/%s 次，重置时间：%s", remaining, limit, reset_time)
             else:
-                print(f"HTTP错误: {e}")
+                logger.error("HTTP错误: %s", e)
             return None
         except requests.exceptions.RequestException as e:
-            print(f"网络请求失败: {e}")
+            logger.error("网络请求失败: %s", e)
             return None
         except json.JSONDecodeError as e:
-            print(f"JSON解析失败: {e}")
+            logger.error("JSON解析失败: %s", e)
             return None
     
     def parse_version(self, version_str: str) -> version.Version:
@@ -135,7 +138,7 @@ class UpdateChecker:
         try:
             return version.parse(clean_version)
         except version.InvalidVersion:
-            print(f"无法解析版本号: {version_str}")
+            logger.warning("无法解析版本号: %s", version_str)
             return version.parse("0.0.0")
     
     def compare_versions(self, latest_version_str: str) -> dict:
@@ -144,8 +147,8 @@ class UpdateChecker:
         current_ver = self.parse_version(self.current_version)
         latest_ver = self.parse_version(latest_version_str)
         
-        print(f"当前版本: {current_ver}")
-        print(f"最新版本: {latest_ver}")
+        logger.info("当前版本: %s", current_ver)
+        logger.info("最新版本: %s", latest_ver)
         
         # 比较版本
         result = {
@@ -194,12 +197,12 @@ class UpdateChecker:
         """
         # 1. 检查是否需要跳过缓存
         if force_check:
-            print("强制检查更新...")
+            logger.info("强制检查更新...")
             return self._check_and_cache()
-        
+
         # 2. 检查缓存文件是否存在
         if not self.cache_file.exists():
-            print("无缓存，开始检查更新...")
+            logger.info("无缓存，开始检查更新...")
             return self._check_and_cache()
         
         # 3. 读取缓存
@@ -213,7 +216,7 @@ class UpdateChecker:
             
             # 检查缓存中的当前版本是否与实际版本一致
             if cached_current_version and cached_current_version != self.current_version:
-                print(f"检测到版本变化：{cached_current_version} -> {self.current_version}，重新检查更新")
+                logger.info("检测到版本变化：%s -> %s，重新检查更新", cached_current_version, self.current_version)
                 # 版本发生变化，需要重新检查更新
                 return self._check_and_cache()
             
@@ -223,14 +226,14 @@ class UpdateChecker:
             
             # 如果缓存超过24小时，重新检查
             if now - cache_time > timedelta(hours=24):
-                print("缓存过期，重新检查...")
+                logger.info("缓存过期，重新检查...")
                 return self._check_and_cache()
             
             # 检查版本一致性
             if cached_latest_version:
                 # 如果当前版本等于缓存中的最新版本，说明已经是最新版本
                 if self.parse_version(self.current_version) >= self.parse_version(cached_latest_version):
-                    print(f"当前版本{self.current_version}已是最新，使用缓存")
+                    logger.info("当前版本%s已是最新，使用缓存", self.current_version)
                     # 直接返回缓存结果，不更新时间戳
                     update_info['current_version'] = self.current_version  # 确保当前版本正确
                     update_info['has_update'] = False
@@ -239,11 +242,11 @@ class UpdateChecker:
             
             # 使用缓存，但确保current_version是最新的
             update_info['current_version'] = self.current_version
-            print("使用缓存数据...")
+            logger.info("使用缓存数据...")
             return update_info
-            
+
         except (json.JSONDecodeError, KeyError, ValueError) as e:
-            print(f"缓存读取失败: {e}，重新检查...")
+            logger.warning("缓存读取失败: %s，重新检查...", e)
             return self._check_and_cache()
     
     def _check_and_cache(self) -> dict:
@@ -303,30 +306,30 @@ class UpdateChecker:
         try:
             with open(self.cache_file, 'w', encoding='utf-8') as f:
                 json.dump(cache_data, f, indent=2, ensure_ascii=False)
-            print(f"缓存已保存: {self.cache_file}")
+            logger.info("缓存已保存: %s", self.cache_file)
         except Exception as e:
-            print(f"缓存保存失败: {e}")
+            logger.error("缓存保存失败: %s", e)
     
     def display_update_info(self, update_info: dict):
         """显示更新信息"""
         if not update_info.get('has_update'):
             if update_info.get('is_latest'):
-                print("已经是最新版本！")
+                logger.info("已经是最新版本！")
             elif update_info.get('is_dev'):
-                print("当前是开发版本")
+                logger.info("当前是开发版本")
             else:
-                print("无需更新")
+                logger.info("无需更新")
             return
-        
+
         # 有更新时的显示
-        print("\n" + "="*60)
-        print("发现新版本！")
-        print("="*60)
-        
+        logger.info("=" * 60)
+        logger.info("发现新版本！")
+        logger.info("=" * 60)
+
         # 版本信息
-        print(f"当前版本: {update_info['current_version']}")
-        print(f"最新版本: {update_info['latest_version']}")
-        
+        logger.info("当前版本: %s", update_info['current_version'])
+        logger.info("最新版本: %s", update_info['latest_version'])
+
         # 更新类型
         update_type = update_info.get('update_type', 'patch')
         type_emojis = {
@@ -334,50 +337,50 @@ class UpdateChecker:
             "minor": "功能更新",
             "patch": "修复更新"
         }
-        print(f"更新类型: {type_emojis.get(update_type, '更新')}")
-        
+        logger.info("更新类型: %s", type_emojis.get(update_type, '更新'))
+
         # Release信息
         release = update_info.get('release_info', {})
         if release.get('name'):
-            print(f"发布名称: {release['name']}")
-        
+            logger.info("发布名称: %s", release['name'])
+
         if release.get('published_at'):
             pub_date = release['published_at'][:10]  # 只取日期部分
-            print(f"发布时间: {pub_date}")
-        
+            logger.info("发布时间: %s", pub_date)
+
         # 更新内容
         if release.get('body'):
             body = release['body'].strip()
             # 限制显示长度
             if len(body) > 500:
                 body = body[:500] + "..."
-            print(f"\n更新内容:")
-            print("-"*40)
-            print(body)
-            print("-"*40)
-        
+            logger.info("更新内容:")
+            logger.info("-" * 40)
+            logger.info("%s", body)
+            logger.info("-" * 40)
+
         # 下载信息 - 使用配置的蓝奏云链接
         from core.config import config
-        print(f"\n下载链接: {config.update_download_url}")
-        print(f"下载密码: {config.update_download_password}")
-        
-        print("="*60)
-        
+        logger.info("下载链接: %s", config.update_download_url)
+        logger.info("下载密码: %s", config.update_download_password)
+
+        logger.info("=" * 60)
+
         # 询问用户是否打开下载页面
         try:
             response = input("\n是否打开下载页面？(y/N): ").strip().lower()
             if response == 'y':
                 webbrowser.open(config.update_download_url)
-                print("已打开浏览器...")
-                print(f"下载密码: {config.update_download_password}")
+                logger.info("已打开浏览器...")
+                logger.info("下载密码: %s", config.update_download_password)
         except EOFError:
             # 非交互式环境，直接显示信息
-            print(f"\n下载链接: {config.update_download_url}")
-            print(f"下载密码: {config.update_download_password}")
+            logger.info("下载链接: %s", config.update_download_url)
+            logger.info("下载密码: %s", config.update_download_password)
     
     def check_and_notify(self, force_check: bool = False):
         """检查并通知的主方法"""
-        print(f"\n检查 {self.repo_owner}/{self.repo_name} 的更新...")
+        logger.info("检查 %s/%s 的更新...", self.repo_owner, self.repo_name)
         
         # 检查更新
         update_info = self.check_with_cache(force_check)
@@ -410,7 +413,7 @@ def check_for_updates_background():
                 from core.signal_bus import signal_bus
                 signal_bus.update_available.emit(update_info)
         except Exception as e:
-            print(f"后台更新检查失败: {e}")
+            logger.error("后台更新检查失败: %s", e)
     
     # 在新线程中检查，避免阻塞启动
     thread = threading.Thread(target=check, daemon=True)

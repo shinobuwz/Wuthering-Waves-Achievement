@@ -1,4 +1,6 @@
 ﻿import os
+import logging
+
 from PySide6.QtWidgets import (QWidget, QMainWindow, QVBoxLayout, QLabel,
                                QScrollArea, QGridLayout, QFrame)
 from PySide6.QtCore import Qt, Signal, QTimer
@@ -6,6 +8,8 @@ from PySide6.QtGui import QPixmap, QPainter, QMouseEvent, QPainterPath
 
 from core.config import config, get_resource_path
 from core.signal_bus import signal_bus
+
+logger = logging.getLogger(__name__)
 from core.widgets import BackgroundWidget, load_background_image
 from core.custom_title_bar import CustomTitleBar
 from core.styles import get_dialog_style, get_scroll_area_style, get_label_style
@@ -189,7 +193,7 @@ class AvatarSelector(QMainWindow):
         profiles_dir = get_resource_path("resources/profile")
         
         if not profiles_dir.exists():
-            print(f"警告：头像目录不存在: {profiles_dir}")
+            logger.warning("头像目录不存在: %s", profiles_dir)
             # 创建默认测试头像
             self.create_test_avatars()
             return
@@ -198,7 +202,7 @@ class AvatarSelector(QMainWindow):
         png_files = list(profiles_dir.glob("*.png"))
         
         if not png_files:
-            print("警告：没有找到PNG头像文件")
+            logger.warning("没有找到PNG头像文件")
             self.create_test_avatars()
             return
         

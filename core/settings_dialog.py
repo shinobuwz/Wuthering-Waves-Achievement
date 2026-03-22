@@ -3,7 +3,12 @@
                                QDialogButtonBox, QFileDialog, QGroupBox, QCheckBox, QTableWidget,
                                QTableWidgetItem, QComboBox, QMessageBox)
 from PySide6.QtGui import QColor
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, QObject
+from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtWebEngineCore import QWebEngineProfile, QWebEngineUrlRequestInterceptor
+import logging
+
+logger = logging.getLogger(__name__)
 
 from core.config import config
 from core.draggable_table import DraggableTableWidget
@@ -11,6 +16,61 @@ from core.signal_bus import signal_bus
 from core.styles import (get_dialog_style, get_settings_desc_style, get_button_style)
 from core.custom_message_box import CustomMessageBox
 from core.widgets import BackgroundWidget, load_background_image
+
+
+class AuthInterceptor(QWebEngineUrlRequestInterceptor):
+    """拦截 kurobbs 请求头中的 devcode 和 token"""
+    credentials_captured = Signal(str, str)  # (devcode, token)
+
+    def interceptRequest(self, info):
+        headers = {k.data(): v.data() for k, v in info.httpHeaders().items()}
+        devcode = headers.get(b"devcode", b"").decode("utf-8", errors="ignore")
+        token = headers.get(b"token", b"").decode("utf-8", errors="ignore")
+        logger.debug("[AuthInterceptor] url=%s devcode=%s token=%s",
+                     info.requestUrl().toString(),
+                     devcode[:8] + "..." if devcode else "(空)",
+                     token[:8] + "..." if token else "(空)")
+        if devcode and token:
+            logger.info("[AuthInterceptor] 成功捕获凭据 devcode=%s... token=%s...",
+                        devcode[:8], token[:8])
+            self.credentials_captured.emit(devcode, token)
+
+
+class BrowserAuthDialog(QDialog):
+    """内嵌浏览器，自动拦截 kurobbs devcode/token"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("自动获取认证信息 - 请在浏览器中登录库街区")
+        self.resize(1024, 700)
+        self.devcode = ""
+        self.token = ""
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+
+        hint = QLabel("请在下方浏览器中完成登录，登录成功后将自动获取认证信息并关闭此窗口。")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        # 独立命名 profile，保持登录态
+        self._profile = QWebEngineProfile("kurobbs_auth", self)
+        self._interceptor = AuthInterceptor(self)
+        self._interceptor.credentials_captured.connect(self._on_captured)
+        self._profile.setUrlRequestInterceptor(self._interceptor)
+
+        self._view = QWebEngineView(self)
+        page_cls = self._view.page().__class__
+        from PySide6.QtWebEngineCore import QWebEnginePage
+        self._page = QWebEnginePage(self._profile, self)
+        self._view.setPage(self._page)
+        self._view.load("https://www.kurobbs.com/")
+        layout.addWidget(self._view)
+
+    def _on_captured(self, devcode, token):
+        self.devcode = devcode
+        self.token = token
+        self.accept()
 
 
 class TemplateSettingsDialog(QDialog):
@@ -349,6 +409,13 @@ class TemplateSettingsDialog(QDialog):
         self.devcode_edit.setText(config.devcode)
         self.token_edit.setText(config.token)
 
+    def _on_auto_fetch(self):
+        """打开内嵌浏览器自动获取 devcode/token"""
+        dlg = BrowserAuthDialog(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.devcode_edit.setText(dlg.devcode)
+            self.token_edit.setText(dlg.token)
+
     def _save_settings(self):
         """保存设置"""
         # 保存外观设置
@@ -423,6 +490,14 @@ class TemplateSettingsDialog(QDialog):
         self.token_edit.setEchoMode(QLineEdit.EchoMode.Password)  # 密文显示
         token_layout.addWidget(self.token_edit)
         auth_layout.addLayout(token_layout)
+
+        # 自动获取按钮
+        auto_fetch_layout = QHBoxLayout()
+        self.auto_fetch_btn = QPushButton("🔑 自动获取（内嵌浏览器登录）")
+        self.auto_fetch_btn.clicked.connect(self._on_auto_fetch)
+        auto_fetch_layout.addWidget(self.auto_fetch_btn)
+        auto_fetch_layout.addStretch()
+        auth_layout.addLayout(auto_fetch_layout)
 
         layout.addWidget(auth_group)
 
@@ -687,9 +762,9 @@ class TemplateSettingsDialog(QDialog):
                 if progress_file.exists():
                     try:
                         os.remove(progress_file)
-                        print(f"[INFO] 已删除用户 {username} (UID: {uid}) 的存档文件")
+                        logger.info("已删除用户 %s (UID: %s) 的存档文件", username, uid)
                     except Exception as e:
-                        print(f"[ERROR] 删除用户存档文件失败: {str(e)}")
+                        logger.error("删除用户存档文件失败: %s", str(e))
                 
                 # 如果删除的是当前用户，需要切换到第一个用户
                 if username == config.get_current_user():
@@ -942,10 +1017,10 @@ class TemplateSettingsDialog(QDialog):
         self.group_members_table.setColumnWidth(2, 60)   # 移除
         
         # 监听单元格点击事件
-        self.group_members_table.cellClicked.connect(lambda row, col: print(f"[TEST] 点击事件触发: 行={row}, 列={col}") or self._on_member_cell_clicked(row, col))
+        self.group_members_table.cellClicked.connect(self._on_member_cell_clicked)
         
         # 测试连接是否成功
-        print(f"[DEBUG] 组内成员表格点击事件已连接，表格行数: {self.group_members_table.rowCount()}")
+        logger.debug("组内成员表格点击事件已连接，表格行数: %s", self.group_members_table.rowCount())
         
         self.group_members_table.setMinimumHeight(400)  # 增加最小高度
         members_layout.addWidget(self.group_members_table)
@@ -992,7 +1067,7 @@ class TemplateSettingsDialog(QDialog):
         
         # 获取所有成就数据
         achievements = config.load_base_achievements()
-        print(f"[DEBUG] 加载了 {len(achievements)} 个成就数据")
+        logger.debug("加载了 %s 个成就数据", len(achievements))
         
         # 收集所有成就组
         groups = {}
@@ -1001,7 +1076,7 @@ class TemplateSettingsDialog(QDialog):
             group_id = achievement.get('成就组ID')
             if group_id:
                 group_count += 1
-                print(f"[DEBUG] 找到成就组 {group_id}: {achievement.get('名称', '')}")
+                logger.debug("找到成就组 %s: %s", group_id, achievement.get('名称', ''))
                 if group_id not in groups:
                     groups[group_id] = {
                         'id': group_id,
@@ -1010,9 +1085,9 @@ class TemplateSettingsDialog(QDialog):
                     }
                 groups[group_id]['members'].append(achievement)
         
-        print(f"[DEBUG] 共找到 {group_count} 个有组ID的成就，{len(groups)} 个不同的组")
+        logger.debug("共找到 %s 个有组ID的成就，%s 个不同的组", group_count, len(groups))
         for group_id, group_info in groups.items():
-            print(f"[DEBUG] 组 {group_id}: 名称={group_info['name']}, 成员数={len(group_info['members'])}")
+            logger.debug("组 %s: 名称=%s, 成员数=%s", group_id, group_info['name'], len(group_info['members']))
         
         # 按组ID排序（按数字顺序）
         sorted_groups = sorted(groups.items(), key=lambda x: int(x[0].split('_')[1]) if x[0].startswith('group_') else 0)
@@ -1026,7 +1101,7 @@ class TemplateSettingsDialog(QDialog):
             name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # 移除可编辑标志
             # 存储组ID作为用户数据，用于后续操作
             name_item.setData(Qt.ItemDataRole.UserRole, group_id)
-            print(f"[DEBUG] 设置表格项: 行={i}, 组ID={group_id}, 组名称={group_info['name']}")
+            logger.debug("设置表格项: 行=%s, 组ID=%s, 组名称=%s", i, group_id, group_info['name'])
             self.groups_table.setItem(i, 0, name_item)
             
             # 如果这个组之前被选中，记录新的行号
@@ -1066,39 +1141,39 @@ class TemplateSettingsDialog(QDialog):
         if not hasattr(self, 'groups_table') or self.groups_table.rowCount() == 0:
             self.current_group_label.setText("未选择")
             self.group_members_table.setRowCount(0)
-            print("[DEBUG] 成就组表格为空")
+            logger.debug("成就组表格为空")
             return
         
         current_row = row
-        print(f"[DEBUG] 点击行: {current_row}, 总行数: {self.groups_table.rowCount()}")
+        logger.debug("点击行: %s, 总行数: %s", current_row, self.groups_table.rowCount())
         
         if current_row < 0:
             # 如果没有点击任何行，清空显示
                 self.current_group_label.setText("未选择")
                 self.group_members_table.setRowCount(0)
-                print("[DEBUG] 没有数据，清空显示")
+                logger.debug("没有数据，清空显示")
                 return
         
         name_item = self.groups_table.item(current_row, 0)
         if not name_item:
             self.current_group_label.setText("未选择")
             self.group_members_table.setRowCount(0)
-            print("[DEBUG] 无法获取组名称项")
+            logger.debug("无法获取组名称项")
             return
         
         group_id = name_item.data(Qt.ItemDataRole.UserRole)
         if not group_id:
             self.current_group_label.setText("未选择")
             self.group_members_table.setRowCount(0)
-            print("[DEBUG] 无法获取组ID")
+            logger.debug("无法获取组ID")
             return
         
         # 显示组名称而不是组ID
         group_name = name_item.text()
         self.current_group_label.setText(group_name)
-        print(f"[DEBUG] 选择的组: ID={group_id}, 名称={group_name}")
-        print(f"[DEBUG] 选择的组ID: {group_id}")
-        
+        logger.debug("选择的组: ID=%s, 名称=%s", group_id, group_name)
+        logger.debug("选择的组ID: %s", group_id)
+
         # 加载该组的所有成员
         try:
             achievements = config.load_base_achievements()
@@ -1106,8 +1181,8 @@ class TemplateSettingsDialog(QDialog):
             for achievement in achievements:
                 if achievement.get('成就组ID') == group_id:
                     members.append(achievement)
-            
-            print(f"[DEBUG] 组 {group_id} 有 {len(members)} 个成员")
+
+            logger.debug("组 %s 有 %s 个成员", group_id, len(members))
             
             # 填充成员表格
             self.group_members_table.setRowCount(len(members))
@@ -1134,7 +1209,7 @@ class TemplateSettingsDialog(QDialog):
                 remove_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)  # 居中显示
                 self.group_members_table.setItem(i, 2, remove_item)
         except Exception as e:
-            print(f"[ERROR] 加载组成员失败: {e}")
+            logger.error("加载组成员失败: %s", e)
             self.current_group_label.setText("加载失败")
             self.group_members_table.setRowCount(0)
     
@@ -1151,7 +1226,7 @@ class TemplateSettingsDialog(QDialog):
                     try:
                         num = int(group_id.split('_')[1])
                         existing_groups.add(num)
-                        print(f"[DEBUG] 找到现有组: ID={group_id}, 编号={num}")
+                        logger.debug("找到现有组: ID=%s, 编号=%s", group_id, num)
                     except:
                         pass
         
@@ -1163,7 +1238,7 @@ class TemplateSettingsDialog(QDialog):
         group_id = f"group_{next_num:03d}"
         group_name = f"成就组 {next_num}"
         
-        print(f"[DEBUG] 创建新组: ID={group_id}, 名称={group_name}, 现有组编号: {sorted(existing_groups)}")
+        logger.debug("创建新组: ID=%s, 名称=%s, 现有组编号: %s", group_id, group_name, sorted(existing_groups))
         
         # 添加新行
         row = self.groups_table.rowCount()
@@ -1225,7 +1300,7 @@ class TemplateSettingsDialog(QDialog):
     
     def _on_member_cell_clicked(self, row, column):
         """处理成员表格单元格点击事件"""
-        print(f"[DEBUG] _on_member_cell_clicked 被调用: 行={row}, 列={column}")
+        logger.debug("_on_member_cell_clicked 被调用: 行=%s, 列=%s", row, column)
         if column == 2:  # 只处理移除列的点击
             code_item = self.group_members_table.item(row, 0)
             if code_item:
@@ -1236,7 +1311,7 @@ class TemplateSettingsDialog(QDialog):
                     name_item = self.groups_table.item(current_row, 0)
                     if name_item:
                         group_id = name_item.data(Qt.ItemDataRole.UserRole)
-                        print(f"[DEBUG] 准备移除成就: {code}, 组ID: {group_id}")
+                        logger.debug("准备移除成就: %s, 组ID: %s", code, group_id)
                         if group_id:
                             self._remove_achievement_from_group(group_id, code)
     
@@ -1264,9 +1339,9 @@ class TemplateSettingsDialog(QDialog):
             for achievement in achievements:
                 if achievement.get('成就组ID') == group_id:
                     members.append(achievement)
-            
-            print(f"[DEBUG] 组 {group_id} 有 {len(members)} 个成员")
-            
+
+            logger.debug("组 %s 有 %s 个成员", group_id, len(members))
+
             # 填充成员表格
             self.group_members_table.setRowCount(len(members))
             for i, member in enumerate(members):
@@ -1292,8 +1367,8 @@ class TemplateSettingsDialog(QDialog):
                 remove_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)  # 居中显示
                 self.group_members_table.setItem(i, 2, remove_item)
         except Exception as e:
-            print(f"[ERROR] 加载组成员失败: {e}")
-    
+            logger.error("加载组成员失败: %s", e)
+
     def _add_group_member(self):
         """添加组内成就"""
         current_row = self.groups_table.currentRow()
@@ -1320,58 +1395,58 @@ class TemplateSettingsDialog(QDialog):
     def _add_achievements_to_group(self, group_id, achievements):
         """将成就添加到组中"""
         
-        print(f"[DEBUG] 开始添加 {len(achievements)} 个成就到组 {group_id}")
+        logger.debug("开始添加 %s 个成就到组 %s", len(achievements), group_id)
         
         # 加载当前成就数据
         all_achievements = config.load_base_achievements()
-        print(f"[DEBUG] 加载了 {len(all_achievements)} 个成就")
+        logger.debug("加载了 %s 个成就", len(all_achievements))
         
         # 获取当前组的所有成员
         current_members = []
         for achievement in all_achievements:
             if achievement.get('成就组ID') == group_id:
                 current_members.append(achievement['编号'])
-        print(f"[DEBUG] 组 {group_id} 当前有 {len(current_members)} 个成员: {current_members}")
+        logger.debug("组 %s 当前有 %s 个成员: %s", group_id, len(current_members), current_members)
         
         # 显示要添加的成就
         for achievement in achievements:
-            print(f"[DEBUG] 要添加的成就: {achievement.get('编号', '')} - {achievement.get('名称', '')}")
+            logger.debug("要添加的成就: %s - %s", achievement.get('编号', ''), achievement.get('名称', ''))
         
         # 添加新成员
         modified = False
         added_count = 0
         for achievement in achievements:
             code = achievement['编号']
-            print(f"[DEBUG] 处理成就 {code}")
+            logger.debug("处理成就 %s", code)
             if code not in current_members:
                 # 为每个成就添加组信息
                 for full_achievement in all_achievements:
                     if full_achievement['编号'] == code:
-                        print(f"[DEBUG] 找到成就 {code}，设置组ID为 {group_id}")
+                        logger.debug("找到成就 %s，设置组ID为 %s", code, group_id)
                         full_achievement['成就组ID'] = group_id
                         # 互斥成就列表将在修复时自动生成
                         modified = True
                         added_count += 1
                         break
                 else:
-                    print(f"[ERROR] 未找到编号为 {code} 的成就")
+                    logger.error("未找到编号为 %s 的成就", code)
             else:
-                print(f"[DEBUG] 成就 {code} 已在组中")
+                logger.debug("成就 %s 已在组中", code)
         
-        print(f"[DEBUG] 添加了 {added_count} 个新成就，修改状态: {modified}")
-        
+        logger.debug("添加了 %s 个新成就，修改状态: %s", added_count, modified)
+
         if modified:
-            print(f"[DEBUG] 开始修复组 {group_id} 的互斥关系")
+            logger.debug("开始修复组 %s 的互斥关系", group_id)
             # 修复互斥关系
             self._fix_group_mutex_relations(group_id, all_achievements)
             # 保存数据
-            print(f"[DEBUG] 保存成就数据")
+            logger.debug("保存成就数据")
             config.save_base_achievements(all_achievements)
             # 刷新显示
-            print(f"[DEBUG] 重新加载成就组表格")
+            logger.debug("重新加载成就组表格")
             self._load_achievement_groups()  # 重新加载成就组表格（会自动刷新成员列表）
         else:
-            print(f"[DEBUG] 没有成就被添加到组 {group_id}")
+            logger.debug("没有成就被添加到组 %s", group_id)
     
 
     
@@ -1392,61 +1467,62 @@ class TemplateSettingsDialog(QDialog):
         """从组中移除成就"""
         from core.custom_message_box import CustomMessageBox
         
-        print(f"[DEBUG] 开始移除成就: {code} 从组 {group_id}")
-        
+        logger.debug("开始移除成就: %s 从组 %s", code, group_id)
+
         # 确认删除
         group_name = self.current_group_label.text()
-        print(f"[DEBUG] 显示确认对话框，组名: {group_name}")
+        logger.debug("显示确认对话框，组名: %s", group_name)
         reply = CustomMessageBox.question(self, "确认", f"确定要将成就 '{code}' 从组 '{group_name}' 中移除吗？")
-        print(f"[DEBUG] 确认对话框返回值: {reply}, CustomMessageBox.Yes={CustomMessageBox.Yes}")
+        logger.debug("确认对话框返回值: %s, CustomMessageBox.Yes=%s", reply, CustomMessageBox.Yes)
         if reply != CustomMessageBox.Yes:
-            print(f"[DEBUG] 用户取消移除成就")
+            logger.debug("用户取消移除成就")
             return
-        print(f"[DEBUG] 用户确认移除成就")
-        
+        logger.debug("用户确认移除成就")
+
         # 加载成就数据
-        print(f"[DEBUG] 开始加载成就数据")
+        logger.debug("开始加载成就数据")
         achievements = config.load_base_achievements()
-        print(f"[DEBUG] 加载了 {len(achievements)} 个成就")
+        logger.debug("加载了 %s 个成就", len(achievements))
         modified = False
-        
+
         # 移除组信息
-        print(f"[DEBUG] 查找成就: code='{code}', group_id='{group_id}'")
+        logger.debug("查找成就: code='%s', group_id='%s'", code, group_id)
         for i, achievement in enumerate(achievements):
             if i < 5:  # 只打印前5个，避免日志过长
-                print(f"[DEBUG] 成就{i}: 编号='{achievement.get('编号', '')}', 组ID='{achievement.get('成就组ID', '')}'")
+                logger.debug("成就%s: 编号='%s', 组ID='%s'",
+                             i, achievement.get('编号', ''), achievement.get('成就组ID', ''))
             if achievement['编号'] == code and achievement.get('成就组ID') == group_id:
-                print(f"[DEBUG] 找到成就 {code}，正在移除组信息")
+                logger.debug("找到成就 %s，正在移除组信息", code)
                 achievement.pop('成就组ID', None)
                 achievement.pop('互斥成就', None)
                 modified = True
                 break
-        
+
         if not modified:
-            print(f"[DEBUG] 警告：未找到要移除的成就 {code} 在组 {group_id} 中")
+            logger.debug("警告：未找到要移除的成就 %s 在组 %s 中", code, group_id)
             return
-        
-        print(f"[DEBUG] 成就信息已修改，开始处理组内剩余成员")
+
+        logger.debug("成就信息已修改，开始处理组内剩余成员")
         # 检查组内剩余成员数量，如果只有1个成员则解散该组
         remaining_members = [a for a in achievements if a.get('成就组ID') == group_id]
-        print(f"[DEBUG] 组 {group_id} 剩余成员数量: {len(remaining_members)}")
+        logger.debug("组 %s 剩余成员数量: %s", group_id, len(remaining_members))
         if len(remaining_members) <= 1:
             # 解散该组，清除剩余成员的组信息
-            print(f"[DEBUG] 解散组 {group_id}")
+            logger.debug("解散组 %s", group_id)
             for achievement in remaining_members:
                 achievement.pop('成就组ID', None)
                 achievement.pop('互斥成就', None)
         else:
             # 修复组内剩余成员的互斥关系
-            print(f"[DEBUG] 修复组 {group_id} 的互斥关系")
+            logger.debug("修复组 %s 的互斥关系", group_id)
             self._fix_group_mutex_relations(group_id, achievements)
-        
+
         # 保存数据
-        print(f"[DEBUG] 开始保存成就数据")
+        logger.debug("开始保存成就数据")
         config.save_base_achievements(achievements)
-        print(f"[DEBUG] 成就数据已保存")
+        logger.debug("成就数据已保存")
         # 刷新显示 - 只刷新当前组，避免触发完整重新加载
-        print(f"[DEBUG] 开始刷新当前组显示")
+        logger.debug("开始刷新当前组显示")
         current_row = self.groups_table.currentRow()
         if current_row >= 0:
             # 重新加载当前组的成员
@@ -1454,7 +1530,7 @@ class TemplateSettingsDialog(QDialog):
             if name_item:
                 group_id = name_item.data(Qt.ItemDataRole.UserRole)
                 self._load_group_members(group_id)
-        print(f"[DEBUG] 当前组显示已刷新")
+        logger.debug("当前组显示已刷新")
     
     
 
@@ -1890,7 +1966,7 @@ class TemplateSettingsDialog(QDialog):
         except Exception as e:
             error_msg = f"删除版本数据失败：{str(e)}"
             CustomMessageBox.critical(self, "错误", error_msg)
-            print(f"[ERROR] {error_msg}")
+            logger.error("%s", error_msg)
 
     def _export_all_users_progress_to_excel(self, achievements, file_path):
             """导出所有用户的进度数据到一个Excel文件的多个工作表"""
@@ -1930,7 +2006,7 @@ class TemplateSettingsDialog(QDialog):
                 # 加载用户进度数据
                 user_progress = config.load_user_progress(username)
                 if not user_progress:
-                    print(f"[INFO] 用户 {username} (UID: {uid}) 没有进度数据")
+                    logger.info("用户 %s (UID: %s) 没有进度数据", username, uid)
                     user_progress = {}
 
                 # 写入数据
@@ -1989,7 +2065,7 @@ class TemplateSettingsDialog(QDialog):
 
             # 保存文件
             wb.save(file_path)
-            print(f"[SUCCESS] 所有用户的进度数据已导出到: {file_path}")
+            logger.info("所有用户的进度数据已导出到: %s", file_path)
 
     def _export_achievements_to_excel(self, achievements, file_path, include_status=True):
         """导出成就数据到Excel文件"""
@@ -2052,7 +2128,7 @@ class TemplateSettingsDialog(QDialog):
         
         # 保存文件
         wb.save(file_path)
-        print(f"[INFO] 版本数据已导出到: {file_path}")
+        logger.info("版本数据已导出到: %s", file_path)
 
 
 class AchievementSelectionDialog(QDialog):

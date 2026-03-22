@@ -1,8 +1,11 @@
 ﻿import os
+import logging
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QTabWidget, QDialog)
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap
+
+logger = logging.getLogger(__name__)
 
 from core.config import config
 from core.signal_bus import signal_bus
@@ -213,7 +216,7 @@ class TemplateMainWindow(QMainWindow):
         self.update_nickname_display()
         self.update_avatar_display()
         character_name = config.get_current_user_character_name()
-        print(f"[DEBUG] 用户切换: {username}, 角色名: {character_name}")
+        logger.debug("用户切换: %s, 角色名: %s", username, character_name)
         self.update_character_portrait(character_name)
     
     def update_nickname_display(self):
@@ -239,12 +242,12 @@ class TemplateMainWindow(QMainWindow):
     def update_avatar_display(self):
         """更新头像显示"""
         avatar_path = config.get_current_user_avatar()
-        print(f"[DEBUG] 更新头像显示: {avatar_path}")
+        logger.debug("更新头像显示: %s", avatar_path)
         if avatar_path:
-            print(f"[DEBUG] 找到头像文件: {os.path.exists(avatar_path)}")
+            logger.debug("找到头像文件: %s", os.path.exists(avatar_path))
             self.avatar_label.update_avatar(avatar_path)
         else:
-            print("[DEBUG] 没有找到用户头像，使用默认头像")
+            logger.debug("没有找到用户头像，使用默认头像")
             # 使用默认头像（男漂泊者）
             default_avatar = os.path.join("resources", "profile", "男漂泊者.png")
             self.avatar_label.update_avatar(default_avatar)
@@ -261,20 +264,20 @@ class TemplateMainWindow(QMainWindow):
     
     def on_avatar_selected(self, avatar_path, avatar_name):
         """处理头像选择信号"""
-        print(f"[DEBUG] 收到头像选择信号: {avatar_path} - {avatar_name}")
+        logger.debug("收到头像选择信号: %s - %s", avatar_path, avatar_name)
         # 更新头像
         self.avatar_label.update_avatar(avatar_path)
-        
+
         # 更新角色立绘
         self.update_character_portrait(avatar_name)
-        
+
         # 保存到当前用户的头像配置
         current_user = config.get_current_user()
-        print(f"[DEBUG] 当前用户: {current_user}")
+        logger.debug("当前用户: %s", current_user)
         config.set_user_avatar(current_user, avatar_path)
         config.set_user_character_name(current_user, avatar_name)
-        print(f"[DEBUG] 头像已保存到配置: {config.get_current_user_avatar()}")
-        print(f"[DEBUG] 角色名已保存到配置: {avatar_name}")
+        logger.debug("头像已保存到配置: %s", config.get_current_user_avatar())
+        logger.debug("角色名已保存到配置: %s", avatar_name)
         
         # 发送日志消息
         signal_bus.log_message.emit("INFO", f"已选择头像: {avatar_name}", {})
@@ -308,12 +311,12 @@ class TemplateMainWindow(QMainWindow):
                     Qt.TransformationMode.SmoothTransformation
                 )
                 self.character_portrait_label.setPixmap(scaled_pixmap)
-                print(f"[DEBUG] 已更新角色立绘: {character_name}")
+                logger.debug("已更新角色立绘: %s", character_name)
             else:
-                print(f"[WARNING] 无法加载角色立绘: {portrait_path}")
+                logger.warning("无法加载角色立绘: %s", portrait_path)
                 self.character_portrait_label.clear()
         else:
-            print(f"[WARNING] 未找到角色立绘: {character_name}")
+            logger.warning("未找到角色立绘: %s", character_name)
             self.character_portrait_label.clear()
 
     def on_settings_saved(self, settings):
@@ -406,11 +409,11 @@ class TemplateMainWindow(QMainWindow):
                 
                 # 如果当前版本与缓存中的版本不一致，说明软件已更新
                 if cached_current_version and cached_current_version != VERSION:
-                    print(f"检测到版本更新: {cached_current_version} -> {VERSION}, 清理更新缓存")
+                    logger.info("检测到版本更新: %s -> %s, 清理更新缓存", cached_current_version, VERSION)
                     cache_file.unlink()  # 删除缓存文件
-                    
+
             except (json.JSONDecodeError, KeyError) as e:
-                print(f"读取缓存文件失败，删除缓存: {e}")
+                logger.info("读取缓存文件失败，删除缓存: %s", e)
                 # 如果缓存文件损坏，直接删除
                 if cache_file.exists():
                     cache_file.unlink()
@@ -421,7 +424,7 @@ class TemplateMainWindow(QMainWindow):
             from core.update import check_for_updates_background
             check_for_updates_background()
         except Exception as e:
-            print(f"延迟更新检查失败: {e}")
+            logger.error("延迟更新检查失败: %s", e)
 
     def setup_data_freshness_check(self):
         """启动时静默检查成就数据是否有更新，并自动合并缺失成就"""
@@ -434,16 +437,16 @@ class TemplateMainWindow(QMainWindow):
 
         devcode, token = config.get_auth_data()
         if not devcode or not token:
-            print("[DATA-CHECK] 认证信息未配置，跳过启动数据检查")
+            logger.info("认证信息未配置，跳过启动数据检查")
             return
 
         self._sync_crawler = AchievementCrawler(target_version=None)
         self._sync_crawler.progress.connect(
-            lambda msg: print(f"[DATA-CHECK] {msg}")
+            lambda msg: logger.info("%s", msg)
         )
         self._sync_crawler.finished.connect(self._on_sync_finished)
         self._sync_crawler.error.connect(
-            lambda err: print(f"[DATA-CHECK] 检查失败: {err}")
+            lambda err: logger.error("检查失败: %s", err)
         )
 
         self._sync_thread = CrawlerThread(self._sync_crawler)
@@ -472,11 +475,11 @@ class TemplateMainWindow(QMainWindow):
                         parsed = self._sync_crawler.parse_html_table_with_categories(html_content)
                         all_remote.extend(parsed)
 
-            print(f"[DATA-CHECK] 远端共 {len(all_remote)} 条成就")
+            logger.info("远端共 %s 条成就", len(all_remote))
 
             # 加载本地成就库
             local_achievements = config.load_base_achievements()
-            print(f"[DATA-CHECK] 本地共 {len(local_achievements)} 条成就")
+            logger.info("本地共 %s 条成就", len(local_achievements))
 
             # 用 (名称, 清理后描述) 去重
             def clean_desc(desc):
@@ -501,13 +504,13 @@ class TemplateMainWindow(QMainWindow):
             to_remove_keys = local_keys - remote_keys
             if to_remove_keys:
                 removed_names = [name for name, _ in to_remove_keys]
-                print(f"[DATA-CHECK] 发现 {len(to_remove_keys)} 条成就已从远端移除: {', '.join(removed_names)}")
+                logger.info("发现 %s 条成就已从远端移除: %s", len(to_remove_keys), ', '.join(removed_names))
 
             # 保存远端 keys 供主线程使用
             self._sync_remote_keys = remote_keys
 
             if not to_add and not to_remove_keys:
-                print("[DATA-CHECK] 本地数据已是最新，无需同步")
+                logger.info("本地数据已是最新，无需同步")
                 self._sync_remote_keys = None
                 self._sync_crawler.finished.emit([])
                 return
@@ -519,7 +522,7 @@ class TemplateMainWindow(QMainWindow):
                     v = a.get('版本', '未知')
                     version_counts[v] = version_counts.get(v, 0) + 1
                 version_summary = ", ".join(f"v{v}: {c}条" for v, c in sorted(version_counts.items()))
-                print(f"[DATA-CHECK] 发现 {len(to_add)} 条新成就需要同步（{version_summary}）")
+                logger.info("发现 %s 条新成就需要同步（%s）", len(to_add), version_summary)
 
             # 发出新增成就列表（可能为空但有需要移除的），由主线程处理
             self._sync_crawler.finished.emit(to_add)
@@ -535,12 +538,12 @@ class TemplateMainWindow(QMainWindow):
         has_changes = bool(new_achievements) or bool(remote_keys)
 
         if not has_changes:
-            print("[DATA-CHECK] 启动数据检查完成，无新数据")
+            logger.info("启动数据检查完成，无新数据")
             self._sync_crawler = None
             self._sync_thread = None
             return
 
-        print(f"[DATA-CHECK] 正在同步数据...")
+        logger.info("正在同步数据...")
 
         manage_tab = self.manage_tab
         current_achievements = manage_tab.manager.achievements
@@ -562,7 +565,7 @@ class TemplateMainWindow(QMainWindow):
                     updated_first[first_cat] = max_order + 1
                     updated_second[first_cat] = {}
                     has_new_categories = True
-                    print(f"[DATA-CHECK] 新增第一分类: {first_cat}")
+                    logger.info("新增第一分类: %s", first_cat)
 
                 if first_cat not in updated_second:
                     updated_second[first_cat] = {}
@@ -578,14 +581,14 @@ class TemplateMainWindow(QMainWindow):
                         new_suffix += 10
                     updated_second[first_cat][second_cat] = str(new_suffix)
                     has_new_categories = True
-                    print(f"[DATA-CHECK] 新增第二分类: {first_cat} - {second_cat}")
+                    logger.info("新增第二分类: %s - %s", first_cat, second_cat)
 
         if has_new_categories:
             config.save_category_config({
                 "first_categories": updated_first,
                 "second_categories": updated_second
             })
-            print("[DATA-CHECK] 分类配置已更新")
+            logger.info("分类配置已更新")
 
         # 移除远端已删除的成就
         removed_count = 0
@@ -602,7 +605,7 @@ class TemplateMainWindow(QMainWindow):
             ]
             removed_count = before_count - len(current_achievements)
             if removed_count:
-                print(f"[DATA-CHECK] 已移除 {removed_count} 条远端已删除的成就")
+                logger.info("已移除 %s 条远端已删除的成就", removed_count)
 
         # 合并新增成就并重新编码
         all_achievements = current_achievements + new_achievements
@@ -617,7 +620,7 @@ class TemplateMainWindow(QMainWindow):
 
         # 再重新编码用户存档（从文件重新加载，所以必须先保存）
         if config.reencode_all_user_progress():
-            print("[DATA-CHECK] 用户存档数据已同步")
+            logger.info("用户存档数据已同步")
 
         if has_new_categories:
             signal_bus.category_config_updated.emit()
@@ -636,7 +639,7 @@ class TemplateMainWindow(QMainWindow):
             summary_parts.append(f"新增 {len(new_achievements)} 条（{version_summary}）")
         if removed_count:
             summary_parts.append(f"移除 {removed_count} 条")
-        print(f"[DATA-CHECK] 同步完成！{', '.join(summary_parts)}，总计 {len(all_achievements)} 条")
+        logger.info("同步完成！%s，总计 %s 条", ', '.join(summary_parts), len(all_achievements))
 
         # 清理引用
         self._sync_crawler = None
@@ -660,7 +663,7 @@ class TemplateMainWindow(QMainWindow):
         # 重新加载成就管理标签页的数据
         if hasattr(self, 'manage_tab') and hasattr(self.manage_tab, 'load_local_data'):
             self.manage_tab.load_local_data()
-            print("[INFO] 成就管理数据已重新加载")
+            logger.info("成就管理数据已重新加载")
 
     def show_first_run_dialog(self):
         """显示首次运行欢迎对话框"""

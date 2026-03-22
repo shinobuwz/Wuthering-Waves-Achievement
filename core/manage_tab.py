@@ -1,8 +1,11 @@
 ﻿from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-                               QComboBox, QGroupBox, QFileDialog, QApplication)
+                               QComboBox, QGroupBox, QFileDialog, QApplication, QCheckBox)
 from PySide6.QtCore import Qt
+import logging
 import os
 import json
+
+logger = logging.getLogger(__name__)
 
 from core.config import config, get_resource_path
 from core.styles import get_font_gray_style, get_button_style
@@ -83,7 +86,7 @@ class AchievementManager:
         self.filtered_achievements = achievements.copy()
 
     def filter_data(self, search_text="", version="", first_category="", second_category="",
-                    hidden_type="all", priority="默认排序", obtainable="全部"):
+                    hidden_type="all", priority="默认排序", obtainable="全部", hide_completed=False):
         """筛选数据"""
         self.filtered_achievements = []
 
@@ -95,6 +98,10 @@ class AchievementManager:
 
             # 版本筛选
             if version and version != "所有版本" and achievement.get('版本', '') != version:
+                continue
+
+            # 隐藏已完成筛选
+            if hide_completed and achievement.get('获取状态', '') == '已完成':
                 continue
 
             # 第一分类筛选
@@ -196,7 +203,7 @@ class ManageTab(QWidget):
 
     def on_user_switched(self, username):
         """用户切换时重新加载数据"""
-        print(f"[INFO] 用户切换到: {username}")
+        logger.info("用户切换到: %s", username)
         self.load_local_data()
 
     def on_theme_changed(self, theme):
@@ -325,6 +332,10 @@ class ManageTab(QWidget):
         self.hidden_filter.currentTextChanged.connect(self.filter_data)
         filter_layout2.addWidget(self.hidden_filter)
 
+        self.hide_completed_checkbox = QCheckBox("隐藏已完成")
+        self.hide_completed_checkbox.stateChanged.connect(self.filter_data)
+        filter_layout2.addWidget(self.hide_completed_checkbox)
+
         filter_layout2.addStretch()
 
         # 将两行布局添加到筛选主布局中
@@ -432,14 +443,14 @@ class ManageTab(QWidget):
         layout.addWidget(self.manager_table)
 
         # 初始日志
-        print("[INFO] 成就管理标签页已初始化")
+        logger.info("成就管理标签页已初始化")
 
     def load_data(self, achievements):
         """加载数据"""
         # 调试信息：检查数据格式
         if achievements:
-            print(f"[DEBUG] 接收到的数据示例 - 是否隐藏字段: {achievements[0].get('是否隐藏', 'None')}")
-            print(f"[DEBUG] 接收到的数据示例 - is_hidden字段: {achievements[0].get('is_hidden', 'None')}")
+            logger.debug("接收到的数据示例 - 是否隐藏字段: %s", achievements[0].get('是否隐藏', 'None'))
+            logger.debug("接收到的数据示例 - is_hidden字段: %s", achievements[0].get('is_hidden', 'None'))
 
         self.manager.load_data(achievements)
 
@@ -499,7 +510,7 @@ class ManageTab(QWidget):
         )
         self.manager_table.load_data(filtered_data)
 
-        print(f"[SUCCESS] 已加载 {len(achievements)} 条成就数据")
+        logger.info("已加载 %s 条成就数据", len(achievements))
 
     def on_first_category_changed(self):
         """第一分类变化时更新第二分类选项并重置为全部"""
@@ -566,10 +577,12 @@ class ManageTab(QWidget):
         }
         hidden_type = hidden_map.get(hidden_type, "all")
 
+        hide_completed = self.hide_completed_checkbox.isChecked()
+
         # 筛选数据
         filtered = self.manager.filter_data(
             search_text, version, first_category, second_category,
-            hidden_type, priority, obtainable
+            hidden_type, priority, obtainable, hide_completed
         )
 
         # 在多选一模式下，为每个成就添加组标识
@@ -642,12 +655,12 @@ class ManageTab(QWidget):
                 )
 
                 if reply != CustomMessageBox.Yes:
-                    print("[INFO] 用户取消了Excel导入操作")
+                    logger.info("用户取消了Excel导入操作")
                     return
 
                 self.import_from_excel(file_path)
             except Exception as e:
-                print(f"[ERROR] 导入Excel失败: {str(e)}")
+                logger.error("导入Excel失败: %s", str(e))
                 show_notification(self, f"导入Excel失败: {str(e)}")
 
     def import_from_excel(self, excel_path):
@@ -656,7 +669,7 @@ class ManageTab(QWidget):
             from openpyxl import load_workbook
 
             # 读取Excel文件
-            print(f"[INFO] 正在读取Excel文件: {excel_path}")
+            logger.info("正在读取Excel文件: %s", excel_path)
             workbook = load_workbook(excel_path)
             sheet = workbook.active
 
@@ -689,21 +702,21 @@ class ManageTab(QWidget):
             col_index = {header: idx for idx, header in enumerate(headers)}
 
             # 数据清洗和转换
-            print(f"[INFO] 开始数据清洗...")
-            print(f"[DEBUG] 总行数: {sheet.max_row}, 数据开始行: {data_start_row}")
-            print(f"[DEBUG] 列索引: {col_index}")
+            logger.info("开始数据清洗...")
+            logger.debug("总行数: %s, 数据开始行: %s", sheet.max_row, data_start_row)
+            logger.debug("列索引: %s", col_index)
             achievements = []
 
             # 加载分类配置
             try:
                 # 确保config对象已正确初始化
                 if not hasattr(config, 'load_category_config'):
-                    print("[ERROR] config对象缺少load_category_config方法")
+                    logger.error("config对象缺少load_category_config方法")
                     raise Exception("配置对象未正确初始化")
 
                 category_config = config.load_category_config()
                 if not isinstance(category_config, dict):
-                    print(f"[ERROR] category_config不是字典类型: {type(category_config)}")
+                    logger.error("category_config不是字典类型: %s", type(category_config))
                     category_config = {}
 
                 first_categories = category_config.get("first_categories", {})
@@ -716,11 +729,11 @@ class ManageTab(QWidget):
                     second_categories = {}
 
             except Exception as e:
-                print(f"[ERROR] 加载分类配置失败: {str(e)}")
+                logger.error("加载分类配置失败: %s", str(e))
                 # 使用默认配置
                 first_categories = {}
                 second_categories = {}
-                print("[INFO] 使用默认分类配置")
+                logger.info("使用默认分类配置")
 
             # 创建第二分类到第一分类的映射
             first_category_map = {}
@@ -740,14 +753,13 @@ class ManageTab(QWidget):
                     second_category = str(second_category_value).strip() if second_category_value else ''
 
                     if row_idx <= data_start_row + 2:  # 只显示前几行的调试信息
-                        print(f"[DEBUG] 预扫描第{row_idx}行，第二分类: '{second_category}'")
-                        print(
-                            f"[DEBUG] 预扫描第{row_idx}行，是否在first_category_map中: {second_category in first_category_map}")
+                        logger.debug("预扫描第%s行，第二分类: '%s'", row_idx, second_category)
+                        logger.debug("预扫描第%s行，是否在first_category_map中: %s", row_idx, second_category in first_category_map)
 
                     if second_category and second_category not in first_category_map:
                         missing_second_categories.add(second_category)
                         if row_idx <= data_start_row + 2:
-                            print(f"[DEBUG] 预扫描第{row_idx}行：发现缺失的第二分类 '{second_category}'")
+                            logger.debug("预扫描第%s行：发现缺失的第二分类 '%s'", row_idx, second_category)
 
             # 如果有缺失的第二分类，提示用户
             if missing_second_categories:
@@ -759,7 +771,7 @@ class ManageTab(QWidget):
                     f"Excel文件中发现以下第二分类未在分类管理中配置：\n\n{missing_list}\n\n请先在设置→分类管理中添加这些分类，然后重新导入。",
                     ("确定",)
                 )
-                print(f"[WARNING] 发现缺失的第二分类: {missing_second_categories}")
+                logger.warning("发现缺失的第二分类: %s", missing_second_categories)
                 return  # 中断导入
 
             # 从数据开始行读取数据
@@ -768,7 +780,7 @@ class ManageTab(QWidget):
                     continue  # 跳过空行
 
                 if row_idx <= data_start_row + 2:  # 只显示前几行的调试信息
-                    print(f"[DEBUG] 处理第{row_idx}行，数据: {[cell.value for cell in row]}")
+                    logger.debug("处理第%s行，数据: %s", row_idx, [cell.value for cell in row])
 
                 achievement = {}
 
@@ -833,8 +845,8 @@ class ManageTab(QWidget):
 
                 # 如果第一分类为空，根据第二分类映射获取第一分类
                 if not first_category:
-                    print(f"[DEBUG] 第{row_idx}行：尝试为第二分类 '{second_category}' 查找第一分类")
-                    print(f"[DEBUG] 第{row_idx}行：first_category_map包含的分类: {list(first_category_map.keys())}")
+                    logger.debug("第%s行：尝试为第二分类 '%s' 查找第一分类", row_idx, second_category)
+                    logger.debug("第%s行：first_category_map包含的分类: %s", row_idx, list(first_category_map.keys()))
 
                     # 尝试精确匹配
                     first_category = first_category_map.get(second_category, '')
@@ -844,12 +856,12 @@ class ManageTab(QWidget):
                         trimmed_second_category = second_category.strip()
                         first_category = first_category_map.get(trimmed_second_category, '')
                         if first_category:
-                            print(f"[DEBUG] 第{row_idx}行：去除空格后匹配成功")
+                            logger.debug("第%s行：去除空格后匹配成功", row_idx)
 
                     if first_category:
-                        print(f"[INFO] 第{row_idx}行：自动补充第一分类 '{first_category}'")
+                        logger.info("第%s行：自动补充第一分类 '%s'", row_idx, first_category)
                     else:
-                        print(f"[WARNING] 第{row_idx}行：无法找到第二分类 '{second_category}' 对应的第一分类")
+                        logger.warning("第%s行：无法找到第二分类 '%s' 对应的第一分类", row_idx, second_category)
 
                 achievement['第一分类'] = first_category
 
@@ -936,10 +948,10 @@ class ManageTab(QWidget):
                 config.save_user_progress(current_user, user_progress)
 
             # 重新生成编号和绝对编号（与爬虫保持一致）
-            print("[INFO] 正在重新生成编号和绝对编号...")
+            logger.info("正在重新生成编号和绝对编号...")
             base_achievements, id_mapping = self._smart_reencode_achievements(base_achievements)
-            print("[SUCCESS] 编号和绝对编号重新生成完成")
-            print(f"[INFO] 编号映射表包含 {len(id_mapping)} 个映射")
+            logger.info("编号和绝对编号重新生成完成")
+            logger.info("编号映射表包含 %s 个映射", len(id_mapping))
 
             # 将用户进度映射到新的编号
             if user_progress:
@@ -959,8 +971,8 @@ class ManageTab(QWidget):
                 # 创建新的进度数据
                 updated_user_progress = {}
 
-                print(f"[DEBUG] 开始映射用户进度，原始进度数量: {len(user_progress)}")
-                print(f"[DEBUG] 编号映射表: {id_mapping}")
+                logger.debug("开始映射用户进度，原始进度数量: %s", len(user_progress))
+                logger.debug("编号映射表: %s", id_mapping)
 
                 # 更新成就进度中的编号
                 for i, (old_id, progress_info) in enumerate(user_progress.items()):
@@ -969,24 +981,24 @@ class ManageTab(QWidget):
 
                     # 调试：检查progress_info类型
                     if i < 5:  # 只检查前5个
-                        print(
-                            f"[DEBUG] 处理进度 {i}: 旧编号={old_id}, 新编号={new_id}, 进度类型={type(progress_info)}, 进度值={progress_info}")
+                        logger.debug("处理进度 %s: 旧编号=%s, 新编号=%s, 进度类型=%s, 进度值=%s",
+                                     i, old_id, new_id, type(progress_info), progress_info)
 
                     # 检查progress_info是否是字典
                     if not isinstance(progress_info, dict):
-                        print(f"[ERROR] 进度信息不是字典: {old_id} -> {type(progress_info)}, 值: {progress_info}")
+                        logger.error("进度信息不是字典: %s -> %s, 值: %s", old_id, type(progress_info), progress_info)
                         # 尝试修复
                         if isinstance(progress_info, list):
                             progress_info = {'获取状态': str(progress_info[0]) if progress_info else '未完成'}
                         else:
                             progress_info = {'获取状态': '未完成'}
-                        print(f"[DEBUG] 修复后的进度信息: {progress_info}")
+                        logger.debug("修复后的进度信息: %s", progress_info)
 
                     # 使用新编号（如果有变化）或保持原编号
                     updated_user_progress[new_id] = progress_info
 
                     if new_id != old_id:
-                        print(f"[DEBUG] 用户进度编号映射: {old_id} -> {new_id}")
+                        logger.debug("用户进度编号映射: %s -> %s", old_id, new_id)
 
                 # 检查是否有遗漏的成就（新成就没有在旧用户进度中）
                 for achievement in base_achievements:
@@ -1008,7 +1020,7 @@ class ManageTab(QWidget):
                             }
 
                 user_progress = updated_user_progress
-                print(f"[INFO] 用户进度已映射到新的编号，共 {len(user_progress)} 条")
+                logger.info("用户进度已映射到新的编号，共 %s 条", len(user_progress))
 
             # 更新管理器的数据
             self.manager.achievements = base_achievements
@@ -1016,8 +1028,8 @@ class ManageTab(QWidget):
 
             # 调试：检查第一分类是否正确补充
             for i, achievement in enumerate(base_achievements[:3]):
-                print(
-                    f"[DEBUG] 保存前成就{i + 1}: 第一分类='{achievement.get('第一分类', '空')}', 第二分类='{achievement.get('第二分类', '空')}'")
+                logger.debug("保存前成就%s: 第一分类='%s', 第二分类='%s'",
+                             i + 1, achievement.get('第一分类', '空'), achievement.get('第二分类', '空'))
 
             # 将用户进度状态合并到基础成就数据中，用于表格显示
             if updated_user_progress:
@@ -1042,13 +1054,13 @@ class ManageTab(QWidget):
                 config.save_user_progress(current_user, user_progress)
 
             # 同步更新所有用户的进度编号
-            print("[INFO] 正在同步更新所有用户的进度编号...")
+            logger.info("正在同步更新所有用户的进度编号...")
             if config.reencode_all_user_progress():
-                print("[SUCCESS] 所有用户进度编号同步更新完成")
+                logger.info("所有用户进度编号同步更新完成")
                 # 重新加载当前用户的进度
                 user_progress = config.load_user_progress(current_user)
             else:
-                print("[ERROR] 同步更新所有用户进度编号失败")
+                logger.error("同步更新所有用户进度编号失败")
 
             # 更新表格显示
             self.manager_table.load_data(base_achievements)
@@ -1059,7 +1071,7 @@ class ManageTab(QWidget):
             # 更新统计
             self.update_statistics()
 
-            print(f"[SUCCESS] Excel导入完成，共 {len(base_achievements)} 条基础成就，{len(user_progress)} 条用户进度")
+            logger.info("Excel导入完成，共 %s 条基础成就，%s 条用户进度", len(base_achievements), len(user_progress))
 
             # 检查是否有缺失的分类，如果有则中断导入
             if hasattr(self, 'missing_categories') and self.missing_categories:
@@ -1070,8 +1082,8 @@ class ManageTab(QWidget):
                 error_msg = f"发现未配置的第二分类: {missing_str}\n\n"
                 error_msg += "请在 设置→分类管理 中将这些分类添加到对应的第一分类下，然后重新导入。"
 
-                print(f"[ERROR] 导入中断：发现未配置的分类: {missing_str}")
-                print(f"[INFO] 请在 设置→分类管理 中添加这些分类后重新导入")
+                logger.error("导入中断：发现未配置的分类: %s", missing_str)
+                logger.info("请在 设置→分类管理 中添加这些分类后重新导入")
 
                 # 显示错误提示
                 from core.custom_message_box import CustomMessageBox
@@ -1080,11 +1092,11 @@ class ManageTab(QWidget):
                 # 不更新数据，保持原状
                 return
 
-            print(f"[SUCCESS] Excel导入完成，共 {len(base_achievements)} 条基础成就，{len(user_progress)} 条用户进度")
+            logger.info("Excel导入完成，共 %s 条基础成就，%s 条用户进度", len(base_achievements), len(user_progress))
             show_notification(self, f"导入成功，共 {len(base_achievements)} 条成就数据")
 
         except Exception as e:
-            print(f"[ERROR] 导入Excel失败: {str(e)}")
+            logger.error("导入Excel失败: %s", str(e))
             raise Exception(f"导入Excel失败: {str(e)}")
 
     def export_excel(self):
@@ -1099,7 +1111,7 @@ class ManageTab(QWidget):
             try:
                 self.export_to_excel(file_path)
             except Exception as e:
-                print(f"[ERROR] 导出Excel失败: {str(e)}")
+                logger.error("导出Excel失败: %s", str(e))
                 show_notification(self, f"导出Excel失败: {str(e)}")
 
     def export_to_excel(self, file_path):
@@ -1238,12 +1250,12 @@ class ManageTab(QWidget):
 
             # 保存文件
             workbook.save(file_path)
-            print(f"[SUCCESS] Excel数据已导出到: {file_path}")
-            print(f"[INFO] 包含 {len(merged_data)} 条成就数据")
+            logger.info("Excel数据已导出到: %s", file_path)
+            logger.info("包含 %s 条成就数据", len(merged_data))
             show_notification(self, f"导出成功，共 {len(merged_data)} 条成就数据")
 
         except Exception as e:
-            print(f"[ERROR] 导出Excel失败: {str(e)}")
+            logger.error("导出Excel失败: %s", str(e))
             raise Exception(f"导出Excel失败: {str(e)}")
 
     def get_dynamic_export_filename(self):
@@ -1283,7 +1295,7 @@ class ManageTab(QWidget):
             return filename
 
         except Exception as e:
-            print(f"[ERROR] 生成动态文件名失败: {str(e)}")
+            logger.error("生成动态文件名失败: %s", str(e))
             return "成就数据.xlsx"
 
     def add_excel_validation_and_formatting(self, sheet, data_rows, column_order):
@@ -1328,11 +1340,11 @@ class ManageTab(QWidget):
                 sheet.add_data_validation(dv)
                 dv.add(f"{reward_col_letter}3:{reward_col_letter}{data_rows + 2}")
 
-            print(f"[INFO] 已添加Excel下拉框 - 数据行数: {data_rows}")
-            print(f"[DEBUG] 奖励列索引: {reward_col_idx}")
+            logger.info("已添加Excel下拉框 - 数据行数: %s", data_rows)
+            logger.debug("奖励列索引: %s", reward_col_idx)
 
         except Exception as e:
-            print(f"[WARNING] 添加Excel验证和格式时出错: {str(e)}")
+            logger.warning("添加Excel验证和格式时出错: %s", str(e))
 
     def calculate_statistics(self, data):
         """计算统计信息，与update_statistics逻辑相同"""
@@ -1458,7 +1470,7 @@ class ManageTab(QWidget):
         )
 
         if reply != CustomMessageBox.Yes:
-            print("[INFO] 用户取消了JSON导入操作")
+            logger.info("用户取消了JSON导入操作")
             return
 
         file_path, _ = QFileDialog.getOpenFileName(
@@ -1466,7 +1478,7 @@ class ManageTab(QWidget):
         )
         if file_path:
             try:
-                print(f"[INFO] 开始导入 JSON 文件: {file_path}")
+                logger.info("开始导入 JSON 文件: %s", file_path)
 
                 with open(file_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
@@ -1521,7 +1533,7 @@ class ManageTab(QWidget):
                 if achievements:
                     # 如果需要重新编码，进行智能重新排序和编码
                     if needs_reencoding:
-                        print("[INFO] 检测到需要重新编码的数据，正在优化排序和编码...")
+                        logger.info("检测到需要重新编码的数据，正在优化排序和编码...")
                         achievements = self._smart_reencode_achievements(achievements)
 
                     # 更新管理器数据
@@ -1542,15 +1554,15 @@ class ManageTab(QWidget):
                     status_msg = f"成功导入 {len(achievements)} 条成就数据"
                     if needs_reencoding:
                         status_msg += "（已优化排序和编码）"
-                    print(f"[SUCCESS] {status_msg}")
+                    logger.info("%s", status_msg)
 
                     # 显示提示
                     show_notification(self, status_msg)
                 else:
-                    print("[WARNING] 导入的文件中没有数据")
+                    logger.warning("导入的文件中没有数据")
 
             except Exception as e:
-                print(f"[ERROR] 导入失败: {str(e)}")
+                logger.error("导入失败: %s", str(e))
                 import traceback
                 traceback.print_exc()
 
@@ -1582,7 +1594,7 @@ class ManageTab(QWidget):
             first_categories = category_config.get("first_categories", {})
             second_categories = category_config.get("second_categories", {})
         except Exception as e:
-            print(f"[ERROR] 加载分类配置失败: {str(e)}")
+            logger.error("加载分类配置失败: %s", str(e))
             first_categories = {}
             second_categories = {}
 
@@ -1636,7 +1648,7 @@ class ManageTab(QWidget):
                 first_cat = first_category_map.get(second_cat, '')
                 if first_cat:
                     achievement['第一分类'] = first_cat
-                    print(f"[INFO] 自动补充第一分类 '{first_cat}' 用于第二分类 '{second_cat}'")
+                    logger.info("自动补充第一分类 '%s' 用于第二分类 '%s'", first_cat, second_cat)
 
             if not first_cat or not second_cat:
                 achievement['编号'] = ''
@@ -1685,8 +1697,8 @@ class ManageTab(QWidget):
                     updated_mutex.append(new_mutex_id)
                 achievement['互斥成就'] = updated_mutex
                 if mutex_achievements != updated_mutex:
-                    print(
-                        f"[INFO] 更新互斥成就: {achievement.get('名称', '')} - {mutex_achievements} -> {updated_mutex}")
+                    logger.info("更新互斥成就: %s - %s -> %s",
+                                achievement.get('名称', ''), mutex_achievements, updated_mutex)
 
         return sorted_achievements, old_to_new_id_map
 
@@ -1760,7 +1772,7 @@ class ManageTab(QWidget):
     def export_full_json(self):
         """导出全字段 JSON 文件"""
         if not self.manager.filtered_achievements:
-            print("[WARNING] 没有数据可导出")
+            logger.warning("没有数据可导出")
             return
 
         file_path, _ = QFileDialog.getSaveFileName(
@@ -1769,7 +1781,7 @@ class ManageTab(QWidget):
 
         if file_path:
             try:
-                print(f"[INFO] 开始导出全字段数据: {file_path}")
+                logger.info("开始导出全字段数据: %s", file_path)
 
                 # 准备全字段数据
                 export_data = []
@@ -1792,12 +1804,12 @@ class ManageTab(QWidget):
                     json.dump(export_data, f, ensure_ascii=False, indent=2)
 
                 file_size = os.path.getsize(file_path)
-                print(f"[SUCCESS] 全字段数据已导出到: {file_path}")
-                print(f"[SUCCESS] 文件大小: {file_size} 字节")
-                print(f"[INFO] 包含 {len(export_data)} 条成就数据")
+                logger.info("全字段数据已导出到: %s", file_path)
+                logger.info("文件大小: %s 字节", file_size)
+                logger.info("包含 %s 条成就数据", len(export_data))
 
             except Exception as e:
-                print(f"[ERROR] 导出失败: {str(e)}")
+                logger.error("导出失败: %s", str(e))
                 import traceback
                 traceback.print_exc()
 
@@ -1840,7 +1852,7 @@ class ManageTab(QWidget):
             if not isinstance(category_config, dict):
                 category_config = {}
         except Exception as e:
-            print(f"[ERROR] 加载分类配置失败: {str(e)}")
+            logger.error("加载分类配置失败: %s", str(e))
             # 尝试直接访问属性
             try:
                 if hasattr(config, 'category_config'):
@@ -1849,7 +1861,7 @@ class ManageTab(QWidget):
                     category_config = {}
             except:
                 category_config = {}
-            print("[INFO] 使用备用配置加载方式")
+            logger.info("使用备用配置加载方式")
         first_category_order = category_config.get("first_categories", {})
 
         # 更新第一分类下拉框（按配置顺序）
@@ -1899,7 +1911,7 @@ class ManageTab(QWidget):
                 achievements_to_save.append(achievement_copy)
 
             if config.save_base_achievements(achievements_to_save):
-                print("[SUCCESS] 基础成就数据已保存")
+                logger.info("基础成就数据已保存")
 
             # 准备用户进度数据
             progress_data = {}
@@ -1915,10 +1927,10 @@ class ManageTab(QWidget):
 
             # 保存用户进度数据
             if config.save_user_progress(current_user, progress_data):
-                print(f"[SUCCESS] 用户 {current_user} (UID: {uid}) 的进度数据已保存")
+                logger.info("用户 %s (UID: %s) 的进度数据已保存", current_user, uid)
 
         except Exception as e:
-            print(f"[ERROR] 保存数据失败: {str(e)}")
+            logger.error("保存数据失败: %s", str(e))
             import traceback
             traceback.print_exc()
 
@@ -1928,7 +1940,7 @@ class ManageTab(QWidget):
             # 加载基础成就数据
             base_achievements = config.load_base_achievements()
             if not base_achievements:
-                print("[WARNING] 基础成就数据文件不存在")
+                logger.warning("基础成就数据文件不存在")
                 return
 
             # 加载当前用户进度数据
@@ -1937,7 +1949,7 @@ class ManageTab(QWidget):
             current_user_data = users.get(current_user, {})
             uid = current_user_data.get('uid', current_user) if isinstance(current_user_data, dict) else current_user
 
-            print(f"[INFO] 加载用户 {current_user} (UID: {uid}) 的进度数据")
+            logger.info("加载用户 %s (UID: %s) 的进度数据", current_user, uid)
             user_progress = config.load_user_progress(current_user)
 
             # 合并数据
@@ -1959,7 +1971,7 @@ class ManageTab(QWidget):
 
                 achievements.append(achievement)
 
-            print(f"[INFO] 加载了 {len(achievements)} 条成就数据（基础数据 + 用户进度）")
+            logger.info("加载了 %s 条成就数据（基础数据 + 用户进度）", len(achievements))
 
             if achievements:
                 self.manager.load_data(achievements)
@@ -1971,7 +1983,7 @@ class ManageTab(QWidget):
                 self.update_statistics()
 
         except Exception as e:
-            print(f"[ERROR] 加载本地数据失败: {str(e)}")
+            logger.error("加载本地数据失败: %s", str(e))
             import traceback
             traceback.print_exc()
 
@@ -2028,6 +2040,10 @@ class ManageTab(QWidget):
             from core.styles import BaseStyles
             combo_style = BaseStyles.get_combobox_style(theme)
             self.obtainable_filter.setStyleSheet(combo_style)
+        if hasattr(self, 'hide_completed_checkbox'):
+            from core.styles import ColorPalette
+            colors = ColorPalette.Dark if theme == "dark" else ColorPalette.Light
+            self.hide_completed_checkbox.setStyleSheet(f"color: {colors.TEXT_PRIMARY};")
 
         # 更新表格样式
         if hasattr(self, 'manager_table'):
@@ -2060,7 +2076,7 @@ def show_notification(parent, message):
         pass
 
     if not main_window:
-        print("[WARNING] 无法找到主窗口，提示将显示在当前窗口")
+        logger.warning("无法找到主窗口，提示将显示在当前窗口")
         parent = parent
     else:
         parent = main_window

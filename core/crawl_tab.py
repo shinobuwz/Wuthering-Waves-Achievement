@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt, QThread, Signal, QObject
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QColor
 import json
+import logging
 
 import requests
 from bs4 import BeautifulSoup
@@ -15,6 +16,8 @@ import os
 from core.config import config
 from core.manage_tab import show_notification
 from core.signal_bus import signal_bus
+
+logger = logging.getLogger(__name__)
 from core.styles import (get_button_style, get_font_gray_style)
 
 
@@ -68,7 +71,7 @@ class AchievementCrawler(QObject):
                     cached_data = json.load(f)
                 return cached_data.get('_cache_meta', None), cached_data
         except Exception as e:
-            print(f"[WARNING] 读取缓存失败: {str(e)}")
+            logger.warning("读取缓存失败: %s", str(e))
         return None, None
 
     def _extract_remote_update_time(self, response_data):
@@ -99,7 +102,7 @@ class AchievementCrawler(QObject):
         }
         with open(cache_file, 'w', encoding='utf-8') as f:
             json.dump(response_data, f, ensure_ascii=False, indent=2)
-        print(f"[INFO] 已保存缓存到: {cache_file}")
+        logger.info("已保存缓存到: %s", cache_file)
 
     def _request_api(self):
         """发送 API 请求获取成就数据"""
@@ -131,7 +134,7 @@ class AchievementCrawler(QObject):
             cache_meta, cached_data = self._read_cache_meta(cache_file)
             if cached_data:
                 self.progress.emit("认证信息未配置，使用本地缓存")
-                print("[INFO] 认证信息缺失，使用本地缓存")
+                logger.info("认证信息缺失，使用本地缓存")
                 return cached_data
             raise Exception("请先在设置中配置认证信息")
 
@@ -141,7 +144,7 @@ class AchievementCrawler(QObject):
         # 缓存不存在或无 _cache_meta（旧版本缓存）→ 直接请求 API
         if cached_data is None or cache_meta is None:
             if cache_meta is None and cached_data is not None:
-                print("[INFO] 缓存文件缺少 _cache_meta（旧版本），重新请求")
+                logger.info("缓存文件缺少 _cache_meta（旧版本），重新请求")
             self.progress.emit("正在检查数据更新...")
             try:
                 response_data = self._request_api()
@@ -161,14 +164,14 @@ class AchievementCrawler(QObject):
         except Exception as e:
             # 网络请求失败 → 降级使用本地缓存
             self.progress.emit("网络请求失败，使用本地缓存")
-            print(f"[WARNING] 网络请求失败: {str(e)}，降级使用本地缓存")
+            logger.warning("网络请求失败: %s，降级使用本地缓存", str(e))
             return cached_data
 
         remote_time = self._extract_remote_update_time(response_data)
 
         # 远端 lastUpdateTime 缺失 → 无法判断，直接覆盖缓存
         if remote_time is None:
-            print("[WARNING] 远端响应缺少 lastUpdateTime，重新拉取并覆盖缓存")
+            logger.warning("远端响应缺少 lastUpdateTime，重新拉取并覆盖缓存")
             self._save_cache_with_meta(cache_file, response_data, remote_time)
             return response_data
 
@@ -176,7 +179,7 @@ class AchievementCrawler(QObject):
         if remote_time != local_time:
             # 时间不同，数据已更新
             self.progress.emit(f"检测到数据更新（{local_time} → {remote_time}），正在重新获取...")
-            print(f"[INFO] 数据已更新（{local_time} → {remote_time}），刷新缓存")
+            logger.info("数据已更新（%s → %s），刷新缓存", local_time, remote_time)
             self._save_cache_with_meta(cache_file, response_data, remote_time)
             return response_data
 
@@ -186,12 +189,12 @@ class AchievementCrawler(QObject):
         if local_hash and remote_hash == local_hash:
             # 时间和内容都一致，使用本地缓存
             self.progress.emit(f"数据已是最新（远端更新时间: {remote_time}），使用本地缓存")
-            print(f"[INFO] 数据未更新（{remote_time}），使用本地缓存")
+            logger.info("数据未更新（%s），使用本地缓存", remote_time)
             return cached_data
         else:
             # 时间相同但内容不同（或本地无 hash），刷新缓存
             self.progress.emit(f"检测到数据内容变更，正在更新本地缓存...")
-            print(f"[INFO] 数据内容变更（hash: {local_hash[:8] if local_hash else 'N/A'} → {remote_hash[:8]}），刷新缓存")
+            logger.info("数据内容变更（hash: %s → %s），刷新缓存", local_hash[:8] if local_hash else 'N/A', remote_hash[:8])
             self._save_cache_with_meta(cache_file, response_data, remote_time)
             return response_data
 
@@ -318,14 +321,14 @@ class AchievementCrawler(QObject):
                         parsed = self.parse_html_table_with_categories(html_content)
                         achievements.extend(parsed)
             
-            print(f"[DEBUG] 过滤后剩余 {len(achievements)} 条成就数据")
+            logger.debug("过滤后剩余 %s 条成就数据", len(achievements))
 
             # 必须有target_version才进行筛选
             if not target_version:
                 raise Exception("必须指定版本号才能爬取数据")
                 
             version_filtered = [ach for ach in achievements if ach.get('版本') == target_version]
-            print(f"[DEBUG] 版本 {target_version} 筛选后剩余 {len(version_filtered)} 条成就数据")
+            logger.debug("版本 %s 筛选后剩余 %s 条成就数据", target_version, len(version_filtered))
             
             if not version_filtered:
                 raise Exception(f"版本 {target_version} 没有找到任何成就数据")
@@ -467,7 +470,7 @@ class AchievementCrawler(QObject):
         }
         from core.config import config
         config.save_category_config(updated_config)
-        print("[INFO] 分类配置已保存")
+        logger.info("分类配置已保存")
 
 
 class CrawlerThread(QThread):
@@ -708,7 +711,7 @@ class CrawlTab(QWidget):
         layout.addWidget(self.table)
         
         # 初始日志
-        print("[INFO] 数据爬取标签页已初始化")
+        logger.info("数据爬取标签页已初始化")
     
     def _load_auth_config(self):
         """从配置中加载认证信息"""
@@ -718,7 +721,7 @@ class CrawlTab(QWidget):
         """配置变化时的处理"""
         if 'devcode' in settings_data or 'token' in settings_data:
             self._load_auth_config()
-            print("[INFO] 认证配置已更新")
+            logger.info("认证配置已更新")
     
     def _on_theme_changed(self, theme):
         """主题切换时更新样式"""
@@ -778,11 +781,11 @@ class CrawlTab(QWidget):
         self.crawler_thread = CrawlerThread(crawler)
         self.crawler_thread.start()
         
-        print(f"[INFO] 开始爬取成就数据，版本: {target_version or '全部'}")
+        logger.info("开始爬取成就数据，版本: %s", target_version or '全部')
     
     def update_progress(self, message):
         """更新进度"""
-        print(f"[INFO] {message}")
+        logger.info("%s", message)
     
     def on_crawl_finished(self, achievements):
         """爬取完成"""
@@ -821,17 +824,17 @@ class CrawlTab(QWidget):
                     config.crawl_settings = {}
                 
                 config.crawl_settings["default_output_file"] = f"鸣潮v{target_version}爬取数据.json"
-                
+
                 # 确保save_config方法存在
                 if hasattr(config, 'save_config'):
                     config.save_config()
-                    print(f"[INFO] 已更新默认输出文件名为: 鸣潮v{target_version}爬取数据.json")
+                    logger.info("已更新默认输出文件名为: 鸣潮v%s爬取数据.json", target_version)
                 else:
-                    print("[WARNING] config对象缺少save_config方法")
+                    logger.warning("config对象缺少save_config方法")
             except Exception as e:
-                print(f"[ERROR] 更新配置失败: {str(e)}")
+                logger.error("更新配置失败: %s", str(e))
         
-        print(f"[SUCCESS] 爬取完成，共 {len(achievements)} 条数据")
+        logger.info("爬取完成，共 %s 条数据", len(achievements))
         
         # 启用确认覆盖按钮
         self.merge_btn.setEnabled(True)
@@ -840,12 +843,12 @@ class CrawlTab(QWidget):
         """爬取出错"""
         self.crawl_btn.setEnabled(True)
         self.show_notification(f"爬取失败: {error_message}")
-        print(f"[ERROR] 爬取失败: {error_message}")
+        logger.error("爬取失败: %s", error_message)
     
     def merge_to_manage(self):
         """确认覆盖到成就管理"""
         if not self.achievements:
-            print("[WARNING] 没有数据可以覆盖")
+            logger.warning("没有数据可以覆盖")
             return
         
         # 添加确认对话框
@@ -858,7 +861,7 @@ class CrawlTab(QWidget):
         )
         
         if reply != CustomMessageBox.Yes:
-            print("[INFO] 用户取消了覆盖操作")
+            logger.info("用户取消了覆盖操作")
             return
         
         # 获取当前管理标签页的数据
@@ -891,12 +894,12 @@ class CrawlTab(QWidget):
                 pass
         
         if not main_window or not hasattr(main_window, 'manage_tab'):
-            print("[ERROR] 找不到管理标签页")
+            logger.error("找不到管理标签页")
             return
-        
+
         manage_tab = main_window.manage_tab
         if not manage_tab:
-            print("[ERROR] 管理标签页为空")
+            logger.error("管理标签页为空")
             return
         
         current_achievements = manage_tab.manager.achievements
@@ -931,7 +934,7 @@ class CrawlTab(QWidget):
                 to_add.append(achievement)
         
         if not to_add:
-            print("[INFO] 所有成就已存在，无需添加")
+            logger.info("所有成就已存在，无需添加")
             self.show_notification("所有成就已存在，无需添加")
             return
         
@@ -962,7 +965,7 @@ class CrawlTab(QWidget):
                     updated_first_categories[first_cat] = max_order + 1
                     updated_second_categories[first_cat] = {}
                     has_new_categories = True
-                    print(f"[INFO] 发现新第一分类 '{first_cat}'，分配排序: {max_order + 1}")
+                    logger.info("发现新第一分类 '%s'，分配排序: %s", first_cat, max_order + 1)
                 
                 # 智能处理第二分类（如果不存在则分配新后缀）
                 if first_cat not in updated_second_categories:
@@ -983,7 +986,7 @@ class CrawlTab(QWidget):
                     
                     updated_second_categories[first_cat][second_cat] = str(new_suffix)
                     has_new_categories = True
-                    print(f"[INFO] 发现新第二分类 '{first_cat} - {second_cat}'，分配后缀: {new_suffix}")
+                    logger.info("发现新第二分类 '%s - %s'，分配后缀: %s", first_cat, second_cat, new_suffix)
         
         # 先保存新的分类配置（如果有新分类）
         if has_new_categories:
@@ -992,7 +995,7 @@ class CrawlTab(QWidget):
                 "second_categories": updated_second_categories
             }
             config.save_category_config(updated_config)
-            print("[INFO] 已更新分类配置，新增的分类已自动分配排序和后缀")        # 合并数据：现有成就 + 新增的成就
+            logger.info("已更新分类配置，新增的分类已自动分配排序和后缀")        # 合并数据：现有成就 + 新增的成就
         all_achievements = current_achievements + to_add
         
         # 使用ManageTab的智能重新编码方法来重新生成编号和绝对编号
@@ -1003,18 +1006,18 @@ class CrawlTab(QWidget):
         manage_tab.manager.filtered_achievements = all_achievements.copy()
         
         # 重新编码所有用户的存档数据，确保编号同步
-        print("[INFO] 正在重新编码用户存档数据...")
+        logger.info("正在重新编码用户存档数据...")
         if config.reencode_all_user_progress():
-            print("[SUCCESS] 用户存档数据已同步更新")
+            logger.info("用户存档数据已同步更新")
         else:
-            print("[ERROR] 用户存档数据更新失败")
+            logger.error("用户存档数据更新失败")
         
         # 发送分类配置更新信号（如果有新分类）
         if has_new_categories:
             from core.signal_bus import signal_bus
             signal_bus.category_config_updated.emit()
         
-        print(f"[SUCCESS] 已新增 {len(to_add)} 条成就，总计 {len(all_achievements)} 条成就数据")
+        logger.info("已新增 %s 条成就，总计 %s 条成就数据", len(to_add), len(all_achievements))
         
         # 显示多个通知
         if has_new_categories:
@@ -1210,7 +1213,7 @@ class CrawlTab(QWidget):
         import webbrowser
         wiki_url = "https://wiki.kurobbs.com/mc/item/1220879855033786368?wkFrom=home&wkFromLabel=%E9%A6%96%E9%A1%B5%E5%BF%AB%E6%8D%B7%E5%AF%BC%E8%88%AA"
         webbrowser.open(wiki_url)
-        print(f"[INFO] 已打开Wiki页面: {wiki_url}")
+        logger.info("已打开Wiki页面: %s", wiki_url)
     
     def open_download_page(self):
         """打开下载页面"""
@@ -1225,7 +1228,7 @@ class CrawlTab(QWidget):
             webbrowser.open(download_url)
             page_opened = True
         except Exception as e:
-            print(f"[ERROR] 打开下载页面失败: {str(e)}")
+            logger.error("打开下载页面失败: %s", str(e))
             page_opened = False
         
         # 显示提示信息
@@ -1234,7 +1237,7 @@ class CrawlTab(QWidget):
         else:
             self.show_notification(f"打开页面失败，请手动访问\n下载链接: {download_url}\n下载密码: {download_password}")
         
-        print(f"[INFO] 下载页面操作完成 - 页面打开: {page_opened}")
+        logger.info("下载页面操作完成 - 页面打开: %s", page_opened)
     
     def open_bilibili_up(self):
         """打开B站UP主页面"""
@@ -1263,13 +1266,13 @@ class CrawlTab(QWidget):
             if reply == CustomMessageBox.Yes:
                 try:
                     cache_file.unlink()
-                    print("[INFO] 缓存文件已删除")
+                    logger.info("缓存文件已删除")
                     self.show_notification("缓存已清除")
                 except Exception as e:
-                    print(f"[ERROR] 清除缓存失败: {str(e)}")
+                    logger.error("清除缓存失败: %s", str(e))
                     self.show_notification(f"清除缓存失败: {str(e)}")
         else:
-            print("[INFO] 没有找到缓存文件")
+            logger.info("没有找到缓存文件")
             self.show_notification("没有缓存文件")
     
     def _cleanup_notification(self, notification):
@@ -1286,13 +1289,13 @@ class CrawlTab(QWidget):
             pass
     
         def on_crawl_error(self, error_msg):
-    
+
             """爬取错误"""
-    
+
             self.crawl_btn.setEnabled(True)
-    
-            print(f"[ERROR] 爬取失败: {error_msg}")
-    
+
+            logger.error("爬取失败: %s", error_msg)
+
             self.show_notification(f"爬取失败: {error_msg}")
     
     
@@ -1307,7 +1310,7 @@ class CrawlTab(QWidget):
             try:
                 self.create_excel_template(file_path)
             except Exception as e:
-                print(f"[ERROR] 导出范本失败: {str(e)}")
+                logger.error("导出范本失败: %s", str(e))
                 self.show_notification(f"导出范本失败: {str(e)}")
     
     def create_excel_template(self, file_path):
@@ -1424,11 +1427,11 @@ class CrawlTab(QWidget):
             
             # 保存文件
             workbook.save(file_path)
-            print(f"[SUCCESS] Excel范本已导出到: {file_path}")
+            logger.info("Excel范本已导出到: %s", file_path)
             self.show_notification("范本导出成功")
-            
+
         except Exception as e:
-            print(f"[ERROR] 创建Excel范本失败: {str(e)}")
+            logger.error("创建Excel范本失败: %s", str(e))
             raise Exception(f"创建Excel范本失败: {str(e)}")
 
     def import_excel(self):
@@ -1441,7 +1444,7 @@ class CrawlTab(QWidget):
             try:
                 self.import_from_excel(file_path)
             except Exception as e:
-                print(f"[ERROR] 导入失败: {str(e)}")
+                logger.error("导入失败: %s", str(e))
                 self.show_notification(f"导入失败: {str(e)}")
     
     def import_from_excel(self, excel_path):
@@ -1450,7 +1453,7 @@ class CrawlTab(QWidget):
             from openpyxl import load_workbook
             
             # 读取Excel文件
-            print(f"[INFO] 正在读取Excel文件: {excel_path}")
+            logger.info("正在读取Excel文件: %s", excel_path)
             workbook = load_workbook(excel_path)
             sheet = workbook.active
             
@@ -1469,19 +1472,19 @@ class CrawlTab(QWidget):
             col_index = {header: idx for idx, header in enumerate(headers)}
             
             # 数据清洗和转换
-            print(f"[INFO] 开始数据清洗...")
+            logger.info("开始数据清洗...")
             cleaned_achievements = []
             
             # 加载分类配置
             try:
                 # 确保config对象已正确初始化
                 if not hasattr(config, 'load_category_config'):
-                    print("[ERROR] config对象缺少load_category_config方法")
+                    logger.error("config对象缺少load_category_config方法")
                     raise Exception("配置对象未正确初始化")
                 
                 category_config = config.load_category_config()
                 if not isinstance(category_config, dict):
-                    print(f"[ERROR] category_config不是字典类型: {type(category_config)}")
+                    logger.error("category_config不是字典类型: %s", type(category_config))
                     category_config = {}
                 
                 first_categories = category_config.get("first_categories", {})
@@ -1494,11 +1497,11 @@ class CrawlTab(QWidget):
                     second_categories = {}
                     
             except Exception as e:
-                print(f"[ERROR] 加载分类配置失败: {str(e)}")
+                logger.error("加载分类配置失败: %s", str(e))
                 # 使用默认配置
                 first_categories = {}
                 second_categories = {}
-                print("[INFO] 使用默认分类配置")
+                logger.info("使用默认分类配置")
             
             # 创建第二分类到第一分类的映射
             first_category_map = {}
@@ -1603,8 +1606,8 @@ class CrawlTab(QWidget):
                 error_msg = f"发现未配置的第二分类: {missing_str}\n\n"
                 error_msg += "请在 设置→分类管理 中将这些分类添加到对应的第一分类下，然后重新导入。"
                 
-                print(f"[ERROR] 导入中断：发现未配置的分类: {missing_str}")
-                print(f"[INFO] 请在 设置→分类管理 中添加这些分类后重新导入")
+                logger.error("导入中断：发现未配置的分类: %s", missing_str)
+                logger.info("请在 设置→分类管理 中添加这些分类后重新导入")
                 
                 # 显示错误提示
                 from core.custom_message_box import CustomMessageBox
@@ -1622,28 +1625,28 @@ class CrawlTab(QWidget):
             self.export_excel_btn.setEnabled(True)
             self.merge_btn.setEnabled(True)
             
-            print(f"[SUCCESS] 导入完成，共 {len(cleaned_achievements)} 条成就数据")
+            logger.info("导入完成，共 %s 条成就数据", len(cleaned_achievements))
             
             # 检查是否有缺失的分类需要提示用户
             if hasattr(self, 'missing_categories') and self.missing_categories:
                 missing_list = sorted(list(self.missing_categories))
                 missing_str = "、".join(missing_list)
-                print(f"[INFO] 发现未配置的第二分类: {missing_str}")
-                print(f"[INFO] 请在 设置→分类管理 中将这些分类添加到对应的第一分类下")
+                logger.info("发现未配置的第二分类: %s", missing_str)
+                logger.info("请在 设置→分类管理 中将这些分类添加到对应的第一分类下")
                 self.show_notification(f"导入成功！发现未配置分类: {missing_str}，请在设置→分类管理中添加")
             else:
                 self.show_notification(f"导入成功，共 {len(cleaned_achievements)} 条成就数据")
             
         except Exception as e:
-            print(f"[ERROR] 导入Excel失败: {str(e)}")
+            logger.error("导入Excel失败: %s", str(e))
             raise Exception(f"导入Excel失败: {str(e)}")
 
     def export_json(self):
         """导出数据"""
         if not self.achievements:
-            print("[WARNING] 没有数据可导出")
+            logger.warning("没有数据可导出")
             return
-        
+
         # 获取配置中的默认文件名
         from core.config import config
         default_filename = config.crawl_settings.get("default_output_file", "鸣潮成就数据.json")
@@ -1656,7 +1659,7 @@ class CrawlTab(QWidget):
             try:
                 self.export_to_json(file_path)
             except Exception as e:
-                print(f"[ERROR] 导出失败: {str(e)}")
+                logger.error("导出失败: %s", str(e))
     
     def export_to_json(self, json_path):
         """导出为全字段 JSON 格式"""
@@ -1679,15 +1682,15 @@ class CrawlTab(QWidget):
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(export_data, f, ensure_ascii=False, indent=2)
             
-            print(f"[SUCCESS] 全字段数据已导出到: {json_path}")
-            print(f"[INFO] 包含 {len(export_data)} 条成就数据")
+            logger.info("全字段数据已导出到: %s", json_path)
+            logger.info("包含 %s 条成就数据", len(export_data))
         except Exception as e:
-            print(f"[ERROR] 导出 JSON 失败: {str(e)}")
+            logger.error("导出 JSON 失败: %s", str(e))
     
     def export_excel(self):
         """导出Excel文件"""
         if not self.achievements:
-            print("[WARNING] 没有数据可导出")
+            logger.warning("没有数据可导出")
             show_notification(self, "没有数据可导出")
             return
         
@@ -1723,7 +1726,7 @@ class CrawlTab(QWidget):
             try:
                 self.export_to_excel(file_path)
             except Exception as e:
-                print(f"[ERROR] 导出Excel失败: {str(e)}")
+                logger.error("导出Excel失败: %s", str(e))
                 self.show_notification(f"导出Excel失败: {str(e)}")
     
     def export_to_excel(self, excel_path):
@@ -1785,44 +1788,44 @@ class CrawlTab(QWidget):
             
             # 保存文件
             wb.save(excel_path)
-            
-            print(f"[SUCCESS] Excel数据已导出到: {excel_path}")
-            print(f"[INFO] 包含 {len(self.achievements)} 条成就数据")
+
+            logger.info("Excel数据已导出到: %s", excel_path)
+            logger.info("包含 %s 条成就数据", len(self.achievements))
             show_notification(self, f"成功导出 {len(self.achievements)} 条成就数据到Excel")
             
         except Exception as e:
-            print(f"[ERROR] 导出Excel失败: {str(e)}")
+            logger.error("导出Excel失败: %s", str(e))
             raise Exception(f"导出Excel失败: {str(e)}")
     
     def load_local_data(self):
         """加载本地保存的数据"""
         try:
-            print(f"[DEBUG] 检查文件: {self.data_file}")
-            print(f"[DEBUG] 文件是否存在: {os.path.exists(self.data_file)}")
+            logger.debug("检查文件: %s", self.data_file)
+            logger.debug("文件是否存在: %s", os.path.exists(self.data_file))
             
             if os.path.exists(self.data_file):
-                print(f"[INFO] 正在从 {self.data_file} 加载数据...")
+                logger.info("正在从 %s 加载数据...", self.data_file)
                 
                 # 检查是否有 JSON 备份文件
                 json_file = self.data_file.replace('.xlsx', '.json')
                 if os.path.exists(json_file):
-                    print(f"[INFO] 找到 JSON 备份文件，优先加载: {json_file}")
+                    logger.info("找到 JSON 备份文件，优先加载: %s", json_file)
                     self.load_from_json(json_file)
                     return
                 
                 # 现在只支持JSON格式，Excel文件已不再使用
-                print(f"[INFO] 本地数据文件不存在或格式不支持: {self.data_file}")
-                print(f"[INFO] 请使用JSON格式的数据文件")
-                
-                print(f"[DEBUG] 转换后的数据条数: {len(self.achievements)}")
+                logger.info("本地数据文件不存在或格式不支持: %s", self.data_file)
+                logger.info("请使用JSON格式的数据文件")
+
+                logger.debug("转换后的数据条数: %s", len(self.achievements))
                 
                 self.table.load_data(self.achievements)
                 self.export_btn.setEnabled(True)
-                print(f"[INFO] 已加载本地数据: {len(self.achievements)} 条")
+                logger.info("已加载本地数据: %s 条", len(self.achievements))
             else:
-                print(f"[INFO] 本地数据文件不存在: {self.data_file}")
+                logger.info("本地数据文件不存在: %s", self.data_file)
         except Exception as e:
-            print(f"[WARNING] 加载本地数据失败: {str(e)}")
+            logger.warning("加载本地数据失败: %s", str(e))
             import traceback
             traceback.print_exc()
     
@@ -1841,9 +1844,9 @@ class CrawlTab(QWidget):
                     
                     self.achievements.append(achievement)
                 
-                print(f"[INFO] 从 JSON 加载了 {len(self.achievements)} 条数据")
+                logger.info("从 JSON 加载了 %s 条数据", len(self.achievements))
         except Exception as e:
-            print(f"[ERROR] 加载 JSON 文件失败: {str(e)}")
+            logger.error("加载 JSON 文件失败: %s", str(e))
     
 
     
@@ -1854,26 +1857,26 @@ class CrawlTab(QWidget):
     def save_local_data(self):
             """保存数据到本地文件（JSON）"""
             if not self.achievements:
-                print("[WARNING] 没有数据可保存")
+                logger.warning("没有数据可保存")
                 return
 
             try:
-                print(f"[DEBUG] 准备保存数据到: {self.data_file}")
-                print(f"[DEBUG] 文件路径类型: {type(self.data_file)}")
-                print(f"[DEBUG] 文件是否存在: {os.path.exists(self.data_file)}")
+                logger.debug("准备保存数据到: %s", self.data_file)
+                logger.debug("文件路径类型: %s", type(self.data_file))
+                logger.debug("文件是否存在: %s", os.path.exists(self.data_file))
 
                 # 确保目录存在
                 data_dir = os.path.dirname(self.data_file)
                 if not os.path.exists(data_dir):
-                    print(f"[INFO] 创建目录: {data_dir}")
+                    logger.info("创建目录: %s", data_dir)
                     os.makedirs(data_dir, exist_ok=True)
 
                 # 保存为 JSON 格式
                 self.save_to_json(self.data_file)
-                print("[INFO] 数据已保存为 JSON 格式")
+                logger.info("数据已保存为 JSON 格式")
 
             except Exception as e:
-                print(f"[ERROR] 保存数据失败: {str(e)}")
+                logger.error("保存数据失败: %s", str(e))
                 import traceback
                 traceback.print_exc()
     
@@ -1915,12 +1918,12 @@ class CrawlTab(QWidget):
                 json.dump(json_data, f, ensure_ascii=False, indent=2)
             
             file_size = os.path.getsize(json_file)
-            print(f"[SUCCESS] JSON 数据已保存到: {json_file}")
-            print(f"[SUCCESS] JSON 文件大小: {file_size} 字节")
-            print(f"[INFO] 保存了 {len(json_data)} 条成就数据")
-            
+            logger.info("JSON 数据已保存到: %s", json_file)
+            logger.info("JSON 文件大小: %s 字节", file_size)
+            logger.info("保存了 %s 条成就数据", len(json_data))
+
         except Exception as e:
-            print(f"[ERROR] 保存 JSON 失败: {str(e)}")
+            logger.error("保存 JSON 失败: %s", str(e))
     
     
     

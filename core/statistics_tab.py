@@ -1,6 +1,7 @@
 """
 统计信息标签页
 """
+import logging
 import math
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                                QComboBox, QGroupBox, QGridLayout)
@@ -10,6 +11,8 @@ from PySide6.QtGui import QPainter, QColor, QFontMetrics
 from core.config import config
 from core.signal_bus import signal_bus
 from core.styles import get_button_style
+
+logger = logging.getLogger(__name__)
 
 
 class SimpleChartWidget(QWidget):
@@ -1026,7 +1029,7 @@ class StatisticsTab(QWidget):
         try:
             self.base_achievements = config.load_base_achievements()
         except Exception as e:
-            print(f"[ERROR] 加载基础成就数据失败: {e}")
+            logger.error("加载基础成就数据失败: %s", e)
             self.base_achievements = []
 
         # 加载用户进度
@@ -1034,7 +1037,7 @@ class StatisticsTab(QWidget):
             try:
                 self.user_progress = config.load_user_progress(self.current_user)
             except Exception as e:
-                print(f"[ERROR] 加载用户进度失败: {e}")
+                logger.error("加载用户进度失败: %s", e)
                 self.user_progress = {}
 
         # 检查UI是否已经初始化

@@ -1,8 +1,12 @@
 ﻿"""成就表格组件"""
+import logging
+
 from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QComboBox, QStyledItemDelegate
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from core.styles import BaseStyles
+
+logger = logging.getLogger(__name__)
 
 
 class CustomComboBox(QComboBox):
@@ -198,7 +202,7 @@ class AchievementTable(QTableWidget):
             self.first_categories = list(self.category_config.get("first_categories", {}).keys())
             self.second_categories = self.category_config.get("second_categories", {})
         except Exception as e:
-            print(f"[ERROR] 加载分类配置失败: {e}")
+            logger.error("加载分类配置失败: %s", e)
             self.category_config = {}
             self.first_categories = []
             self.second_categories = {}
@@ -384,7 +388,7 @@ class AchievementTable(QTableWidget):
         self.second_category_delegate = ComboBoxDelegate(second_categories, self)
         self.setItemDelegateForColumn(7, self.second_category_delegate)  # 第二分类列
         
-        print(f"[DEBUG] 更新第二分类委托，第一分类: {first_category}, 可选第二分类: {second_categories}")
+        logger.debug("更新第二分类委托，第一分类: %s, 可选第二分类: %s", first_category, second_categories)
     
     def is_valid_second_category(self, first_category, second_category):
         """验证第二分类是否属于第一分类"""
@@ -413,7 +417,7 @@ class AchievementTable(QTableWidget):
             elif hasattr(parent, 'save_to_json'):
                 parent.save_to_json()
         except Exception as e:
-            print(f"[ERROR] 保存数据失败: {e}")
+            logger.error("保存数据失败: %s", e)
 
     def mousePressEvent(self, event):
         """重写鼠标点击事件，处理分类列的单击编辑"""
@@ -528,7 +532,7 @@ class AchievementTable(QTableWidget):
             editor.showPopup()
         else:
             # 如果还是没有编辑器，尝试重新创建
-            print(f"[DEBUG] 无法获取编辑器，尝试重新创建 row={row}, col={col}")
+            logger.debug("无法获取编辑器，尝试重新创建 row=%s, col=%s", row, col)
             # 关闭持久编辑器
             self.closePersistentEditor(self.item(row, col))
             # 重新打开
@@ -556,7 +560,7 @@ class AchievementTable(QTableWidget):
             if col == 6:  # 第一分类
                 old_value = achievement.get('第一分类', '')
                 achievement['第一分类'] = new_value
-                print(f"[INFO] 第一分类已更新: {old_value} -> {new_value}")
+                logger.info("第一分类已更新: %s -> %s", old_value, new_value)
                 
                 # 只有当第一分类真正改变时，才清空第二分类
                 if old_value != new_value and old_value != '':
@@ -564,7 +568,7 @@ class AchievementTable(QTableWidget):
                     second_item = self.item(row, 7)
                     if second_item:
                         second_item.setText('')
-                    print(f"[INFO] 第一分类已改变，清空第二分类")
+                    logger.info("第一分类已改变，清空第二分类")
                 
                 # 更新第二分类委托选项
                 self.update_second_category_delegate_for_first_category(new_value)
@@ -579,7 +583,7 @@ class AchievementTable(QTableWidget):
             elif col == 7:  # 第二分类
                 old_value = achievement.get('第二分类', '')
                 achievement['第二分类'] = new_value
-                print(f"[INFO] 第二分类已更新: {old_value} -> {new_value}")
+                logger.info("第二分类已更新: %s -> %s", old_value, new_value)
                 
                 # 显示通知
                 if old_value != new_value:
@@ -609,9 +613,9 @@ class AchievementTable(QTableWidget):
             if parent and hasattr(parent, 'update_statistics'):
                 # 调用父级的update_statistics方法
                 parent.update_statistics()
-                print("[INFO] 统计信息已即时刷新")
+                logger.info("统计信息已即时刷新")
         except Exception as e:
-            print(f"[ERROR] 刷新统计信息失败: {str(e)}")
+            logger.error("刷新统计信息失败: %s", e)
     
     def _updateTableDisplay(self, row, col, new_value, should_clear_second=False):
         """更新表格显示"""
@@ -643,9 +647,9 @@ class AchievementTable(QTableWidget):
         
         if editor and isinstance(editor, CustomComboBox):
             editor.showPopup()
-            print(f"[DEBUG] 重试成功，下拉框已显示")
+            logger.debug("重试成功，下拉框已显示")
         else:
-            print(f"[DEBUG] 重试失败，仍无法获取编辑器")
+            logger.debug("重试失败，仍无法获取编辑器")
     
     def _closeAllCategoryEditors(self):
         """关闭所有分类列的编辑器"""
@@ -724,7 +728,7 @@ class AchievementTable(QTableWidget):
                     status_item.setText('已占用')
                     status_item.setForeground(QColor(255, 69, 0))  # 红橙色
                 
-                print(f"[INFO] 成就组 {group_id}：已占用成就 {achievement.get('名称', '')}")
+                logger.info("成就组 %s：已占用成就 %s", group_id, achievement.get('名称', ''))
         
                 # 强制重绘
                 self.viewport().update()
@@ -755,7 +759,7 @@ class AchievementTable(QTableWidget):
                         status_item.setText('未完成')
                         status_item.setForeground(QColor(128, 128, 128))  # 灰色
                     
-                    print(f"[INFO] 成就组 {group_id}：成就 {achievement.get('名称', '')} 从 {old_status} 变为未完成")
+                    logger.info("成就组 %s：成就 %s 从 %s 变为未完成", group_id, achievement.get('名称', ''), old_status)
         
         # 强制重绘
         self.viewport().update()
