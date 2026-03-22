@@ -5,12 +5,15 @@
 import os
 import re
 import time
+import logging
 import difflib
 import ctypes
 import ctypes.wintypes
 
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 # ============================================
 # 模板匹配参数
@@ -88,6 +91,7 @@ def _load_icon_templates():
             f"未找到成就图标模板文件，请检查目录: {_TEMPLATE_DIR}"
         )
 
+    logger.info("已加载 %d 个图标模板: %s", len(templates), [t[0] for t in templates])
     _icon_templates = templates
     return _icon_templates
 
@@ -129,6 +133,9 @@ def find_achievement_icons(screenshot, threshold=MATCH_THRESHOLD):
 
     # 按 y 坐标排序（从上到下）
     filtered.sort(key=lambda m: m[1])
+    logger.debug("模板匹配找到 %d 个图标 (阈值=%.2f)", len(filtered), threshold)
+    for x, y, label, conf in filtered:
+        logger.debug("  图标 %s at (%d,%d) conf=%.3f", label, x, y, conf)
     return filtered
 
 
@@ -205,9 +212,11 @@ def recognize_text(image, ocr_model):
     try:
         results = ocr_model.ocr(processed)
         if results:
-            return "".join(results).strip()
+            text = "".join(results).strip()
+            logger.debug("OCR 识别结果: %s", text)
+            return text
     except Exception as e:
-        print(f"[OCR] 识别异常: {e}")
+        logger.warning("OCR 识别异常: %s", e)
     return ""
 
 
@@ -297,6 +306,12 @@ def scan_single_page(screenshot, ocr_model, achievements_db):
             ocr_name, achievements_db
         )
 
+        if matched_name:
+            logger.info("成就识别: '%s' -> '%s' (%.0f%%) 状态=%s",
+                        ocr_name, matched_name, confidence * 100, status)
+        elif ocr_name:
+            logger.warning("成就未匹配: '%s' 状态=%s", ocr_name, status)
+
         results.append({
             "编号": achievement_id,
             "ocr_name": ocr_name,
@@ -305,6 +320,8 @@ def scan_single_page(screenshot, ocr_model, achievements_db):
             "置信度": confidence,
         })
 
+    logger.info("单页扫描完成: 找到 %d 个图标, 匹配 %d 条成就",
+                len(icons), sum(1 for r in results if r["编号"]))
     return results
 
 
@@ -365,6 +382,7 @@ def scan_with_scroll(hwnd, ocr_model, achievements_db, callback=None, stop_flag=
             break
 
         round_num += 1
+        logger.info("=== 第 %d 轮扫描 ===", round_num)
         screenshot = capture_window(hwnd)
         page_results = scan_single_page(screenshot, ocr_model, achievements_db)
 
@@ -383,14 +401,20 @@ def scan_with_scroll(hwnd, ocr_model, achievements_db, callback=None, stop_flag=
 
         # 检测是否到底
         if current_names and current_names.issubset(prev_names):
+            logger.info("检测到底部（本页成就与上页完全重复），停止滚动")
             break
 
         if not current_names and round_num > 1:
+            logger.info("本页未识别到成就，停止滚动")
             break
 
         prev_names.update(current_names)
 
+        logger.debug("滚动 %d 格, 等待 %.1fs", SCROLL_ITEMS, SCROLL_DELAY)
         simulate_scroll(hwnd, scroll_amount=-SCROLL_ITEMS)
         time.sleep(SCROLL_DELAY)
 
-    return list(all_results.values()) + unmatched_results
+    total = list(all_results.values()) + unmatched_results
+    logger.info("扫描完成: 共 %d 轮, 匹配 %d 条, 未匹配 %d 条",
+                round_num, len(all_results), len(unmatched_results))
+    return total

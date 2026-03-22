@@ -173,6 +173,26 @@ class OCRScanTab(QWidget):
             # 开始扫描
             self._start_scan()
 
+    def _get_main_window(self):
+        """获取主窗口实例"""
+        widget = self
+        while widget.parent():
+            widget = widget.parent()
+        return widget if widget is not self else None
+
+    def _minimize_main_window(self):
+        """最小化主窗口，避免遮挡游戏"""
+        main_window = self._get_main_window()
+        if main_window:
+            main_window.showMinimized()
+
+    def _restore_main_window(self):
+        """恢复主窗口"""
+        main_window = self._get_main_window()
+        if main_window:
+            main_window.showNormal()
+            main_window.activateWindow()
+
     def _start_scan(self):
         """启动扫描"""
         if not self.hwnd:
@@ -184,6 +204,9 @@ class OCRScanTab(QWidget):
         self.scan_btn.setText("停止扫描")
         self.detect_btn.setEnabled(False)
         self.save_btn.setEnabled(False)
+
+        # 最小化主窗口避免遮挡游戏
+        self._minimize_main_window()
 
         self.worker = OCRScanWorker(self.hwnd)
         self.worker.progress.connect(self._on_scan_progress)
@@ -203,6 +226,7 @@ class OCRScanTab(QWidget):
 
     def _on_scan_finished(self, results):
         """扫描完成"""
+        self._restore_main_window()
         self.scan_results = results
         self._update_result_table(results)
 
@@ -219,6 +243,7 @@ class OCRScanTab(QWidget):
 
     def _on_scan_error(self, error_msg):
         """扫描出错"""
+        self._restore_main_window()
         self.scan_btn.setText("开始扫描")
         self.scan_btn.setEnabled(True)
         self.detect_btn.setEnabled(True)

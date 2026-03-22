@@ -1,11 +1,17 @@
-﻿from PySide6.QtWidgets import QApplication
+﻿import sys
+import logging
+
+from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QFont
 
 from core.styles import get_icon
 from version import VERSION
 
-
-import sys
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 def setup_application():
     """设置应用程序基本属性"""
