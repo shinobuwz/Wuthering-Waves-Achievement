@@ -623,3 +623,122 @@ def click_primary_tab(hwnd, tab_index):
     pyautogui.click()
     time.sleep(0.8)
     logger.debug("点击一级Tab[%d]: (%d,%d)", tab_index, click_x, click_y)
+
+
+def _switch_to_secondary_tab(hwnd, ocr_model, screenshot, known_tabs, target_name):
+    """
+    切换到指定二级 Tab，必要时滚动二级 Tab 列表。
+
+    Args:
+        hwnd: 游戏窗口句柄
+        ocr_model: ONNXPaddleOcr 实例
+        screenshot: 当前截图
+        known_tabs: 该一级分类的全部二级 Tab 名称列表
+        target_name: 目标二级 Tab 名称
+    Returns:
+        bool: 是否成功找到并点击
+    """
+    from core.game_capture import capture_window
+
+    for attempt in range(3):  # 最多滚动2次
+        visible = recognize_secondary_tabs(screenshot, ocr_model, known_tabs)
+        for name, cy_pct, _ in visible:
+            if name == target_name:
+                click_secondary_tab(hwnd, cy_pct)
+                return True
+        # 未找到，向下滚动再试
+        if attempt < 2:
+            logger.info("  未找到二级Tab '%s'，滚动后重试", target_name)
+            scroll_secondary_tabs(hwnd)
+            screenshot = capture_window(hwnd)
+
+    logger.warning("  无法找到二级Tab '%s'", target_name)
+    return False
+
+
+# ============================================
+# 全量自动扫描（遍历所有一级/二级Tab）
+# ============================================
+
+# 一级 Tab 顺序（与 PRIMARY_TAB_ICON_Y_PCTS 对应）
+PRIMARY_TAB_NAMES = ["索拉漫行", "铿锵刃鸣", "长路留迹", "诸音声轨"]
+
+
+def scan_all_tabs(hwnd, ocr_model, achievements_db, category_map,
+                  callback=None, stop_flag=None):
+    """
+    自动遍历所有一级 Tab → 二级 Tab → 扫描成就列表，汇总结果。
+
+    Args:
+        hwnd: 游戏窗口句柄
+        ocr_model: ONNXPaddleOcr 实例
+        achievements_db: base_achievements.json 数据列表
+        category_map: {一级分类: [二级分类, ...]} 字典
+        callback: 可选，callback(progress_dict, primary, secondary) 每完成一个二级Tab时调用
+        stop_flag: 可选，callable 返回 True 时中止
+    Returns:
+        dict: {编号: {"获取状态": "已完成"|"未完成"}}，可直接写入 user_progress
+    """
+    from core.game_capture import capture_window
+
+    progress = {}  # 编号 -> {"获取状态": ...}
+
+    for pi_idx, primary_name in enumerate(PRIMARY_TAB_NAMES):
+        if stop_flag and stop_flag():
+            break
+
+        secondary_list = category_map.get(primary_name, [])
+        if not secondary_list:
+            logger.info("跳过一级Tab '%s'（无二级分类数据）", primary_name)
+            continue
+
+        logger.info("=== 切换一级Tab [%d] '%s' (%d 个二级Tab) ===",
+                    pi_idx, primary_name, len(secondary_list))
+        click_primary_tab(hwnd, pi_idx)
+
+        for sec_name in secondary_list:
+            if stop_flag and stop_flag():
+                break
+
+            logger.info("  -> 二级Tab '%s'", sec_name)
+            screenshot = capture_window(hwnd)
+
+            ok = _switch_to_secondary_tab(
+                hwnd, ocr_model, screenshot, secondary_list, sec_name
+            )
+            if not ok:
+                logger.warning("  跳过二级Tab '%s'（无法切换）", sec_name)
+                continue
+
+            time.sleep(0.5)  # 等待成就列表加载
+
+            # 扫描当前二级Tab下的所有成就（含自动滚动）
+            page_results = scan_with_scroll(hwnd, ocr_model, achievements_db,
+                                            stop_flag=stop_flag)
+
+            # 合并到总进度，不降级已完成状态
+            new_count = 0
+            for r in page_results:
+                aid = r.get("编号")
+                if not aid:
+                    continue
+                status = r.get("状态", "未知")
+                if status == "已完成":
+                    prev = progress.get(aid, {}).get("获取状态")
+                    if prev != "已完成":
+                        progress[aid] = {"获取状态": "已完成"}
+                        new_count += 1
+                elif aid not in progress:
+                    progress[aid] = {"获取状态": "未完成"}
+
+            logger.info("  '%s' 扫描完成，新增已完成 %d 条，累计 %d 条",
+                        sec_name, new_count, sum(
+                            1 for v in progress.values() if v["获取状态"] == "已完成"
+                        ))
+
+            if callback:
+                callback(progress, primary_name, sec_name)
+
+    completed = sum(1 for v in progress.values() if v["获取状态"] == "已完成")
+    logger.info("全量扫描完成：共 %d 条进度，其中已完成 %d 条", len(progress), completed)
+    return progress
