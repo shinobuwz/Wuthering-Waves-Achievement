@@ -625,29 +625,10 @@ def click_primary_tab(hwnd, tab_index):
     logger.debug("点击一级Tab[%d]: (%d,%d)", tab_index, click_x, click_y)
 
 
-def _scroll_secondary_tabs_to_top(hwnd):
-    """将二级 Tab 列表滚回顶部（向上滚足够多次）"""
-    from core.game_capture import get_window_rect
-    user32 = ctypes.windll.user32
-    wx, wy, ww, wh = get_window_rect(hwnd)
-    scroll_x = wx + int(ww * (SECONDARY_TAB_X1_PCT + SECONDARY_TAB_X2_PCT) / 2)
-    scroll_y = wy + int(wh * (SECONDARY_TAB_Y1_PCT + SECONDARY_TAB_Y2_PCT) / 2)
-
-    user32.SetForegroundWindow(hwnd)
-    time.sleep(0.3)
-    pyautogui.moveTo(scroll_x, scroll_y, duration=0.1)
-    pyautogui.click()
-    time.sleep(0.3)
-    # 向上滚足够多次，确保回到顶部（不怕多，到顶后不再移动）
-    for _ in range(SCROLL_TIMES_TAB * 5):
-        pyautogui.scroll(-SCROLL_LENGTH)  # SCROLL_LENGTH 是负数，取反即向上
-    time.sleep(SCROLL_DELAY)
-    logger.debug("二级Tab列表已滚回顶部")
-
-
 def _switch_to_secondary_tab(hwnd, ocr_model, known_tabs, target_name):
     """
-    切换到指定二级 Tab。先将列表滚回顶部，再逐步向下滚动查找目标。
+    切换到指定二级 Tab。在当前可见列表中查找，找不到则向下滚动一次再试。
+    不回顶——假设按顺序切换，目标 Tab 要么在当前视野，要么在下方。
 
     Args:
         hwnd: 游戏窗口句柄
@@ -659,17 +640,13 @@ def _switch_to_secondary_tab(hwnd, ocr_model, known_tabs, target_name):
     """
     from core.game_capture import capture_window
 
-    # 先滚回顶部
-    _scroll_secondary_tabs_to_top(hwnd)
-
-    for attempt in range(5):  # 最多向下滚4次
+    for attempt in range(4):  # 最多向下滚3次
         screenshot = capture_window(hwnd)
         visible = recognize_secondary_tabs(screenshot, ocr_model, known_tabs)
         for name, cy_pct, _ in visible:
             if name == target_name:
                 click_secondary_tab(hwnd, cy_pct)
                 return True
-        # 未找到，向下滚动再试
         logger.info("  未找到二级Tab '%s'（第%d次），向下滚动", target_name, attempt + 1)
         scroll_secondary_tabs(hwnd)
 
