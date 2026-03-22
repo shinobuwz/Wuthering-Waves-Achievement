@@ -257,6 +257,15 @@ def parse_status(text):
 # 模糊匹配
 # ============================================
 
+# 各类中点/间隔号变体，统一替换为标准中文间隔号 ·（U+00B7）
+_MIDDLE_DOT_VARIANTS = str.maketrans('・•∙･', '····')
+
+
+def _normalize_name(text):
+    """归一化名称：统一中点变体，去除首尾空格"""
+    return text.translate(_MIDDLE_DOT_VARIANTS).strip()
+
+
 def match_achievement(ocr_name, achievements_db):
     """
     将 OCR 识别的名称模糊匹配到成就数据库。
@@ -270,24 +279,26 @@ def match_achievement(ocr_name, achievements_db):
     if not ocr_name:
         return None, None, 0
 
+    ocr_norm = _normalize_name(ocr_name)
     best_match = None
     best_dist = float('inf')
     best_name = None
 
     for achievement in achievements_db:
         name = achievement.get("名称", "")
-        if ocr_name == name:
+        name_norm = _normalize_name(name)
+        if ocr_norm == name_norm:
             return achievement.get("编号"), name, 1.0
-        dist = _edit_distance(ocr_name, name)
+        dist = _edit_distance(ocr_norm, name_norm)
         if dist < best_dist:
             best_dist = dist
             best_match = achievement.get("编号")
             best_name = name
 
-    # 允许的最大编辑距离：名称长度的 30%
-    max_dist = max(len(ocr_name), len(best_name or "")) * 0.3
+    # 允许的最大编辑距离：名称长度的 40%
+    max_dist = max(len(ocr_norm), len(_normalize_name(best_name or ""))) * 0.4
     if best_dist <= max_dist:
-        confidence = 1 - best_dist / max(len(ocr_name), len(best_name), 1)
+        confidence = 1 - best_dist / max(len(ocr_norm), len(_normalize_name(best_name)), 1)
         return best_match, best_name, confidence
     return None, None, 0
 
