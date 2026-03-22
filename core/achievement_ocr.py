@@ -8,50 +8,46 @@ import time
 import logging
 import difflib
 import ctypes
-import ctypes.wintypes
 
 import cv2
 import numpy as np
+import pyautogui
+
+pyautogui.PAUSE = 0.1
+pyautogui.FAILSAFE = False
 
 logger = logging.getLogger(__name__)
 
 # ============================================
-# 模板匹配参数
+# OCR 扫描参数（集中管理所有可调常量）
 # ============================================
 
-# 图标模板目录
-_TEMPLATE_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "resources", "ocr_templates"
-)
+# --- 模板匹配 ---
+MATCH_THRESHOLD = 0.75          # 模板匹配置信度阈值
+NMS_DISTANCE = 40               # 非极大值抑制合并距离（像素）
 
-# 模板匹配阈值
-MATCH_THRESHOLD = 0.75
-
-# NMS 合并距离（像素）
-NMS_DISTANCE = 40
-
-# 名称区域相对于图标左上角的偏移和大小
+# --- 名称区域（相对于图标左上角） ---
 NAME_DX = 122
 NAME_DY = -39
 NAME_W = 503
 NAME_H = 40
 
-# 状态区域相对于图标左上角的偏移和大小
+# --- 状态区域（相对于图标左上角） ---
 STATUS_DX = 878
 STATUS_DY = 15
 STATUS_W = 163
 STATUS_H = 47
 
-# 滚动区域中心点（相对于游戏窗口）
-SCROLL_CENTER_X = 1200
-SCROLL_CENTER_Y = 600
+# --- 滚动参数 ---
+SCROLL_LENGTH = -160            # 每次 pyautogui.scroll 的值（负数=列表向下）
+SCROLL_TIMES = 15               # 连续发送 scroll 的次数（利用惯性叠加）
+SCROLL_DELAY = 0.8              # 滚动后等待时间（秒）
 
-# 每次滚动的条目数
-SCROLL_ITEMS = 3
-
-# 滚动后等待时间（秒）
-SCROLL_DELAY = 0.8
+# --- 图标模板目录 ---
+_TEMPLATE_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "resources", "ocr_templates"
+)
 
 # ============================================
 # 图标模板加载
@@ -256,20 +252,40 @@ def match_achievement(ocr_name, achievements_db):
         return None, None, 0
 
     best_match = None
-    best_ratio = 0
+    best_dist = float('inf')
     best_name = None
 
     for achievement in achievements_db:
         name = achievement.get("名称", "")
-        ratio = difflib.SequenceMatcher(None, ocr_name, name).ratio()
-        if ratio > best_ratio:
-            best_ratio = ratio
+        if ocr_name == name:
+            return achievement.get("编号"), name, 1.0
+        dist = _edit_distance(ocr_name, name)
+        if dist < best_dist:
+            best_dist = dist
             best_match = achievement.get("编号")
             best_name = name
 
-    if best_ratio >= 0.7:
-        return best_match, best_name, best_ratio
+    # 允许的最大编辑距离：名称长度的 30%
+    max_dist = max(len(ocr_name), len(best_name or "")) * 0.3
+    if best_dist <= max_dist:
+        confidence = 1 - best_dist / max(len(ocr_name), len(best_name), 1)
+        return best_match, best_name, confidence
     return None, None, 0
+
+
+def _edit_distance(s1, s2):
+    """计算两个字符串的编辑距离（Levenshtein distance）"""
+    if len(s1) < len(s2):
+        return _edit_distance(s2, s1)
+    if not s2:
+        return len(s1)
+    prev = list(range(len(s2) + 1))
+    for i, c1 in enumerate(s1):
+        curr = [i + 1]
+        for j, c2 in enumerate(s2):
+            curr.append(min(prev[j + 1] + 1, curr[j] + 1, prev[j] + (c1 != c2)))
+        prev = curr
+    return prev[-1]
 
 
 # ============================================
@@ -329,32 +345,31 @@ def scan_single_page(screenshot, ocr_model, achievements_db):
 # 自动滚动扫描
 # ============================================
 
-def simulate_scroll(hwnd, scroll_amount=-3):
+def simulate_scroll(hwnd):
     """
-    模拟鼠标滚轮向下滚动。
+    使用 pyautogui.scroll 滚动成就列表。
+    先将鼠标移到屏幕中心并点击激活，再连续发送滚轮事件。
 
     Args:
         hwnd: 游戏窗口句柄
-        scroll_amount: 滚动量（负数为向下），每单位约 120 像素
     """
-    from core.game_capture import get_window_rect
+    user32 = ctypes.windll.user32
 
-    x, y, _, _ = get_window_rect(hwnd)
-    screen_x = x + SCROLL_CENTER_X
-    screen_y = y + SCROLL_CENTER_Y
+    # 确保游戏窗口在前台
+    user32.SetForegroundWindow(hwnd)
+    time.sleep(0.3)
 
-    ctypes.windll.user32.SetCursorPos(screen_x, screen_y)
-    time.sleep(0.1)
+    # 移动到屏幕中心并点击激活
+    sx, sy = pyautogui.size()
+    pyautogui.moveTo(sx / 2, sy / 2, duration=0.1)
+    pyautogui.click()
+    time.sleep(0.3)
 
-    MOUSEEVENTF_WHEEL = 0x0800
-    WHEEL_DELTA = 120
+    # 连续发送滚轮事件
+    for _ in range(SCROLL_TIMES):
+        pyautogui.scroll(SCROLL_LENGTH)
 
-    for _ in range(abs(scroll_amount)):
-        direction = -1 if scroll_amount < 0 else 1
-        ctypes.windll.user32.mouse_event(
-            MOUSEEVENTF_WHEEL, 0, 0, direction * WHEEL_DELTA, 0
-        )
-        time.sleep(0.05)
+    logger.debug("滚轮滚动完成: scroll(%d) x %d", SCROLL_LENGTH, SCROLL_TIMES)
 
 
 def scan_with_scroll(hwnd, ocr_model, achievements_db, callback=None, stop_flag=None):
@@ -410,8 +425,8 @@ def scan_with_scroll(hwnd, ocr_model, achievements_db, callback=None, stop_flag=
 
         prev_names.update(current_names)
 
-        logger.debug("滚动 %d 格, 等待 %.1fs", SCROLL_ITEMS, SCROLL_DELAY)
-        simulate_scroll(hwnd, scroll_amount=-SCROLL_ITEMS)
+        logger.debug("滚动 scroll(%d)x%d, 等待 %.1fs", SCROLL_LENGTH, SCROLL_TIMES, SCROLL_DELAY)
+        simulate_scroll(hwnd)
         time.sleep(SCROLL_DELAY)
 
     total = list(all_results.values()) + unmatched_results
