@@ -45,11 +45,16 @@ SCROLL_TIMES_TAB = 16           # 连续发送 scroll 的次数 - 二级 Tab 列
 SCROLL_DELAY = 0.8              # 滚动后等待时间（秒）
 
 # --- 界面布局参数（百分比，基于截图宽高，由模板匹配确定） ---
-# 一级 Tab 名称区域
+# 一级 Tab 名称区域（用于 OCR 识别当前选中的一级分类名称）
 PRIMARY_TAB_X1_PCT = 0.053
 PRIMARY_TAB_Y1_PCT = 0.047
 PRIMARY_TAB_X2_PCT = 0.114
 PRIMARY_TAB_Y2_PCT = 0.083
+
+# 一级 Tab 图标点击坐标（百分比，由模板匹配确定，x 固定 0.0417）
+# 顺序：索拉漫行、铿锵刃鸣、长路留迹、诸音声轨
+PRIMARY_TAB_ICON_X_PCT = 0.0417
+PRIMARY_TAB_ICON_Y_PCTS = [0.1778, 0.2981, 0.4343, 0.5537]
 
 # 二级 Tab 列表区域
 SECONDARY_TAB_X1_PCT = 0.1005
@@ -584,3 +589,26 @@ def scroll_secondary_tabs(hwnd):
         pyautogui.scroll(SCROLL_LENGTH)
     time.sleep(SCROLL_DELAY)
     logger.debug("二级Tab滚动完成: scroll(%d) x %d", SCROLL_LENGTH, SCROLL_TIMES_TAB)
+
+
+def click_primary_tab(hwnd, tab_index):
+    """
+    点击左侧一级 Tab 图标。
+
+    Args:
+        hwnd: 游戏窗口句柄
+        tab_index: 0=索拉漫行, 1=铿锵刃鸣, 2=长路留迹, 3=诸音声轨
+    """
+    from core.game_capture import get_window_rect
+    user32 = ctypes.windll.user32
+    wx, wy, ww, wh = get_window_rect(hwnd)
+    click_x = wx + int(ww * PRIMARY_TAB_ICON_X_PCT)
+    click_y = wy + int(wh * PRIMARY_TAB_ICON_Y_PCTS[tab_index])
+
+    user32.SetForegroundWindow(hwnd)
+    time.sleep(0.3)
+    pyautogui.moveTo(click_x, click_y, duration=0.1)
+    time.sleep(0.1)
+    pyautogui.click()
+    time.sleep(0.8)
+    logger.debug("点击一级Tab[%d]: (%d,%d)", tab_index, click_x, click_y)
