@@ -1,13 +1,13 @@
 schema: spec-driven
 
-# 项目上下文（可选）
-# 在创建工件时向 AI 显示此信息。
-# 添加您的技术栈、约定、风格指南、领域知识等。
-# 示例：
-#   context: |
-#     技术栈：TypeScript, React, Node.js
-#     我们使用约定式提交
-#     领域：电商平台
+context: |
+  技术栈：Python 3.8+, PySide6, Windows 桌面应用
+  项目：鸣潮成就管理器
+  Python 环境：conda 的 ww-achievement 环境
+  - 所有 pip install / python 命令必须在 conda activate ww-achievement 后执行
+  - 非交互式 shell 中使用 conda run：conda run -n ww-achievement pip install -i https://pypi.tuna.tsinghua.edu.cn/simple ...
+  - 运行脚本命令：conda run -n ww-achievement python ...
+  领域：游戏工具（鸣潮 / Wuthering Waves）
 
 # 每个工件的规则（可选）
 # 为特定工件添加自定义规则。

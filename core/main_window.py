@@ -141,6 +141,11 @@ class TemplateMainWindow(QMainWindow):
         self.crawl_tab = CrawlTab()
         self.tab_widget.addTab(self.crawl_tab, "📊 数据爬取")
 
+        # 添加 OCR 扫描标签页
+        from core.ocr_tab import OCRScanTab
+        self.ocr_tab = OCRScanTab()
+        self.tab_widget.addTab(self.ocr_tab, "🔍 OCR 扫描")
+
         # 应用滚动条样式到标签页
         from core.styles import get_scrollbar_style
         self.tab_widget.setStyleSheet(self.tab_widget.styleSheet() + get_scrollbar_style(config.theme))
