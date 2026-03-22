@@ -107,7 +107,7 @@ class UpdateDialog(QDialog):
         layout.addWidget(scroll_area)
         
         # 下载信息
-        download_info = QLabel(f"访问密码：{config.update_download_password}, 点击确认将自动复制。")
+        download_info = QLabel("点击确认前往 GitHub Release 下载最新版本。")
         download_info.setStyleSheet("font-size: 13px; color: #e74c3c; margin: 10px 0;")
         layout.addWidget(download_info)
         
@@ -137,13 +137,7 @@ class UpdateDialog(QDialog):
     
     def on_confirm(self):
         """确认按钮点击事件"""
-        # 复制密码到剪贴板
-        from PySide6.QtWidgets import QApplication
-        clipboard = QApplication.clipboard()
-        clipboard.setText(config.update_download_password)
-        
-        # 打开蓝奏云下载链接
-        webbrowser.open(config.update_download_url)
-        
-        # 接受对话框
+        release_info = self.update_info.get('release_info', {})
+        url = release_info.get('html_url') or f"https://github.com/{config.github_owner}/{config.github_repo}/releases/latest"
+        webbrowser.open(url)
         self.accept()

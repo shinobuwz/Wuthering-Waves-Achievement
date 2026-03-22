@@ -359,10 +359,10 @@ class UpdateChecker:
             logger.info("%s", body)
             logger.info("-" * 40)
 
-        # 下载信息 - 使用配置的蓝奏云链接
-        from core.config import config
-        logger.info("下载链接: %s", config.update_download_url)
-        logger.info("下载密码: %s", config.update_download_password)
+        # 下载信息 - GitHub Release
+        release = update_info.get('release_info', {})
+        download_url = release.get('html_url') or f"https://github.com/{self.repo_owner}/{self.repo_name}/releases/latest"
+        logger.info("下载链接: %s", download_url)
 
         logger.info("=" * 60)
 
@@ -370,13 +370,10 @@ class UpdateChecker:
         try:
             response = input("\n是否打开下载页面？(y/N): ").strip().lower()
             if response == 'y':
-                webbrowser.open(config.update_download_url)
+                webbrowser.open(download_url)
                 logger.info("已打开浏览器...")
-                logger.info("下载密码: %s", config.update_download_password)
         except EOFError:
-            # 非交互式环境，直接显示信息
-            logger.info("下载链接: %s", config.update_download_url)
-            logger.info("下载密码: %s", config.update_download_password)
+            logger.info("下载链接: %s", download_url)
     
     def check_and_notify(self, force_check: bool = False):
         """检查并通知的主方法"""

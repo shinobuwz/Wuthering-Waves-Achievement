@@ -1218,26 +1218,15 @@ class CrawlTab(QWidget):
     def open_download_page(self):
         """打开下载页面"""
         import webbrowser
-        
-        # 从配置中获取下载链接和密码
-        download_url = config.update_download_url
-        download_password = config.update_download_password
-        
-        # 打开下载页面
+
+        download_url = f"https://github.com/{config.github_owner}/{config.github_repo}/releases/latest"
+
         try:
             webbrowser.open(download_url)
-            page_opened = True
+            self.show_notification("已打开 GitHub Release 下载页面")
         except Exception as e:
             logger.error("打开下载页面失败: %s", str(e))
-            page_opened = False
-        
-        # 显示提示信息
-        if page_opened:
-            self.show_notification(f"已打开下载页面\n下载密码: {download_password}\n请在输入框中输入密码")
-        else:
-            self.show_notification(f"打开页面失败，请手动访问\n下载链接: {download_url}\n下载密码: {download_password}")
-        
-        logger.info("下载页面操作完成 - 页面打开: %s", page_opened)
+            self.show_notification(f"打开页面失败，请手动访问\n{download_url}")
     
     def open_bilibili_up(self):
         """打开B站UP主页面"""

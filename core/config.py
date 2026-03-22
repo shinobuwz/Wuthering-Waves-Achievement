@@ -77,12 +77,8 @@ class Config:
         }
 
         # GitHub仓库配置（用于更新检查）
-        self.github_owner = "sliencezhang"  # GitHub用户名
+        self.github_owner = "shinobuwz"  # GitHub用户名
         self.github_repo = "Wuthering-Waves-Achievement"  # 仓库名
-
-        # 更新下载链接配置
-        self.update_download_url = "https://wwbml.lanzoum.com/b01880knob"  # 蓝奏云下载链接
-        self.update_download_password = "1234"  # 下载密码
 
         # 首次运行标记
         self.first_run = True  # 默认设为true，load_config时会检查
