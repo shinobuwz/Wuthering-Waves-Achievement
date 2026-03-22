@@ -60,22 +60,49 @@ class AchievementCrawler(QObject):
         except Exception as e:
             self.error.emit(str(e))
 
-    def get_achievement_data(self):
-        from core.config import get_resource_path
-        import json
-        
-        cache_file = get_resource_path("resources") / "achievement_cache.json"
-        
-        if cache_file.exists():
-            try:
+    def _read_cache_meta(self, cache_file):
+        """从缓存文件读取 _cache_meta 字段，缺失时返回 None"""
+        try:
+            if cache_file.exists():
                 with open(cache_file, 'r', encoding='utf-8') as f:
                     cached_data = json.load(f)
-                self.progress.emit("使用本地缓存数据...")
-                print("[INFO] 使用本地缓存数据")
-                return cached_data
-            except Exception as e:
-                print(f"[WARNING] 读取缓存失败: {str(e)}，将重新请求")
-        
+                return cached_data.get('_cache_meta', None), cached_data
+        except Exception as e:
+            print(f"[WARNING] 读取缓存失败: {str(e)}")
+        return None, None
+
+    def _extract_remote_update_time(self, response_data):
+        """从 API 响应中提取 lastUpdateTime 字段，缺失时返回 None"""
+        try:
+            data = response_data.get('data', {})
+            if isinstance(data, dict):
+                return data.get('lastUpdateTime', None)
+        except Exception:
+            pass
+        return None
+
+    def _compute_data_hash(self, response_data):
+        """计算 API 响应数据内容的 hash（排除 _cache_meta）"""
+        import hashlib
+        data_copy = {k: v for k, v in response_data.items() if k != '_cache_meta'}
+        data_str = json.dumps(data_copy, ensure_ascii=False, sort_keys=True)
+        return hashlib.md5(data_str.encode('utf-8')).hexdigest()
+
+    def _save_cache_with_meta(self, cache_file, response_data, last_update_time):
+        """保存缓存文件，附带 _cache_meta 元数据"""
+        from datetime import datetime
+        data_hash = self._compute_data_hash(response_data)
+        response_data['_cache_meta'] = {
+            'lastUpdateTime': last_update_time or '',
+            'cached_at': datetime.now().isoformat(),
+            'data_hash': data_hash
+        }
+        with open(cache_file, 'w', encoding='utf-8') as f:
+            json.dump(response_data, f, ensure_ascii=False, indent=2)
+        print(f"[INFO] 已保存缓存到: {cache_file}")
+
+    def _request_api(self):
+        """发送 API 请求获取成就数据"""
         url = "https://api.kurobbs.com/wiki/core/catalogue/item/getEntryDetail"
         headers = {
             'Accept': 'application/json, text/plain, */*',
@@ -90,19 +117,83 @@ class AchievementCrawler(QObject):
             'wiki_type': '9'
         }
         data = {'id': '1220879855033786368'}
+        response = requests.post(url, headers=headers, data=data, timeout=30)
+        response.encoding = 'utf-8'
+        return response.json()
+
+    def get_achievement_data(self):
+        from core.config import get_resource_path
+
+        cache_file = get_resource_path("resources") / "achievement_cache.json"
+
+        # 认证信息缺失时的降级处理
+        if not self.devcode or not self.token:
+            cache_meta, cached_data = self._read_cache_meta(cache_file)
+            if cached_data:
+                self.progress.emit("认证信息未配置，使用本地缓存")
+                print("[INFO] 认证信息缺失，使用本地缓存")
+                return cached_data
+            raise Exception("请先在设置中配置认证信息")
+
+        # 读取本地缓存元数据
+        cache_meta, cached_data = self._read_cache_meta(cache_file)
+
+        # 缓存不存在或无 _cache_meta（旧版本缓存）→ 直接请求 API
+        if cached_data is None or cache_meta is None:
+            if cache_meta is None and cached_data is not None:
+                print("[INFO] 缓存文件缺少 _cache_meta（旧版本），重新请求")
+            self.progress.emit("正在检查数据更新...")
+            try:
+                response_data = self._request_api()
+                remote_time = self._extract_remote_update_time(response_data)
+                self._save_cache_with_meta(cache_file, response_data, remote_time)
+                self.progress.emit("已获取最新数据")
+                return response_data
+            except Exception as e:
+                raise Exception(f"网络请求失败: {str(e)}")
+
+        # 有缓存且有 _cache_meta → 检查远端是否有更新
+        local_time = cache_meta.get('lastUpdateTime', '')
+        self.progress.emit("正在检查数据更新...")
 
         try:
-            response = requests.post(url, headers=headers, data=data, timeout=30)
-            response.encoding = 'utf-8'
-            response_data = response.json()
-            
-            with open(cache_file, 'w', encoding='utf-8') as f:
-                json.dump(response_data, f, ensure_ascii=False, indent=2)
-            print(f"[INFO] 已保存缓存到: {cache_file}")
-            
-            return response_data
+            response_data = self._request_api()
         except Exception as e:
-            raise Exception(f"网络请求失败: {str(e)}")
+            # 网络请求失败 → 降级使用本地缓存
+            self.progress.emit("网络请求失败，使用本地缓存")
+            print(f"[WARNING] 网络请求失败: {str(e)}，降级使用本地缓存")
+            return cached_data
+
+        remote_time = self._extract_remote_update_time(response_data)
+
+        # 远端 lastUpdateTime 缺失 → 无法判断，直接覆盖缓存
+        if remote_time is None:
+            print("[WARNING] 远端响应缺少 lastUpdateTime，重新拉取并覆盖缓存")
+            self._save_cache_with_meta(cache_file, response_data, remote_time)
+            return response_data
+
+        # 比对远端与本地时间
+        if remote_time != local_time:
+            # 时间不同，数据已更新
+            self.progress.emit(f"检测到数据更新（{local_time} → {remote_time}），正在重新获取...")
+            print(f"[INFO] 数据已更新（{local_time} → {remote_time}），刷新缓存")
+            self._save_cache_with_meta(cache_file, response_data, remote_time)
+            return response_data
+
+        # 时间相同，再比对数据内容 hash
+        local_hash = cache_meta.get('data_hash', '')
+        remote_hash = self._compute_data_hash(response_data)
+        if local_hash and remote_hash == local_hash:
+            # 时间和内容都一致，使用本地缓存
+            self.progress.emit(f"数据已是最新（远端更新时间: {remote_time}），使用本地缓存")
+            print(f"[INFO] 数据未更新（{remote_time}），使用本地缓存")
+            return cached_data
+        else:
+            # 时间相同但内容不同（或本地无 hash），刷新缓存
+            self.progress.emit(f"检测到数据内容变更，正在更新本地缓存...")
+            print(f"[INFO] 数据内容变更（hash: {local_hash[:8] if local_hash else 'N/A'} → {remote_hash[:8]}），刷新缓存")
+            self._save_cache_with_meta(cache_file, response_data, remote_time)
+            return response_data
 
     def clean_text(self, text):
         if text is None:

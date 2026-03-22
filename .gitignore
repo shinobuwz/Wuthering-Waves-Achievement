@@ -175,3 +175,4 @@ Desktop.ini
 # 日志文件
 build.log
 nuitka-crash-report.xml
+.claude

@@ -50,6 +50,9 @@ class TemplateMainWindow(QMainWindow):
         # 启动时检查更新（后台进行）
         self.setup_update_check()
 
+        # 启动时静默检查成就数据更新
+        self.setup_data_freshness_check()
+
     def setup_modern_ui(self):
         """设置现代化UI样式"""
         self.setStyleSheet(get_main_window_style(config.theme))
@@ -414,7 +417,227 @@ class TemplateMainWindow(QMainWindow):
             check_for_updates_background()
         except Exception as e:
             print(f"延迟更新检查失败: {e}")
-    
+
+    def setup_data_freshness_check(self):
+        """启动时静默检查成就数据是否有更新，并自动合并缺失成就"""
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(5000, self._check_data_freshness)
+
+    def _check_data_freshness(self):
+        """后台检查成就数据并自动合并"""
+        from core.crawl_tab import AchievementCrawler, CrawlerThread
+
+        devcode, token = config.get_auth_data()
+        if not devcode or not token:
+            print("[DATA-CHECK] 认证信息未配置，跳过启动数据检查")
+            return
+
+        self._sync_crawler = AchievementCrawler(target_version=None)
+        self._sync_crawler.progress.connect(
+            lambda msg: print(f"[DATA-CHECK] {msg}")
+        )
+        self._sync_crawler.finished.connect(self._on_sync_finished)
+        self._sync_crawler.error.connect(
+            lambda err: print(f"[DATA-CHECK] 检查失败: {err}")
+        )
+
+        self._sync_thread = CrawlerThread(self._sync_crawler)
+        self._sync_crawler.crawl = self._sync_crawl
+        self._sync_thread.start()
+
+    def _sync_crawl(self):
+        """获取远端全量数据，解析所有成就（不筛选版本），与本地对比合并"""
+        import re
+        try:
+            self._sync_crawler._load_auth_config()
+            self._sync_crawler.progress.emit("正在检查成就数据更新...")
+            api_data = self._sync_crawler.get_achievement_data()
+            if not api_data:
+                self._sync_crawler.error.emit("获取数据失败")
+                return
+
+            # 解析全量成就（不筛选版本）
+            all_remote = []
+            content = api_data.get('data', {}).get('content', {})
+            modules = content.get('modules', [])
+            for module in modules:
+                for component in module.get('components', []):
+                    if component.get('type') == 'filter-component':
+                        html_content = component.get('content', '')
+                        parsed = self._sync_crawler.parse_html_table_with_categories(html_content)
+                        all_remote.extend(parsed)
+
+            print(f"[DATA-CHECK] 远端共 {len(all_remote)} 条成就")
+
+            # 加载本地成就库
+            local_achievements = config.load_base_achievements()
+            print(f"[DATA-CHECK] 本地共 {len(local_achievements)} 条成就")
+
+            # 用 (名称, 清理后描述) 去重
+            def clean_desc(desc):
+                if not desc:
+                    return desc
+                return re.sub(r'[.,…。，；：！？、]+$', '', desc).strip()
+
+            local_keys = set()
+            for a in local_achievements:
+                key = (a.get('名称', ''), clean_desc(a.get('描述', '')))
+                local_keys.add(key)
+
+            remote_keys = set()
+            to_add = []
+            for a in all_remote:
+                key = (a.get('名称', ''), clean_desc(a.get('描述', '')))
+                remote_keys.add(key)
+                if key not in local_keys:
+                    to_add.append(a)
+
+            # 检测本地有但远端已移除的成就
+            to_remove_keys = local_keys - remote_keys
+            if to_remove_keys:
+                removed_names = [name for name, _ in to_remove_keys]
+                print(f"[DATA-CHECK] 发现 {len(to_remove_keys)} 条成就已从远端移除: {', '.join(removed_names)}")
+
+            # 保存远端 keys 供主线程使用
+            self._sync_remote_keys = remote_keys
+
+            if not to_add and not to_remove_keys:
+                print("[DATA-CHECK] 本地数据已是最新，无需同步")
+                self._sync_remote_keys = None
+                self._sync_crawler.finished.emit([])
+                return
+
+            # 按版本统计新增数量
+            if to_add:
+                version_counts = {}
+                for a in to_add:
+                    v = a.get('版本', '未知')
+                    version_counts[v] = version_counts.get(v, 0) + 1
+                version_summary = ", ".join(f"v{v}: {c}条" for v, c in sorted(version_counts.items()))
+                print(f"[DATA-CHECK] 发现 {len(to_add)} 条新成就需要同步（{version_summary}）")
+
+            # 发出新增成就列表（可能为空但有需要移除的），由主线程处理
+            self._sync_crawler.finished.emit(to_add)
+
+        except Exception as e:
+            self._sync_crawler.error.emit(str(e))
+
+    def _on_sync_finished(self, new_achievements):
+        """同步完成，在主线程中合并新成就到成就库"""
+        import re
+
+        remote_keys = getattr(self, '_sync_remote_keys', None)
+        has_changes = bool(new_achievements) or bool(remote_keys)
+
+        if not has_changes:
+            print("[DATA-CHECK] 启动数据检查完成，无新数据")
+            self._sync_crawler = None
+            self._sync_thread = None
+            return
+
+        print(f"[DATA-CHECK] 正在同步数据...")
+
+        manage_tab = self.manage_tab
+        current_achievements = manage_tab.manager.achievements
+
+        # 检测新分类
+        category_config = config.load_category_config()
+        first_categories = category_config.get("first_categories", {})
+        second_categories = category_config.get("second_categories", {})
+        updated_first = first_categories.copy()
+        updated_second = {k: v.copy() for k, v in second_categories.items()}
+        has_new_categories = False
+
+        for achievement in new_achievements:
+            first_cat = achievement.get('第一分类', '')
+            second_cat = achievement.get('第二分类', '')
+            if first_cat and second_cat:
+                if first_cat not in updated_first:
+                    max_order = max(updated_first.values()) if updated_first else 0
+                    updated_first[first_cat] = max_order + 1
+                    updated_second[first_cat] = {}
+                    has_new_categories = True
+                    print(f"[DATA-CHECK] 新增第一分类: {first_cat}")
+
+                if first_cat not in updated_second:
+                    updated_second[first_cat] = {}
+                if second_cat not in updated_second[first_cat]:
+                    existing = set()
+                    for s in updated_second[first_cat].values():
+                        try:
+                            existing.add(int(s))
+                        except (ValueError, TypeError):
+                            pass
+                    new_suffix = 10
+                    while new_suffix in existing:
+                        new_suffix += 10
+                    updated_second[first_cat][second_cat] = str(new_suffix)
+                    has_new_categories = True
+                    print(f"[DATA-CHECK] 新增第二分类: {first_cat} - {second_cat}")
+
+        if has_new_categories:
+            config.save_category_config({
+                "first_categories": updated_first,
+                "second_categories": updated_second
+            })
+            print("[DATA-CHECK] 分类配置已更新")
+
+        # 移除远端已删除的成就
+        removed_count = 0
+        if remote_keys:
+            def clean_desc(desc):
+                if not desc:
+                    return desc
+                return re.sub(r'[.,…。，；：！？、]+$', '', desc).strip()
+
+            before_count = len(current_achievements)
+            current_achievements = [
+                a for a in current_achievements
+                if (a.get('名称', ''), clean_desc(a.get('描述', ''))) in remote_keys
+            ]
+            removed_count = before_count - len(current_achievements)
+            if removed_count:
+                print(f"[DATA-CHECK] 已移除 {removed_count} 条远端已删除的成就")
+
+        # 合并新增成就并重新编码
+        all_achievements = current_achievements + new_achievements
+        all_achievements, _ = manage_tab._smart_reencode_achievements(all_achievements)
+
+        # 更新管理器数据
+        manage_tab.manager.achievements = all_achievements
+        manage_tab.manager.filtered_achievements = all_achievements.copy()
+
+        # 先持久化（save_to_json 会写入 base_achievements.json）
+        manage_tab.save_to_json()
+
+        # 再重新编码用户存档（从文件重新加载，所以必须先保存）
+        if config.reencode_all_user_progress():
+            print("[DATA-CHECK] 用户存档数据已同步")
+
+        if has_new_categories:
+            signal_bus.category_config_updated.emit()
+
+        # 重新加载数据到管理页（确保 UI 显示与文件一致）
+        manage_tab.load_local_data()
+
+        # 输出同步摘要
+        summary_parts = []
+        if new_achievements:
+            version_counts = {}
+            for a in new_achievements:
+                v = a.get('版本', '未知')
+                version_counts[v] = version_counts.get(v, 0) + 1
+            version_summary = ", ".join(f"v{v}: {c}条" for v, c in sorted(version_counts.items()))
+            summary_parts.append(f"新增 {len(new_achievements)} 条（{version_summary}）")
+        if removed_count:
+            summary_parts.append(f"移除 {removed_count} 条")
+        print(f"[DATA-CHECK] 同步完成！{', '.join(summary_parts)}，总计 {len(all_achievements)} 条")
+
+        # 清理引用
+        self._sync_crawler = None
+        self._sync_thread = None
+        self._sync_remote_keys = None
+
     def on_update_available(self, update_info):
         """处理可用更新"""
         from core.update_dialog import UpdateDialog
