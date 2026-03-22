@@ -40,8 +40,22 @@ STATUS_H = 47
 
 # --- 滚动参数 ---
 SCROLL_LENGTH = -160            # 每次 pyautogui.scroll 的值（负数=列表向下）
-SCROLL_TIMES = 15               # 连续发送 scroll 的次数（利用惯性叠加）
+SCROLL_TIMES = 15               # 连续发送 scroll 的次数（利用惯性叠加）- 成就列表
+SCROLL_TIMES_TAB = 16           # 连续发送 scroll 的次数 - 二级 Tab 列表
 SCROLL_DELAY = 0.8              # 滚动后等待时间（秒）
+
+# --- 界面布局参数（百分比，基于截图宽高，由模板匹配确定） ---
+# 一级 Tab 名称区域
+PRIMARY_TAB_X1_PCT = 0.053
+PRIMARY_TAB_Y1_PCT = 0.047
+PRIMARY_TAB_X2_PCT = 0.114
+PRIMARY_TAB_Y2_PCT = 0.083
+
+# 二级 Tab 列表区域
+SECONDARY_TAB_X1_PCT = 0.1005
+SECONDARY_TAB_Y1_PCT = 0.1796
+SECONDARY_TAB_X2_PCT = 0.3479
+SECONDARY_TAB_Y2_PCT = 1.0000
 
 # --- 图标模板目录 ---
 _TEMPLATE_DIR = os.path.join(
@@ -433,3 +447,140 @@ def scan_with_scroll(hwnd, ocr_model, achievements_db, callback=None, stop_flag=
     logger.info("扫描完成: 共 %d 轮, 匹配 %d 条, 未匹配 %d 条",
                 round_num, len(all_results), len(unmatched_results))
     return total
+
+
+# ============================================
+# 二级 Tab 识别与切换
+# ============================================
+
+def recognize_primary_tab(screenshot, ocr_model):
+    """
+    识别左上角一级 Tab 名称。
+
+    Args:
+        screenshot: 完整截图
+        ocr_model: ONNXPaddleOcr 实例
+    Returns:
+        str: 识别到的一级 Tab 名称
+    """
+    h, w = screenshot.shape[:2]
+    x1 = int(w * PRIMARY_TAB_X1_PCT)
+    y1 = int(h * PRIMARY_TAB_Y1_PCT)
+    x2 = int(w * PRIMARY_TAB_X2_PCT)
+    y2 = int(h * PRIMARY_TAB_Y2_PCT)
+    region = screenshot[y1:y2, x1:x2].copy()
+    text = recognize_text(region, ocr_model)
+    logger.debug("一级Tab OCR: '%s'", text)
+    return text.strip()
+
+
+def recognize_secondary_tabs(screenshot, ocr_model, known_tabs):
+    """
+    识别左侧面板中当前可见的所有二级 Tab。
+    使用 OCR detect box 的 y 坐标确定每个 Tab 的位置。
+
+    Args:
+        screenshot: 完整截图
+        ocr_model: ONNXPaddleOcr 实例
+        known_tabs: 已知的二级 Tab 名称列表（顺序一致，来自数据库）
+    Returns:
+        list[(已知名称, center_y_pct, ocr原文)] 按 y 坐标排序
+    """
+    h, w = screenshot.shape[:2]
+    sx1 = int(w * SECONDARY_TAB_X1_PCT)
+    sy1 = int(h * SECONDARY_TAB_Y1_PCT)
+    sx2 = int(w * SECONDARY_TAB_X2_PCT)
+    sy2 = int(h * SECONDARY_TAB_Y2_PCT)
+
+    region = screenshot[sy1:sy2, sx1:sx2].copy()
+    processed = preprocess_image(region)
+
+    dt_boxes, rec_res = ocr_model(processed, cls=False)
+    logger.debug("二级Tab OCR 检测到 %d 个文本框", len(rec_res))
+
+    # 提取每个检测框的 y 中心（转换为截图坐标百分比）
+    raw_tabs = []
+    for box, (text, conf) in zip(dt_boxes, rec_res):
+        text = text.strip()
+        if not text or conf < 0.5:
+            continue
+        y_center_in_region = (min(p[1] for p in box) + max(p[1] for p in box)) / 2
+        center_y_pct = (sy1 + y_center_in_region) / h
+        raw_tabs.append((text, center_y_pct, conf))
+        logger.debug("  检测框: y=%.4f text='%s' conf=%.3f", center_y_pct, text, conf)
+
+    raw_tabs.sort(key=lambda x: x[1])
+
+    # 编辑距离匹配到已知 Tab 列表
+    matched = []
+    used_known = set()
+    for text, cy_pct, conf in raw_tabs:
+        best_ki, best_dist = -1, float('inf')
+        for ki, known_name in enumerate(known_tabs):
+            if ki in used_known:
+                continue
+            dist = _edit_distance(text, known_name)
+            if dist < best_dist:
+                best_dist = dist
+                best_ki = ki
+        if best_ki >= 0:
+            threshold = max(len(text), len(known_tabs[best_ki])) * 0.4
+            if best_dist <= threshold:
+                matched.append((best_ki, cy_pct, text))
+                used_known.add(best_ki)
+                logger.debug("  匹配: known[%d]='%s' ← ocr='%s'",
+                             best_ki, known_tabs[best_ki], text)
+
+    if not matched:
+        logger.warning("二级Tab无法匹配已知列表，返回原始OCR结果")
+        return [(t, cy, t) for t, cy, _ in raw_tabs]
+
+    matched.sort(key=lambda x: x[1])
+    return [(known_tabs[ki], cy_pct, ocr_text) for ki, cy_pct, ocr_text in matched]
+
+
+def click_secondary_tab(hwnd, center_y_pct):
+    """
+    点击指定百分比 y 坐标的二级 Tab。
+
+    Args:
+        hwnd: 游戏窗口句柄
+        center_y_pct: Tab 中心 y 坐标（占截图高度的百分比）
+    """
+    from core.game_capture import get_window_rect
+    user32 = ctypes.windll.user32
+    wx, wy, ww, wh = get_window_rect(hwnd)
+    click_x = wx + int(ww * (SECONDARY_TAB_X1_PCT + SECONDARY_TAB_X2_PCT) / 2)
+    click_y = wy + int(wh * center_y_pct)
+
+    user32.SetForegroundWindow(hwnd)
+    time.sleep(0.3)
+    pyautogui.moveTo(click_x, click_y, duration=0.1)
+    time.sleep(0.1)
+    pyautogui.click()
+    time.sleep(0.5)
+    logger.debug("点击二级Tab: (%d,%d) y_pct=%.4f", click_x, click_y, center_y_pct)
+
+
+def scroll_secondary_tabs(hwnd):
+    """
+    在二级 Tab 列表区域向下滚动一屏。
+
+    Args:
+        hwnd: 游戏窗口句柄
+    """
+    from core.game_capture import get_window_rect
+    user32 = ctypes.windll.user32
+    wx, wy, ww, wh = get_window_rect(hwnd)
+    scroll_x = wx + int(ww * (SECONDARY_TAB_X1_PCT + SECONDARY_TAB_X2_PCT) / 2)
+    scroll_y = wy + int(wh * (SECONDARY_TAB_Y1_PCT + SECONDARY_TAB_Y2_PCT) / 2)
+
+    user32.SetForegroundWindow(hwnd)
+    time.sleep(0.3)
+    pyautogui.moveTo(scroll_x, scroll_y, duration=0.1)
+    pyautogui.click()
+    time.sleep(0.3)
+    for _ in range(SCROLL_TIMES_TAB):
+        pyautogui.scroll(SCROLL_LENGTH)
+    time.sleep(SCROLL_DELAY)
+    logger.debug("二级Tab滚动完成: scroll(%d) x %d", SCROLL_LENGTH, SCROLL_TIMES_TAB)
