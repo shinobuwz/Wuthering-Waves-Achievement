@@ -15,10 +15,10 @@ from core.styles import get_button_style, get_font_gray_style, ColorPalette
 
 class OCRScanWorker(QThread):
     """OCR 扫描工作线程"""
-    progress = Signal(list, int)  # (当前结果列表, 轮次)
-    finished = Signal(list)       # 最终结果列表
-    error = Signal(str)           # 错误信息
-    status = Signal(str)          # 状态文字
+    progress = Signal(dict, str, str)  # (进度dict, 一级Tab, 二级Tab)
+    finished = Signal(dict)            # 最终进度dict {编号: {"获取状态": ...}}
+    error = Signal(str)
+    status = Signal(str)
 
     def __init__(self, hwnd):
         super().__init__()
@@ -40,22 +40,34 @@ class OCRScanWorker(QThread):
                 self.error.emit("成就数据库为空，请先爬取成就数据")
                 return
 
-            self.status.emit("开始扫描...")
-            from core.achievement_ocr import scan_with_scroll
+            # 构建分类映射
+            category_map = {}
+            for a in achievements_db:
+                c1 = a.get('第一分类', '')
+                c2 = a.get('第二分类', '')
+                if c1 not in category_map:
+                    category_map[c1] = []
+                if c2 not in category_map[c1]:
+                    category_map[c1].append(c2)
 
-            def on_progress(results, round_num):
-                self.progress.emit(results, round_num)
-                self.status.emit(f"第 {round_num} 轮扫描，已识别 {len(results)} 条成就")
+            self.status.emit("开始全量扫描...")
+            from core.achievement_ocr import scan_all_tabs
 
-            results = scan_with_scroll(
+            def on_progress(progress_dict, primary, secondary):
+                self.progress.emit(progress_dict, primary, secondary)
+                completed = sum(1 for v in progress_dict.values() if v["获取状态"] == "已完成")
+                self.status.emit(f"[{primary}] {secondary} | 已完成: {completed} 条")
+
+            result = scan_all_tabs(
                 self.hwnd,
                 ocr_model,
                 achievements_db,
+                category_map,
                 callback=on_progress,
                 stop_flag=lambda: self._stop,
             )
 
-            self.finished.emit(results)
+            self.finished.emit(result)
 
         except Exception as e:
             self.error.emit(str(e))
@@ -127,7 +139,7 @@ class OCRScanTab(QWidget):
         self.result_table = QTableWidget()
         self.result_table.setColumnCount(4)
         self.result_table.setHorizontalHeaderLabels(
-            ["OCR 识别名称", "匹配结果", "状态", "置信度"]
+            ["编号", "成就名称", "状态", "OCR原文"]
         )
         self.result_table.horizontalHeader().setStretchLastSection(True)
         self.result_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -215,29 +227,29 @@ class OCRScanTab(QWidget):
         self.worker.status.connect(self._on_scan_status)
         self.worker.start()
 
-    def _on_scan_progress(self, results, round_num):
+    def _on_scan_progress(self, progress_dict, primary, secondary):
         """扫描进度回调"""
-        matched = sum(1 for r in results if r["编号"])
-        unmatched = sum(1 for r in results if not r["编号"])
+        completed = sum(1 for v in progress_dict.values() if v["获取状态"] == "已完成")
+        total = len(progress_dict)
         self.progress_label.setText(
-            f"第 {round_num} 轮 | 已识别: {matched} 条匹配, {unmatched} 条未匹配"
+            f"[{primary}] {secondary} | 已扫描: {total} 条, 已完成: {completed} 条"
         )
-        self._update_result_table(results)
+        self._update_result_table(progress_dict)
 
-    def _on_scan_finished(self, results):
+    def _on_scan_finished(self, progress_dict):
         """扫描完成"""
         self._restore_main_window()
-        self.scan_results = results
-        self._update_result_table(results)
+        self.scan_results = progress_dict
+        self._update_result_table(progress_dict)
 
-        matched = sum(1 for r in results if r["编号"])
+        completed = sum(1 for v in progress_dict.values() if v["获取状态"] == "已完成")
         self.scan_btn.setText("开始扫描")
         self.scan_btn.setEnabled(True)
         self.detect_btn.setEnabled(True)
-        self.save_btn.setEnabled(bool(results))
+        self.save_btn.setEnabled(bool(progress_dict))
         self.scan_status_label.setText("扫描完成")
         self.progress_label.setText(
-            f"扫描完成 | 共识别 {len(results)} 条, 匹配 {matched} 条"
+            f"扫描完成 | 共 {len(progress_dict)} 条, 已完成 {completed} 条"
         )
         self.worker = None
 
@@ -255,25 +267,27 @@ class OCRScanTab(QWidget):
         """状态更新"""
         self.scan_status_label.setText(status_text)
 
-    def _update_result_table(self, results):
+    def _update_result_table(self, progress_dict):
         """更新结果预览表格"""
-        self.result_table.setRowCount(len(results))
+        # 加载成就名称映射（编号 -> 名称）
+        if not hasattr(self, '_id_to_name'):
+            db = config.load_base_achievements()
+            self._id_to_name = {a.get('编号'): a.get('名称', '') for a in db}
 
-        for row, result in enumerate(results):
-            # OCR 名称
-            ocr_item = QTableWidgetItem(result.get("ocr_name", ""))
-            self.result_table.setItem(row, 0, ocr_item)
+        items = list(progress_dict.items())
+        self.result_table.setRowCount(len(items))
 
-            # 匹配结果
-            matched_name = result.get("matched_name", "")
-            match_item = QTableWidgetItem(matched_name or "未匹配")
-            if not matched_name:
-                match_item.setForeground(QColor(255, 100, 100))
-                match_item.setBackground(QColor(255, 230, 230))
-            self.result_table.setItem(row, 1, match_item)
+        for row, (aid, info) in enumerate(items):
+            name = self._id_to_name.get(aid, aid)
+            status = info.get("获取状态", "未知")
 
-            # 状态
-            status = result.get("状态", "未知")
+            # 编号
+            self.result_table.setItem(row, 0, QTableWidgetItem(aid))
+
+            # 成就名称
+            self.result_table.setItem(row, 1, QTableWidgetItem(name))
+
+            # 状态（带颜色）
             status_item = QTableWidgetItem(status)
             if status == "已完成":
                 status_item.setForeground(QColor(0, 150, 0))
@@ -281,10 +295,12 @@ class OCRScanTab(QWidget):
                 status_item.setForeground(QColor(200, 150, 0))
             self.result_table.setItem(row, 2, status_item)
 
-            # 置信度
-            confidence = result.get("置信度", 0)
-            conf_item = QTableWidgetItem(f"{confidence:.0%}" if confidence else "-")
-            self.result_table.setItem(row, 3, conf_item)
+            # OCR 原文（与匹配名称不同时高亮）
+            ocr_name = info.get("ocr_name", "")
+            ocr_item = QTableWidgetItem(ocr_name)
+            if ocr_name and ocr_name != name:
+                ocr_item.setForeground(QColor(180, 120, 0))
+            self.result_table.setItem(row, 3, ocr_item)
 
     def on_save_results(self):
         """保存扫描结果到用户进度"""
@@ -292,30 +308,25 @@ class OCRScanTab(QWidget):
             return
 
         current_user = config.get_current_user()
-        progress = config.load_user_progress(current_user)
+        existing_progress = config.load_user_progress(current_user)
 
         updated = 0
         skipped = 0
-        for result in self.scan_results:
-            achievement_id = result.get("编号")
-            status = result.get("状态")
-            if not achievement_id or status == "未知":
-                continue
-
-            existing = progress.get(achievement_id, {})
-            existing_status = existing.get("获取状态", "未完成")
+        for aid, info in self.scan_results.items():
+            new_status = info.get("获取状态", "未完成")
+            existing_status = existing_progress.get(aid, {}).get("获取状态", "未完成")
 
             # 禁止降级：已完成 不能变回 未完成
-            if existing_status == "已完成" and status == "未完成":
+            if existing_status == "已完成" and new_status != "已完成":
                 skipped += 1
                 continue
 
-            if existing_status != status:
-                progress[achievement_id] = {"获取状态": status}
+            if existing_status != new_status:
+                existing_progress[aid] = {"获取状态": new_status}  # 不写入 ocr_name
                 updated += 1
 
         if updated > 0:
-            config.save_user_progress(current_user, progress)
+            config.save_user_progress(current_user, existing_progress)
 
         self.scan_status_label.setText(
             f"已保存: 更新 {updated} 条, 跳过 {skipped} 条（防降级）"

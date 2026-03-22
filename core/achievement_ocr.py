@@ -720,13 +720,14 @@ def scan_all_tabs(hwnd, ocr_model, achievements_db, category_map,
                 if not aid:
                     continue
                 status = r.get("状态", "未知")
+                ocr_name = r.get("ocr_name", "")
                 if status == "已完成":
                     prev = progress.get(aid, {}).get("获取状态")
                     if prev != "已完成":
-                        progress[aid] = {"获取状态": "已完成"}
+                        progress[aid] = {"获取状态": "已完成", "ocr_name": ocr_name}
                         new_count += 1
                 elif aid not in progress:
-                    progress[aid] = {"获取状态": "未完成"}
+                    progress[aid] = {"获取状态": "未完成", "ocr_name": ocr_name}
 
             logger.info("  '%s' 扫描完成，新增已完成 %d 条，累计 %d 条",
                         sec_name, new_count, sum(
