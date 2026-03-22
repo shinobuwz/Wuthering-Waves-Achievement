@@ -625,14 +625,33 @@ def click_primary_tab(hwnd, tab_index):
     logger.debug("点击一级Tab[%d]: (%d,%d)", tab_index, click_x, click_y)
 
 
-def _switch_to_secondary_tab(hwnd, ocr_model, screenshot, known_tabs, target_name):
+def _scroll_secondary_tabs_to_top(hwnd):
+    """将二级 Tab 列表滚回顶部（向上滚足够多次）"""
+    from core.game_capture import get_window_rect
+    user32 = ctypes.windll.user32
+    wx, wy, ww, wh = get_window_rect(hwnd)
+    scroll_x = wx + int(ww * (SECONDARY_TAB_X1_PCT + SECONDARY_TAB_X2_PCT) / 2)
+    scroll_y = wy + int(wh * (SECONDARY_TAB_Y1_PCT + SECONDARY_TAB_Y2_PCT) / 2)
+
+    user32.SetForegroundWindow(hwnd)
+    time.sleep(0.3)
+    pyautogui.moveTo(scroll_x, scroll_y, duration=0.1)
+    pyautogui.click()
+    time.sleep(0.3)
+    # 向上滚足够多次，确保回到顶部（不怕多，到顶后不再移动）
+    for _ in range(SCROLL_TIMES_TAB * 5):
+        pyautogui.scroll(-SCROLL_LENGTH)  # SCROLL_LENGTH 是负数，取反即向上
+    time.sleep(SCROLL_DELAY)
+    logger.debug("二级Tab列表已滚回顶部")
+
+
+def _switch_to_secondary_tab(hwnd, ocr_model, known_tabs, target_name):
     """
-    切换到指定二级 Tab，必要时滚动二级 Tab 列表。
+    切换到指定二级 Tab。先将列表滚回顶部，再逐步向下滚动查找目标。
 
     Args:
         hwnd: 游戏窗口句柄
         ocr_model: ONNXPaddleOcr 实例
-        screenshot: 当前截图
         known_tabs: 该一级分类的全部二级 Tab 名称列表
         target_name: 目标二级 Tab 名称
     Returns:
@@ -640,17 +659,19 @@ def _switch_to_secondary_tab(hwnd, ocr_model, screenshot, known_tabs, target_nam
     """
     from core.game_capture import capture_window
 
-    for attempt in range(3):  # 最多滚动2次
+    # 先滚回顶部
+    _scroll_secondary_tabs_to_top(hwnd)
+
+    for attempt in range(5):  # 最多向下滚4次
+        screenshot = capture_window(hwnd)
         visible = recognize_secondary_tabs(screenshot, ocr_model, known_tabs)
         for name, cy_pct, _ in visible:
             if name == target_name:
                 click_secondary_tab(hwnd, cy_pct)
                 return True
         # 未找到，向下滚动再试
-        if attempt < 2:
-            logger.info("  未找到二级Tab '%s'，滚动后重试", target_name)
-            scroll_secondary_tabs(hwnd)
-            screenshot = capture_window(hwnd)
+        logger.info("  未找到二级Tab '%s'（第%d次），向下滚动", target_name, attempt + 1)
+        scroll_secondary_tabs(hwnd)
 
     logger.warning("  无法找到二级Tab '%s'", target_name)
     return False
@@ -701,10 +722,9 @@ def scan_all_tabs(hwnd, ocr_model, achievements_db, category_map,
                 break
 
             logger.info("  -> 二级Tab '%s'", sec_name)
-            screenshot = capture_window(hwnd)
 
             ok = _switch_to_secondary_tab(
-                hwnd, ocr_model, screenshot, secondary_list, sec_name
+                hwnd, ocr_model, secondary_list, sec_name
             )
             if not ok:
                 logger.warning("  跳过二级Tab '%s'（无法切换）", sec_name)
