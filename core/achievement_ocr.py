@@ -19,48 +19,54 @@ pyautogui.FAILSAFE = False
 logger = logging.getLogger(__name__)
 
 # ============================================
-# OCR 扫描参数（集中管理所有可调常量）
+# OCR 扫描参数（从 resources/config.ini 加载）
 # ============================================
 
+from core.config import get_ocr_config as _get_ocr_config
+_cfg = _get_ocr_config()
+
 # --- 模板匹配 ---
-MATCH_THRESHOLD = 0.75          # 模板匹配置信度阈值
-NMS_DISTANCE = 40               # 非极大值抑制合并距离（像素）
+MATCH_THRESHOLD = _cfg["match_threshold"]
+NMS_DISTANCE = _cfg["nms_distance"]
 
 # --- 名称区域（相对于图标左上角） ---
-NAME_DX = 122
-NAME_DY = -39
-NAME_W = 503
-NAME_H = 40
+NAME_DX = _cfg["name_dx"]
+NAME_DY = _cfg["name_dy"]
+NAME_W = _cfg["name_w"]
+NAME_H = _cfg["name_h"]
 
 # --- 状态区域（相对于图标左上角） ---
-STATUS_DX = 878
-STATUS_DY = 15
-STATUS_W = 163
-STATUS_H = 47
+STATUS_DX = _cfg["status_dx"]
+STATUS_DY = _cfg["status_dy"]
+STATUS_W = _cfg["status_w"]
+STATUS_H = _cfg["status_h"]
 
 # --- 滚动参数 ---
-SCROLL_LENGTH = -160            # 每次 pyautogui.scroll 的值（负数=列表向下）
-SCROLL_TIMES = 15               # 连续发送 scroll 的次数（利用惯性叠加）- 成就列表
-SCROLL_TIMES_TAB = 16           # 连续发送 scroll 的次数 - 二级 Tab 列表
-SCROLL_DELAY = 0.8              # 滚动后等待时间（秒）
+SCROLL_LENGTH = _cfg["scroll_length"]
+SCROLL_TIMES = _cfg["scroll_times"]
+SCROLL_TIMES_TAB = _cfg["scroll_times_tab"]
+SCROLL_DELAY = _cfg["scroll_delay"]
 
-# --- 界面布局参数（百分比，基于截图宽高，由模板匹配确定） ---
-# 一级 Tab 名称区域（用于 OCR 识别当前选中的一级分类名称）
-PRIMARY_TAB_X1_PCT = 0.053
-PRIMARY_TAB_Y1_PCT = 0.047
-PRIMARY_TAB_X2_PCT = 0.114
-PRIMARY_TAB_Y2_PCT = 0.083
+# --- 界面布局参数（百分比，基于截图宽高） ---
+PRIMARY_TAB_X1_PCT = _cfg["primary_tab_x1_pct"]
+PRIMARY_TAB_Y1_PCT = _cfg["primary_tab_y1_pct"]
+PRIMARY_TAB_X2_PCT = _cfg["primary_tab_x2_pct"]
+PRIMARY_TAB_Y2_PCT = _cfg["primary_tab_y2_pct"]
 
-# 一级 Tab 图标点击坐标（百分比，由模板匹配确定，x 固定 0.0417）
-# 顺序：索拉漫行、铿锵刃鸣、长路留迹、诸音声轨
-PRIMARY_TAB_ICON_X_PCT = 0.0417
-PRIMARY_TAB_ICON_Y_PCTS = [0.1778, 0.2981, 0.4343, 0.5537]
+PRIMARY_TAB_ICON_X_PCT = _cfg["primary_tab_icon_x_pct"]
+PRIMARY_TAB_ICON_Y_PCTS = _cfg["primary_tab_icon_y_pcts"]
 
-# 二级 Tab 列表区域
-SECONDARY_TAB_X1_PCT = 0.1005
-SECONDARY_TAB_Y1_PCT = 0.1796
-SECONDARY_TAB_X2_PCT = 0.3479
-SECONDARY_TAB_Y2_PCT = 1.0000
+SECONDARY_TAB_X1_PCT = _cfg["secondary_tab_x1_pct"]
+SECONDARY_TAB_Y1_PCT = _cfg["secondary_tab_y1_pct"]
+SECONDARY_TAB_X2_PCT = _cfg["secondary_tab_x2_pct"]
+SECONDARY_TAB_Y2_PCT = _cfg["secondary_tab_y2_pct"]
+
+# --- 延时参数 ---
+DELAY_FOREGROUND = _cfg["delay_foreground"]
+DELAY_MOVE = _cfg["delay_move"]
+DELAY_CLICK_SECONDARY = _cfg["delay_click_secondary"]
+DELAY_CLICK_PRIMARY = _cfg["delay_click_primary"]
+DELAY_LIST_LOAD = _cfg["delay_list_load"]
 
 # --- 图标模板目录 ---
 _TEMPLATE_DIR = os.path.join(
@@ -387,13 +393,13 @@ def simulate_scroll(hwnd):
 
     # 确保游戏窗口在前台
     user32.SetForegroundWindow(hwnd)
-    time.sleep(0.3)
+    time.sleep(DELAY_FOREGROUND)
 
     # 移动到屏幕中心并点击激活
     sx, sy = pyautogui.size()
-    pyautogui.moveTo(sx / 2, sy / 2, duration=0.1)
+    pyautogui.moveTo(sx / 2, sy / 2, duration=DELAY_MOVE)
     pyautogui.click()
-    time.sleep(0.3)
+    time.sleep(DELAY_FOREGROUND)
 
     # 连续发送滚轮事件
     for _ in range(SCROLL_TIMES):
@@ -463,6 +469,46 @@ def scan_with_scroll(hwnd, ocr_model, achievements_db, callback=None, stop_flag=
     logger.info("扫描完成: 共 %d 轮, 匹配 %d 条, 未匹配 %d 条",
                 round_num, len(all_results), len(unmatched_results))
     return total
+
+
+# ============================================
+# 单页扫描模式（仅扫描当前可见 Tab）
+# ============================================
+
+def scan_current_page(hwnd, ocr_model, achievements_db, callback=None, stop_flag=None):
+    """
+    仅扫描当前游戏窗口中可见的成就列表页面（含自动滚动到底部），
+    不执行任何一级或二级 Tab 切换。
+
+    Args:
+        hwnd: 游戏窗口句柄
+        ocr_model: ONNXPaddleOcr 实例
+        achievements_db: 成就数据库列表
+        callback: 可选，callback(progress_dict, primary, secondary) 每轮滚动后调用
+        stop_flag: 可选，callable 返回 True 时中止
+    Returns:
+        dict: {编号: {"获取状态": "已完成"|"未完成", "ocr_name": ...}}
+    """
+    results = scan_with_scroll(hwnd, ocr_model, achievements_db,
+                               stop_flag=stop_flag)
+
+    progress = {}
+    for r in results:
+        aid = r.get("编号")
+        if not aid:
+            continue
+        status = r.get("状态", "未知")
+        ocr_name = r.get("ocr_name", "")
+        if status == "已完成":
+            progress[aid] = {"获取状态": "已完成", "ocr_name": ocr_name}
+        elif aid not in progress:
+            progress[aid] = {"获取状态": "未完成", "ocr_name": ocr_name}
+
+    if callback:
+        callback(progress, "单页扫描", "当前页面")
+
+    logger.info("单页扫描完成：共 %d 条进度", len(progress))
+    return progress
 
 
 # ============================================
@@ -570,11 +616,11 @@ def click_secondary_tab(hwnd, center_y_pct):
     click_y = wy + int(wh * center_y_pct)
 
     user32.SetForegroundWindow(hwnd)
-    time.sleep(0.3)
-    pyautogui.moveTo(click_x, click_y, duration=0.1)
-    time.sleep(0.1)
+    time.sleep(DELAY_FOREGROUND)
+    pyautogui.moveTo(click_x, click_y, duration=DELAY_MOVE)
+    time.sleep(DELAY_MOVE)
     pyautogui.click()
-    time.sleep(0.5)
+    time.sleep(DELAY_CLICK_SECONDARY)
     logger.debug("点击二级Tab: (%d,%d) y_pct=%.4f", click_x, click_y, center_y_pct)
 
 
@@ -592,10 +638,10 @@ def scroll_secondary_tabs(hwnd):
     scroll_y = wy + int(wh * (SECONDARY_TAB_Y1_PCT + SECONDARY_TAB_Y2_PCT) / 2)
 
     user32.SetForegroundWindow(hwnd)
-    time.sleep(0.3)
-    pyautogui.moveTo(scroll_x, scroll_y, duration=0.1)
+    time.sleep(DELAY_FOREGROUND)
+    pyautogui.moveTo(scroll_x, scroll_y, duration=DELAY_MOVE)
     pyautogui.click()
-    time.sleep(0.3)
+    time.sleep(DELAY_FOREGROUND)
     for _ in range(SCROLL_TIMES_TAB):
         pyautogui.scroll(SCROLL_LENGTH)
     time.sleep(SCROLL_DELAY)
@@ -617,11 +663,11 @@ def click_primary_tab(hwnd, tab_index):
     click_y = wy + int(wh * PRIMARY_TAB_ICON_Y_PCTS[tab_index])
 
     user32.SetForegroundWindow(hwnd)
-    time.sleep(0.3)
-    pyautogui.moveTo(click_x, click_y, duration=0.1)
-    time.sleep(0.1)
+    time.sleep(DELAY_FOREGROUND)
+    pyautogui.moveTo(click_x, click_y, duration=DELAY_MOVE)
+    time.sleep(DELAY_MOVE)
     pyautogui.click()
-    time.sleep(0.8)
+    time.sleep(DELAY_CLICK_PRIMARY)
     logger.debug("点击一级Tab[%d]: (%d,%d)", tab_index, click_x, click_y)
 
 
@@ -707,7 +753,7 @@ def scan_all_tabs(hwnd, ocr_model, achievements_db, category_map,
                 logger.warning("  跳过二级Tab '%s'（无法切换）", sec_name)
                 continue
 
-            time.sleep(0.5)  # 等待成就列表加载
+            time.sleep(DELAY_LIST_LOAD)  # 等待成就列表加载
 
             # 扫描当前二级Tab下的所有成就（含自动滚动）
             page_results = scan_with_scroll(hwnd, ocr_model, achievements_db,

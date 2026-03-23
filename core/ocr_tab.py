@@ -4,7 +4,7 @@ OCR 扫描标签页
 """
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QTableWidget, QTableWidgetItem,
-                               QGroupBox, QProgressBar)
+                               QGroupBox, QProgressBar, QComboBox)
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor
 
@@ -20,9 +20,10 @@ class OCRScanWorker(QThread):
     error = Signal(str)
     status = Signal(str)
 
-    def __init__(self, hwnd):
+    def __init__(self, hwnd, scan_mode="global"):
         super().__init__()
         self.hwnd = hwnd
+        self.scan_mode = scan_mode  # "global" or "single"
         self._stop = False
 
     def stop(self):
@@ -40,32 +41,41 @@ class OCRScanWorker(QThread):
                 self.error.emit("成就数据库为空，请先爬取成就数据")
                 return
 
-            # 构建分类映射
-            category_map = {}
-            for a in achievements_db:
-                c1 = a.get('第一分类', '')
-                c2 = a.get('第二分类', '')
-                if c1 not in category_map:
-                    category_map[c1] = []
-                if c2 not in category_map[c1]:
-                    category_map[c1].append(c2)
-
-            self.status.emit("开始全量扫描...")
-            from core.achievement_ocr import scan_all_tabs
-
             def on_progress(progress_dict, primary, secondary):
                 self.progress.emit(progress_dict, primary, secondary)
-                completed = sum(1 for v in progress_dict.values() if v["获取状态"] == "已完成")
-                self.status.emit(f"[{primary}] {secondary} | 已完成: {completed} 条")
 
-            result = scan_all_tabs(
-                self.hwnd,
-                ocr_model,
-                achievements_db,
-                category_map,
-                callback=on_progress,
-                stop_flag=lambda: self._stop,
-            )
+            if self.scan_mode == "single":
+                self.status.emit("开始单页扫描...")
+                from core.achievement_ocr import scan_current_page
+                result = scan_current_page(
+                    self.hwnd,
+                    ocr_model,
+                    achievements_db,
+                    callback=on_progress,
+                    stop_flag=lambda: self._stop,
+                )
+            else:
+                self.status.emit("开始全量扫描...")
+                from core.achievement_ocr import scan_all_tabs
+
+                # 构建分类映射
+                category_map = {}
+                for a in achievements_db:
+                    c1 = a.get('第一分类', '')
+                    c2 = a.get('第二分类', '')
+                    if c1 not in category_map:
+                        category_map[c1] = []
+                    if c2 not in category_map[c1]:
+                        category_map[c1].append(c2)
+
+                result = scan_all_tabs(
+                    self.hwnd,
+                    ocr_model,
+                    achievements_db,
+                    category_map,
+                    callback=on_progress,
+                    stop_flag=lambda: self._stop,
+                )
 
             self.finished.emit(result)
 
@@ -80,7 +90,7 @@ class OCRScanTab(QWidget):
         super().__init__()
         self.hwnd = None
         self.worker = None
-        self.scan_results = []
+        self.scan_results = {}
         self.init_ui()
 
     def init_ui(self):
@@ -103,6 +113,11 @@ class OCRScanTab(QWidget):
         # === 扫描控制区域 ===
         scan_group = QGroupBox("扫描控制")
         scan_layout = QHBoxLayout(scan_group)
+
+        self.scan_mode_combo = QComboBox()
+        self.scan_mode_combo.addItems(["全局扫描", "单页扫描"])
+        self.scan_mode_combo.setCurrentIndex(0)
+        scan_layout.addWidget(self.scan_mode_combo)
 
         self.scan_btn = QPushButton("开始扫描")
         self.scan_btn.clicked.connect(self.on_scan_toggle)
@@ -211,16 +226,22 @@ class OCRScanTab(QWidget):
             self.scan_status_label.setText("请先检测游戏窗口")
             return
 
-        self.scan_results = []
-        self.result_table.setRowCount(0)
+        scan_mode = "single" if self.scan_mode_combo.currentIndex() == 1 else "global"
+
+        # 全局扫描清空已有结果；单页扫描保留已有结果（累积合并）
+        if scan_mode == "global":
+            self.scan_results = {}
+            self.result_table.setRowCount(0)
+
         self.scan_btn.setText("停止扫描")
         self.detect_btn.setEnabled(False)
         self.save_btn.setEnabled(False)
+        self.scan_mode_combo.setEnabled(False)
 
         # 最小化主窗口避免遮挡游戏
         self._minimize_main_window()
 
-        self.worker = OCRScanWorker(self.hwnd)
+        self.worker = OCRScanWorker(self.hwnd, scan_mode=scan_mode)
         self.worker.progress.connect(self._on_scan_progress)
         self.worker.finished.connect(self._on_scan_finished)
         self.worker.error.connect(self._on_scan_error)
@@ -229,27 +250,39 @@ class OCRScanTab(QWidget):
 
     def _on_scan_progress(self, progress_dict, primary, secondary):
         """扫描进度回调"""
-        completed = sum(1 for v in progress_dict.values() if v["获取状态"] == "已完成")
-        total = len(progress_dict)
-        self.progress_label.setText(
-            f"[{primary}] {secondary} | 已扫描: {total} 条, 已完成: {completed} 条"
-        )
-        self._update_result_table(progress_dict)
+        # 合并到已有结果中进行实时显示
+        merged = dict(self.scan_results)
+        merged.update(progress_dict)
+        completed = sum(1 for v in merged.values() if v["获取状态"] == "已完成")
+        total = len(merged)
+
+        if primary == "单页扫描":
+            self.progress_label.setText(
+                f"单页扫描中 | 已扫描: {total} 条, 已完成: {completed} 条"
+            )
+        else:
+            self.progress_label.setText(
+                f"[{primary}] {secondary} | 已扫描: {total} 条, 已完成: {completed} 条"
+            )
+        self._update_result_table(merged)
 
     def _on_scan_finished(self, progress_dict):
         """扫描完成"""
         self._restore_main_window()
-        self.scan_results = progress_dict
-        self._update_result_table(progress_dict)
 
-        completed = sum(1 for v in progress_dict.values() if v["获取状态"] == "已完成")
+        # 合并结果：新结果覆盖旧结果（基于成就 ID）
+        self.scan_results.update(progress_dict)
+        self._update_result_table(self.scan_results)
+
+        completed = sum(1 for v in self.scan_results.values() if v["获取状态"] == "已完成")
         self.scan_btn.setText("开始扫描")
         self.scan_btn.setEnabled(True)
         self.detect_btn.setEnabled(True)
-        self.save_btn.setEnabled(bool(progress_dict))
+        self.save_btn.setEnabled(bool(self.scan_results))
+        self.scan_mode_combo.setEnabled(True)
         self.scan_status_label.setText("扫描完成")
         self.progress_label.setText(
-            f"扫描完成 | 共 {len(progress_dict)} 条, 已完成 {completed} 条"
+            f"扫描完成 | 共 {len(self.scan_results)} 条, 已完成 {completed} 条"
         )
         self.worker = None
 
@@ -259,6 +292,7 @@ class OCRScanTab(QWidget):
         self.scan_btn.setText("开始扫描")
         self.scan_btn.setEnabled(True)
         self.detect_btn.setEnabled(True)
+        self.scan_mode_combo.setEnabled(True)
         self.scan_status_label.setText(f"扫描出错: {error_msg}")
         self.scan_status_label.setStyleSheet("color: red;")
         self.worker = None
@@ -348,6 +382,7 @@ class OCRScanTab(QWidget):
         self.detect_btn.setStyleSheet(btn_style)
         self.scan_btn.setStyleSheet(btn_style)
         self.save_btn.setStyleSheet(btn_style)
+        self.scan_mode_combo.setStyleSheet(f"color: {colors.TEXT_PRIMARY};")
 
         # 标签颜色
         label_style = f"color: {colors.TEXT_PRIMARY};"
