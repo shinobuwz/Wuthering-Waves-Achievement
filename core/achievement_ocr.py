@@ -671,33 +671,53 @@ def click_primary_tab(hwnd, tab_index):
     logger.debug("点击一级Tab[%d]: (%d,%d)", tab_index, click_x, click_y)
 
 
-def _switch_to_secondary_tab(hwnd, ocr_model, known_tabs, target_name):
+def _iterate_secondary_tabs(hwnd, ocr_model, known_tabs):
     """
-    切换到指定二级 Tab。在当前可见列表中查找，找不到则向下滚动一次再试。
-    不回顶——假设按顺序切换，目标 Tab 要么在当前视野，要么在下方。
+    按屏幕坐标顺序遍历所有二级 Tab。
+    OCR 识别当前可见的二级 Tab，按 y 坐标从上到下逐个 yield，
+    当前屏幕的都处理完后自动滚动，直到所有已知 Tab 都被访问或滚动无新内容。
 
     Args:
         hwnd: 游戏窗口句柄
         ocr_model: ONNXPaddleOcr 实例
         known_tabs: 该一级分类的全部二级 Tab 名称列表
-        target_name: 目标二级 Tab 名称
-    Returns:
-        bool: 是否成功找到并点击
+    Yields:
+        (tab_name, center_y_pct): 已知Tab名称和y坐标百分比
     """
     from core.game_capture import capture_window
 
-    for attempt in range(4):  # 最多向下滚3次
+    visited = set()
+    max_scroll_no_new = 3  # 连续滚动无新Tab则停止
+
+    scroll_no_new = 0
+    while scroll_no_new < max_scroll_no_new:
         screenshot = capture_window(hwnd)
         visible = recognize_secondary_tabs(screenshot, ocr_model, known_tabs)
+
+        # 按 y 坐标顺序处理当前屏幕上未访问的 Tab
+        found_new = False
         for name, cy_pct, _ in visible:
-            if name == target_name:
-                click_secondary_tab(hwnd, cy_pct)
-                return True
-        logger.info("  未找到二级Tab '%s'（第%d次），向下滚动", target_name, attempt + 1)
+            if name in visited:
+                continue
+            found_new = True
+            visited.add(name)
+            click_secondary_tab(hwnd, cy_pct)
+            yield name, cy_pct
+
+        if len(visited) >= len(known_tabs):
+            break  # 所有已知Tab都访问过了
+
+        if not found_new:
+            scroll_no_new += 1
+        else:
+            scroll_no_new = 0
+
+        logger.info("  当前已访问 %d/%d 个二级Tab，向下滚动", len(visited), len(known_tabs))
         scroll_secondary_tabs(hwnd)
 
-    logger.warning("  无法找到二级Tab '%s'", target_name)
-    return False
+    not_visited = [t for t in known_tabs if t not in visited]
+    if not_visited:
+        logger.warning("  以下二级Tab未能访问到: %s", not_visited)
 
 
 # ============================================
@@ -705,7 +725,7 @@ def _switch_to_secondary_tab(hwnd, ocr_model, known_tabs, target_name):
 # ============================================
 
 # 一级 Tab 顺序（与 PRIMARY_TAB_ICON_Y_PCTS 对应）
-PRIMARY_TAB_NAMES = ["索拉漫行", "铿锵刃鸣", "长路留迹", "诸音声轨"]
+PRIMARY_TAB_NAMES = ["索拉漫行", "长路留迹", "铿锵刃鸣", "诸音声轨"]
 
 
 def scan_all_tabs(hwnd, ocr_model, achievements_db, category_map,
@@ -740,18 +760,30 @@ def scan_all_tabs(hwnd, ocr_model, achievements_db, category_map,
                     pi_idx, primary_name, len(secondary_list))
         click_primary_tab(hwnd, pi_idx)
 
-        for sec_name in secondary_list:
+        # 验证一级Tab是否切换成功，最多重试3次
+        max_retries = 3
+        tab_switched = False
+        for attempt in range(max_retries):
+            screenshot = capture_window(hwnd)
+            recognized = recognize_primary_tab(screenshot, ocr_model)
+            if primary_name in recognized or recognized in primary_name:
+                tab_switched = True
+                if attempt > 0:
+                    logger.info("一级Tab切换验证成功（第%d次重试）: '%s'", attempt, recognized)
+                break
+            logger.warning("一级Tab切换验证失败（第%d次尝试）: 期望 '%s'，识别到 '%s'",
+                          attempt + 1, primary_name, recognized)
+            click_primary_tab(hwnd, pi_idx)
+
+        if not tab_switched:
+            logger.error("一级Tab '%s' 切换失败，已重试%d次，跳过该分类", primary_name, max_retries)
+            continue
+
+        for sec_name, _ in _iterate_secondary_tabs(hwnd, ocr_model, secondary_list):
             if stop_flag and stop_flag():
                 break
 
             logger.info("  -> 二级Tab '%s'", sec_name)
-
-            ok = _switch_to_secondary_tab(
-                hwnd, ocr_model, secondary_list, sec_name
-            )
-            if not ok:
-                logger.warning("  跳过二级Tab '%s'（无法切换）", sec_name)
-                continue
 
             time.sleep(DELAY_LIST_LOAD)  # 等待成就列表加载
 
