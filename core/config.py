@@ -2,6 +2,7 @@
 import sys
 import os
 import logging
+import configparser
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,152 @@ def get_resource_path(relative_path):
 
 
 setup_resources_structure()
+
+
+def load_ocr_config():
+    """
+    从 resources/config.ini 加载 OCR 扫描配置参数。
+    缺失的配置项使用硬编码默认值，单项解析失败时记录警告并回退。
+
+    Returns:
+        dict: 包含所有 OCR 和游戏检测参数的字典
+    """
+    defaults = {
+        # ocr.matching
+        "match_threshold": 0.75,
+        "nms_distance": 40,
+        # ocr.name_region
+        "name_dx": 122,
+        "name_dy": -39,
+        "name_w": 503,
+        "name_h": 40,
+        # ocr.status_region
+        "status_dx": 878,
+        "status_dy": 15,
+        "status_w": 163,
+        "status_h": 47,
+        # ocr.scroll
+        "scroll_length": -160,
+        "scroll_times": 15,
+        "scroll_times_tab": 16,
+        "scroll_delay": 0.8,
+        # ocr.layout
+        "primary_tab_x1_pct": 0.053,
+        "primary_tab_y1_pct": 0.047,
+        "primary_tab_x2_pct": 0.114,
+        "primary_tab_y2_pct": 0.083,
+        "primary_tab_icon_x_pct": 0.0417,
+        "primary_tab_icon_y_pcts": [0.1778, 0.2981, 0.4343, 0.5537],
+        "secondary_tab_x1_pct": 0.1005,
+        "secondary_tab_y1_pct": 0.1796,
+        "secondary_tab_x2_pct": 0.3479,
+        "secondary_tab_y2_pct": 1.0000,
+        # ocr.timing
+        "delay_foreground": 0.3,
+        "delay_move": 0.1,
+        "delay_click_secondary": 0.5,
+        "delay_click_primary": 0.8,
+        "delay_list_load": 0.5,
+        # game
+        "game_process_names": ["Client-Win64-Shipping.exe", "Wuthering Waves.exe"],
+        "expected_width": 1920,
+        "expected_height": 1080,
+    }
+
+    ini_path = get_resource_path("config.ini")
+    if not ini_path.exists():
+        logger.warning("配置文件不存在: %s，使用默认值", ini_path)
+        return dict(defaults)
+
+    cp = configparser.ConfigParser()
+    try:
+        cp.read(str(ini_path), encoding="utf-8")
+    except Exception as e:
+        logger.warning("读取配置文件失败: %s，使用默认值", e)
+        return dict(defaults)
+
+    cfg = dict(defaults)
+
+    def _get_float(section, key, cfg_key):
+        try:
+            cfg[cfg_key] = cp.getfloat(section, key)
+        except (configparser.Error, ValueError) as e:
+            logger.warning("配置项 [%s] %s 解析失败: %s，使用默认值 %s", section, key, e, defaults[cfg_key])
+
+    def _get_int(section, key, cfg_key):
+        try:
+            cfg[cfg_key] = cp.getint(section, key)
+        except (configparser.Error, ValueError) as e:
+            logger.warning("配置项 [%s] %s 解析失败: %s，使用默认值 %s", section, key, e, defaults[cfg_key])
+
+    # ocr.matching
+    _get_float("ocr.matching", "match_threshold", "match_threshold")
+    _get_int("ocr.matching", "nms_distance", "nms_distance")
+
+    # ocr.name_region
+    _get_int("ocr.name_region", "dx", "name_dx")
+    _get_int("ocr.name_region", "dy", "name_dy")
+    _get_int("ocr.name_region", "width", "name_w")
+    _get_int("ocr.name_region", "height", "name_h")
+
+    # ocr.status_region
+    _get_int("ocr.status_region", "dx", "status_dx")
+    _get_int("ocr.status_region", "dy", "status_dy")
+    _get_int("ocr.status_region", "width", "status_w")
+    _get_int("ocr.status_region", "height", "status_h")
+
+    # ocr.scroll
+    _get_int("ocr.scroll", "scroll_length", "scroll_length")
+    _get_int("ocr.scroll", "scroll_times", "scroll_times")
+    _get_int("ocr.scroll", "scroll_times_tab", "scroll_times_tab")
+    _get_float("ocr.scroll", "scroll_delay", "scroll_delay")
+
+    # ocr.layout
+    _get_float("ocr.layout", "primary_tab_x1", "primary_tab_x1_pct")
+    _get_float("ocr.layout", "primary_tab_y1", "primary_tab_y1_pct")
+    _get_float("ocr.layout", "primary_tab_x2", "primary_tab_x2_pct")
+    _get_float("ocr.layout", "primary_tab_y2", "primary_tab_y2_pct")
+    _get_float("ocr.layout", "primary_tab_icon_x", "primary_tab_icon_x_pct")
+    _get_float("ocr.layout", "secondary_tab_x1", "secondary_tab_x1_pct")
+    _get_float("ocr.layout", "secondary_tab_y1", "secondary_tab_y1_pct")
+    _get_float("ocr.layout", "secondary_tab_x2", "secondary_tab_x2_pct")
+    _get_float("ocr.layout", "secondary_tab_y2", "secondary_tab_y2_pct")
+
+    # primary_tab_icon_y_list (逗号分隔浮点数列表)
+    try:
+        raw = cp.get("ocr.layout", "primary_tab_icon_y_list")
+        cfg["primary_tab_icon_y_pcts"] = [float(v.strip()) for v in raw.split(",")]
+    except (configparser.Error, ValueError) as e:
+        logger.warning("配置项 [ocr.layout] primary_tab_icon_y_list 解析失败: %s，使用默认值", e)
+
+    # ocr.timing
+    _get_float("ocr.timing", "delay_foreground", "delay_foreground")
+    _get_float("ocr.timing", "delay_move", "delay_move")
+    _get_float("ocr.timing", "delay_click_secondary", "delay_click_secondary")
+    _get_float("ocr.timing", "delay_click_primary", "delay_click_primary")
+    _get_float("ocr.timing", "delay_list_load", "delay_list_load")
+
+    # game
+    try:
+        raw = cp.get("game", "process_names")
+        cfg["game_process_names"] = [v.strip() for v in raw.split(",") if v.strip()]
+    except (configparser.Error, ValueError) as e:
+        logger.warning("配置项 [game] process_names 解析失败: %s，使用默认值", e)
+
+    _get_int("game", "expected_width", "expected_width")
+    _get_int("game", "expected_height", "expected_height")
+
+    logger.info("OCR 配置已从 %s 加载", ini_path)
+    return cfg
+
+
+# 全局 OCR 配置（模块加载时读取一次）
+_ocr_config = load_ocr_config()
+
+
+def get_ocr_config():
+    """获取 OCR 配置字典"""
+    return _ocr_config
 
 
 class Config:

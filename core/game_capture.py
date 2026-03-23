@@ -7,15 +7,15 @@ import ctypes.wintypes
 import numpy as np
 import mss
 
-# 鸣潮游戏进程名（实际渲染窗口由 Client-Win64-Shipping.exe 创建）
-GAME_PROCESS_NAMES = [
-    "Client-Win64-Shipping.exe",
-    "Wuthering Waves.exe",
-]
+from core.config import get_ocr_config as _get_ocr_config
+_cfg = _get_ocr_config()
 
-# 期望的游戏分辨率
-EXPECTED_WIDTH = 1920
-EXPECTED_HEIGHT = 1080
+# 鸣潮游戏进程名（从 config.ini 加载）
+GAME_PROCESS_NAMES = _cfg["game_process_names"]
+
+# 期望的游戏分辨率（从 config.ini 加载）
+EXPECTED_WIDTH = _cfg["expected_width"]
+EXPECTED_HEIGHT = _cfg["expected_height"]
 
 
 def _get_pids_by_name(process_name):

@@ -43,9 +43,10 @@ def build():
         "--file-description=Wuthering Waves Achievement Tool",
         "--assume-yes-for-downloads",
         "--show-progress",
-        # 包含 onnxocr 模型文件和 OCR 模板
+        # 包含 onnxocr 模型文件、OCR 模板和配置文件
         "--include-data-dir=onnxocr=onnxocr",
         "--include-data-dir=resources/ocr_templates=resources/ocr_templates",
+        "--include-data-files=config.ini=config.ini",
         # 排除不必要的模块
         "--nofollow-import-to=matplotlib",
         "--nofollow-import-to=scipy",
