@@ -15,9 +15,6 @@ class SignalBus(QObject):
     crawl_finished = Signal(object, str)  # 爬取完成 (数据, 消息)
     crawl_progress = Signal(str)  # 爬取进度
     
-    # 认证相关信号
-    auth_data_updated = Signal(str, str)  # 认证数据更新 (devcode, token)
-    
     # 更新检查相关信号
     update_available = Signal(dict)  # 有可用更新 (更新信息)
     update_check_started = Signal()  # 开始检查更新

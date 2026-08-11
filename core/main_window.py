@@ -257,11 +257,6 @@ class TemplateMainWindow(QMainWindow):
         """后台检查成就数据并自动合并"""
         from core.crawl_tab import AchievementCrawler, CrawlerThread
 
-        devcode, token = config.get_auth_data()
-        if not devcode or not token:
-            logger.info("认证信息未配置，跳过启动数据检查")
-            return
-
         self._sync_crawler = AchievementCrawler(target_version=None)
         self._sync_crawler.progress.connect(
             lambda msg: logger.info("%s", msg)
@@ -279,7 +274,6 @@ class TemplateMainWindow(QMainWindow):
         """获取远端全量数据，解析所有成就（不筛选版本），与本地对比合并"""
         import re
         try:
-            self._sync_crawler._load_auth_config()
             self._sync_crawler.progress.emit("正在检查成就数据更新...")
             api_data = self._sync_crawler.get_achievement_data()
             if not api_data:
@@ -546,9 +540,8 @@ class TemplateMainWindow(QMainWindow):
         info_text.setText("""
         <p><b>📖 快速入门指南：</b></p>
         <p style='margin-left: 20px;'>1. <b>添加用户</b>：首先需要在设置中添加您的游戏昵称和uid</p>
-        <p style='margin-left: 20px;'>2. <b>设置认证信息</b>：在设置-用户管理-通用认证设置查看如何设置</p>
-        <p style='margin-left: 20px;'>3. <b>数据爬取</b>：输入版本号爬取对应版本的成就数据</p>
-        <p style='margin-left: 20px;'>4. <b>管理成就</b>：在成就管理中查看和标记您的成就进度</p>
+        <p style='margin-left: 20px;'>2. <b>数据爬取</b>：输入版本号同步对应版本的成就数据</p>
+        <p style='margin-left: 20px;'>3. <b>管理成就</b>：在成就管理中查看和标记您的成就进度</p>
         
         <p><b>💡 使用提示：</b></p>
         <p style='margin-left: 20px;'>• 点击左上角头像可以切换角色形象</p>

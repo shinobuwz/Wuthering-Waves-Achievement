@@ -207,8 +207,6 @@ class Config:
         # 直接定义属性，与模板保持一致
         self.current_user = ""
         self.users = {}
-        self.devcode = ""
-        self.token = ""
         self.theme = "dark"
         self.auto_save = True
         self.use_background = True
@@ -230,12 +228,19 @@ class Config:
         # 首次运行标记
         self.first_run = True  # 默认设为true，load_config时会检查
 
-        # 使用 QSettings 存储认证信息
-        from PySide6.QtCore import QSettings
-        self.settings = QSettings("WutheringWavesAchievement", "AuthData")
-
         self.load_config()
-        self._load_auth_from_settings()
+        self._clear_legacy_auth_store()
+
+    @staticmethod
+    def _clear_legacy_auth_store():
+        """Remove credentials saved by versions that required Wiki authentication."""
+        from PySide6.QtCore import QSettings
+
+        legacy_settings = QSettings("WutheringWavesAchievement", "AuthData")
+        if legacy_settings.allKeys():
+            legacy_settings.clear()
+            legacy_settings.sync()
+            logger.info("已清理旧版 Wiki 认证信息")
 
     def load_config(self):
         """加载配置"""
@@ -263,7 +268,7 @@ class Config:
             # 确保目录存在
             self.config_file.parent.mkdir(parents=True, exist_ok=True)
 
-            # 收集所有属性（不包括认证信息和内部配置）
+            # 收集可持久化配置
             data = {
                 "current_user": self.current_user,
                 "users": self.users,
@@ -281,9 +286,6 @@ class Config:
 
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-
-            # 保存认证信息到 QSettings
-            self._save_auth_to_settings()
         except Exception as e:
             logger.error("保存配置失败: %s", e)
 
@@ -317,21 +319,6 @@ class Config:
     def get_users(self):
         """获取所有用户"""
         return self.users
-
-    def get_auth_data(self):
-        """获取当前认证数据"""
-        return self.devcode or "", self.token or ""
-
-    def _load_auth_from_settings(self):
-        """从 QSettings 加载认证信息"""
-        self.devcode = self.settings.value("devcode", "", str)
-        self.token = self.settings.value("token", "", str)
-
-    def _save_auth_to_settings(self):
-        """保存认证信息到 QSettings"""
-        self.settings.setValue("devcode", self.devcode)
-        self.settings.setValue("token", self.token)
-        self.settings.sync()  # 立即保存
 
     def set_user_avatar(self, username, avatar_path):
         """设置用户头像"""

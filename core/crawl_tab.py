@@ -1,6 +1,6 @@
 ﻿from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                                QTableWidget, QTableWidgetItem, QLineEdit,
-                               QFileDialog, QFrame, QDialog)
+                               QFileDialog, QFrame)
 from PySide6.QtCore import Qt, QThread, Signal, QObject
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QColor
@@ -30,8 +30,6 @@ class AchievementCrawler(QObject):
     def __init__(self, target_version=None):
         super().__init__()
         self.target_version = target_version
-        self.devcode = ""
-        self.token = ""
         
         # 从配置文件加载分类配置
         self.category_config = config.load_category_config()
@@ -44,14 +42,8 @@ class AchievementCrawler(QObject):
             for second_cat in second_cats:
                 self.first_category_map[second_cat] = first_cat
     
-    def _load_auth_config(self):
-        """从配置中加载认证信息"""
-        self.devcode, self.token = config.get_auth_data()
-
     def crawl(self):
         try:
-            # 加载认证信息
-            self._load_auth_config()
             self.progress.emit("正在获取成就数据...")
             data = self.get_achievement_data()
             if data:
@@ -85,9 +77,16 @@ class AchievementCrawler(QObject):
         return None
 
     def _compute_data_hash(self, response_data):
-        """计算 API 响应数据内容的 hash（排除 _cache_meta）"""
+        """计算稳定的 Wiki 内容 hash，排除缓存和请求级动态字段。"""
+        import copy
         import hashlib
-        data_copy = {k: v for k, v in response_data.items() if k != '_cache_meta'}
+
+        data_copy = copy.deepcopy(response_data)
+        data_copy.pop('_cache_meta', None)
+        data_copy.pop('traceId', None)
+        if isinstance(data_copy.get('data'), dict):
+            data_copy['data'].pop('browseCount', None)
+
         data_str = json.dumps(data_copy, ensure_ascii=False, sort_keys=True)
         return hashlib.md5(data_str.encode('utf-8')).hexdigest()
 
@@ -115,8 +114,6 @@ class AchievementCrawler(QObject):
             'Origin': 'https://wiki.kurobbs.com',
             'Referer': 'https://wiki.kurobbs.com/',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'devcode': self.devcode,
-            'token': self.token,
             'wiki_type': '9'
         }
         data = {'id': '1220879855033786368'}
@@ -128,15 +125,6 @@ class AchievementCrawler(QObject):
         from core.config import get_resource_path
 
         cache_file = get_resource_path("resources") / "achievement_cache.json"
-
-        # 认证信息缺失时的降级处理
-        if not self.devcode or not self.token:
-            cache_meta, cached_data = self._read_cache_meta(cache_file)
-            if cached_data:
-                self.progress.emit("认证信息未配置，使用本地缓存")
-                logger.info("认证信息缺失，使用本地缓存")
-                return cached_data
-            raise Exception("请先获取数据认证信息")
 
         # 读取本地缓存元数据
         cache_meta, cached_data = self._read_cache_meta(cache_file)
@@ -603,13 +591,6 @@ class CrawlTab(QWidget):
         self.data_file = str(data_dir / "wuthering_waves_achievements.json")
         self.init_ui()
         
-        # 配置信息
-        # 从配置中读取认证信息
-        self._load_auth_config()
-        
-        # 监听配置变化信号
-        signal_bus.settings_changed.connect(self._on_settings_changed)
-        
         # 监听主题切换信号
         signal_bus.theme_changed.connect(self._on_theme_changed)
         
@@ -658,11 +639,6 @@ class CrawlTab(QWidget):
         self.merge_btn.setEnabled(False)
         crawl_row.addWidget(self.merge_btn)
 
-        self.auth_btn = QPushButton("获取认证")
-        self.auth_btn.setProperty("buttonRole", "quiet")
-        self.auth_btn.clicked.connect(self.configure_auth)
-        crawl_row.addWidget(self.auth_btn)
-
         self.clear_cache_btn = QPushButton("清除缓存")
         self.clear_cache_btn.setProperty("buttonRole", "quiet")
         self.clear_cache_btn.clicked.connect(self.clear_cache)
@@ -708,36 +684,6 @@ class CrawlTab(QWidget):
         self.apply_theme(config.theme)
         logger.info("数据爬取标签页已初始化")
     
-    def _load_auth_config(self):
-        """从配置中加载认证信息"""
-        self.devcode, self.token = config.get_auth_data()
-
-    def configure_auth(self):
-        """通过内嵌库街区登录自动获取数据接口凭据。"""
-        try:
-            from core.settings_dialog import BrowserAuthDialog
-            dialog = BrowserAuthDialog(self)
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                return
-            if not dialog.devcode or not dialog.token:
-                self.status_label.setText("未获取到认证信息")
-                return
-            config.devcode = dialog.devcode
-            config.token = dialog.token
-            config.save_config()
-            self._load_auth_config()
-            self.status_label.setText("认证信息已自动获取并保存")
-        except Exception as exc:
-            logger.error("自动获取认证信息失败: %s", exc, exc_info=True)
-            self.status_label.setText("认证窗口启动失败")
-            self.show_notification(f"认证窗口启动失败: {exc}")
-    
-    def _on_settings_changed(self, settings_data):
-        """配置变化时的处理"""
-        if 'devcode' in settings_data or 'token' in settings_data:
-            self._load_auth_config()
-            logger.info("认证配置已更新")
-    
     def _on_theme_changed(self, theme):
         """主题切换时更新样式"""
         # 更新按钮样式
@@ -780,13 +726,7 @@ class CrawlTab(QWidget):
             return
         
         self.crawl_btn.setEnabled(False)
-        
-        # 检查认证信息是否完整
-        if not self.devcode or not self.token:
-            self.crawl_btn.setEnabled(True)
-            self.show_notification("请先点击“获取认证”并完成库街区登录")
-            return
-        
+
         # 创建爬虫对象和线程
         crawler = AchievementCrawler(target_version)
         crawler.progress.connect(self.update_progress)
