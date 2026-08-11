@@ -1,0 +1,110 @@
+{
+  "runId": "0e60bc79",
+  "agent": "scout",
+  "task": "Read-only repository reconnaissance. Inspect the current Python application and identify user-visible behavior, data contracts, import/export/update/wiki/OCR boundaries, state persistence, and existing tests that a native rewrite must preserve. Pay special attention to base_achievements.json, category_config.json, config/user progress formats, achievement status semantics, and OCR scan behavior. Do not edit files. Return concise findings with file references, migration hazards, and suggested vertical cutover boundaries.",
+  "exitCode": 1,
+  "processSignal": "SIGTERM",
+  "usage": {
+    "input": 228219,
+    "output": 6901,
+    "cacheRead": 1552896,
+    "cacheWrite": 0,
+    "cost": 0,
+    "turns": 23
+  },
+  "model": "codex-api-proxy/gpt-5.6-sol",
+  "attemptedModels": [
+    "codex-api-proxy/gpt-5.6-sol"
+  ],
+  "modelAttempts": [
+    {
+      "model": "codex-api-proxy/gpt-5.6-sol",
+      "success": false,
+      "exitCode": 1,
+      "error": "stream_read_error",
+      "usage": {
+        "input": 228219,
+        "output": 6901,
+        "cacheRead": 1552896,
+        "cacheWrite": 0,
+        "cost": 0,
+        "turns": 23
+      }
+    }
+  ],
+  "durationMs": 902969,
+  "toolCount": 117,
+  "error": "stream_read_error",
+  "launchContractDigest": "8ef597a983a2dbecae2db3366a5e35cb69345fb574856552589bb07a49722c09",
+  "launchResolvedExtensions": {
+    "version": 1,
+    "source": "launch-resolved",
+    "disableAmbientExtensions": false,
+    "runtime": [
+      "sha256:e302849dc5005237"
+    ],
+    "configured": [],
+    "effective": [
+      "sha256:e302849dc5005237"
+    ],
+    "omitted": {
+      "runtime": 0,
+      "configured": 0,
+      "effective": 0
+    }
+  },
+  "acceptance": {
+    "status": "rejected",
+    "evidenceStatus": "rejected",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "attested",
+      "explicit": false,
+      "inferredReason": [
+        "read-only/reviewer-style agent"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Return concrete findings with file paths and severity when applicable",
+          "evidence": [
+            "review-findings",
+            "residual-risks"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "review-findings",
+        "residual-risks"
+      ],
+      "verify": [],
+      "stopRules": []
+    },
+    "inferredReason": [
+      "read-only/reviewer-style agent"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Return concrete findings with file paths and severity when applicable",
+        "evidence": [
+          "review-findings",
+          "residual-risks"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [
+      {
+        "id": "attestation",
+        "status": "failed",
+        "message": "Structured acceptance report not found."
+      }
+    ],
+    "verifyRuns": [],
+    "childReportParseError": "Structured acceptance report not found."
+  },
+  "transcriptPath": "E:\\gitlab\\Wuthering-Waves-Achievement\\.pi-subagents\\artifacts\\0e60bc79_scout_0_transcript.jsonl",
+  "timestamp": 1786451586062
+}

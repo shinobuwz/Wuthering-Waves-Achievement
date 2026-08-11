@@ -1,0 +1,145 @@
+{
+  "runId": "f3d99162",
+  "agent": "reviewer",
+  "task": "Read-only independent high-risk plan review. Do not edit any project or OPSX files. Inspect the repository directly and review the complete draft below. This is the exactly-one mandatory fresh reviewer execution for OPSX Plan.\n\nUser objective: replace the Python/PySide6 application with a refined Windows-only VS2022 application; eventually remove Python/Qt; use C# WPF for desktop UI and a project-specific C++ PP-OCRv5 DLL using ONNX Runtime/OpenCV/Clipper2; add an always-on-top tracked-achievement overlay where completing an item removes it.\n\nProposed serial change split:\n1. native-achievement-workspace: side-by-side .NET 10 WPF app covering achievement management, statistics, anonymous Wiki sync, JSON/Excel import/export, theme and update check. No OCR or overlay yet. Existing Python app remains available.\n2. native-ocr-scan: native C++ PP-OCRv5 engine plus game capture, single-page/global scan, cancellation, result preview, non-downgrade progress merge.\n3. tracked-achievement-overlay: persistent tracked set, independent transparent topmost WPF window, edit/locked click-through modes, global shortcut, multi-monitor/DPI behavior; completing an item untracks it after a brief transition.\n4. native-cutover-release: release packaging, legacy cleanup/removal, docs, final data migration and replacement of Python entry point after parity verification.\n\nChange 1 behavioral draft:\n- Windows x64, VS2022, net10.0-windows WPF. Custom dark charcoal/teal game-tool visual system; dense virtualized achievement table; no marketing screen.\n- On launch load the shipped base_achievements.json/category_config.json and the selected legacy profile when available. Preserve Chinese JSON field names and statuses: 未完成, 已完成, 暂不可获取, 已占用. Preserve achievement-group mutual exclusion semantics.\n- Native mutable state lives under %LocalAppData%/WutheringWavesAchievement. One-time migration reads legacy resources/config.json and resources/user_progress_{uid}.json without modifying them, writes atomically, and records completion only after successful validation. Existing files remain recoverable.\n- Single local profile in native UI; legacy current user/UID is selected for migration. Multi-user administration, avatar/character artwork management, category/group editing and OCR are non-goals for change 1.\n- Users can search name/description; filter version, first/second category, hidden/obtainable state; hide completed; sort default/incomplete-first; change status; observe live statistics with achievement groups counted once.\n- Anonymous Wiki sync uses the existing endpoint and stable cache semantics, adds/updates base data without downgrading or deleting user progress on network/parse failures.\n- JSON and Excel import/export preserve supported legacy columns and status formats; destructive import requires confirmation and a backup/transaction boundary.\n- Theme choice and secure GitHub update check are retained. No TLS verification bypass.\n\nArchitecture/testing draft:\n- Solution projects Wuwa.App, Wuwa.Core, Wuwa.Infrastructure, Wuwa.Tests. WPF UI consumes one deep public seam, AchievementWorkspace, for load/query/status/statistics operations.\n- IAppDataStore is the system-boundary adapter with JsonAppDataStore production and InMemoryAppDataStore test implementations, proving the seam is replaceable. UI does not access JSON directly.\n- Highest behavior seam: AchievementWorkspace public observable behavior, tested against temp legacy fixtures and both adapters; UI smoke checks cover launch, 958-row load, status update and filter/stat refresh.\n- Verification: dotnet test; dotnet build Release; migration roundtrip on temp directories; live anonymous Wiki probe isolated from user data; WPF launch/UI Automation and screenshots at 1080x700 and 1440x900; package smoke launch.\n\nProposed Change 1 vertical tasks:\n1. Native tracer: launch WPF, load existing 958-row library through AchievementWorkspace, filter and change status, show live metrics with tests.\n2. Legacy migration and atomic native persistence with recovery tests.\n3. Anonymous Wiki sync through workspace with isolated live/cache verification.\n4. JSON/Excel import-export roundtrip and destructive-operation backup behavior.\n5. Refined WPF views, theme, secure update check, keyboard/DPI/accessibility and screenshot review.\n6. Side-by-side release publish and documentation, without deleting Python.\n\nKnown risks: data schema migration, multi-module rewrite, status/group semantics, Wiki response parsing, WPF UI automation, and later native ABI boundary. Existing worktree has unrelated user deletions under openspec/; they must not be reverted or treated as this change.\n\nReturn: (1) verdict, (2) CRITICAL/WARNING/SUGGESTION findings with repository evidence, (3) whether four changes and Change 1 scope are coherent, (4) whether the proposed public seam passes completion/deletion tests and has two adapters, (5) missing verification/blockers, and (6) precise recommended dispositions. No edits.",
+  "exitCode": 0,
+  "processSignal": "SIGINT",
+  "usage": {
+    "input": 129579,
+    "output": 5085,
+    "cacheRead": 527360,
+    "cacheWrite": 0,
+    "cost": 0,
+    "turns": 11
+  },
+  "model": "codex-api-proxy/gpt-5.6-sol",
+  "attemptedModels": [
+    "codex-api-proxy/gpt-5.6-sol"
+  ],
+  "modelAttempts": [
+    {
+      "model": "codex-api-proxy/gpt-5.6-sol",
+      "success": true,
+      "exitCode": 0,
+      "usage": {
+        "input": 129579,
+        "output": 5085,
+        "cacheRead": 527360,
+        "cacheWrite": 0,
+        "cost": 0,
+        "turns": 11
+      }
+    }
+  ],
+  "durationMs": 651218,
+  "toolCount": 51,
+  "launchContractDigest": "362fd0129d88f4fddf121c77c771ccabd137bb785585d061ca8bada89a9867ae",
+  "launchResolvedExtensions": {
+    "version": 1,
+    "source": "launch-resolved",
+    "disableAmbientExtensions": false,
+    "runtime": [
+      "sha256:e302849dc5005237"
+    ],
+    "configured": [],
+    "effective": [
+      "sha256:e302849dc5005237"
+    ],
+    "omitted": {
+      "runtime": 0,
+      "configured": 0,
+      "effective": 0
+    }
+  },
+  "acceptance": {
+    "status": "rejected",
+    "evidenceStatus": "rejected",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "checked",
+      "explicit": false,
+      "inferredReason": [
+        "risky write-capable run"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Implement the requested change without widening scope",
+          "evidence": [
+            "changed-files",
+            "tests-added",
+            "commands-run",
+            "residual-risks",
+            "no-staged-files"
+          ],
+          "severity": "required"
+        },
+        {
+          "id": "criterion-2",
+          "must": "Return evidence sufficient for an independent acceptance review",
+          "evidence": [
+            "changed-files",
+            "tests-added",
+            "commands-run",
+            "residual-risks",
+            "no-staged-files"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "changed-files",
+        "tests-added",
+        "commands-run",
+        "residual-risks",
+        "no-staged-files"
+      ],
+      "verify": [],
+      "review": {
+        "agent": "reviewer",
+        "required": true
+      },
+      "stopRules": []
+    },
+    "inferredReason": [
+      "risky write-capable run"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Implement the requested change without widening scope",
+        "evidence": [
+          "changed-files",
+          "tests-added",
+          "commands-run",
+          "residual-risks",
+          "no-staged-files"
+        ],
+        "severity": "required"
+      },
+      {
+        "id": "criterion-2",
+        "must": "Return evidence sufficient for an independent acceptance review",
+        "evidence": [
+          "changed-files",
+          "tests-added",
+          "commands-run",
+          "residual-risks",
+          "no-staged-files"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [
+      {
+        "id": "attestation",
+        "status": "failed",
+        "message": "Structured acceptance report not found."
+      }
+    ],
+    "verifyRuns": [],
+    "childReportParseError": "Structured acceptance report not found."
+  },
+  "transcriptPath": "E:\\gitlab\\Wuthering-Waves-Achievement\\.pi-subagents\\artifacts\\f3d99162_reviewer_0_transcript.jsonl",
+  "timestamp": 1786452045115
+}
