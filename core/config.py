@@ -209,7 +209,7 @@ class Config:
         self.users = {}
         self.devcode = ""
         self.token = ""
-        self.theme = "light"
+        self.theme = "dark"
         self.auto_save = True
         self.use_background = True
         self.custom_background_light = ""

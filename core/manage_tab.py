@@ -1,6 +1,5 @@
 ﻿from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-                               QComboBox, QGroupBox, QFileDialog, QApplication, QCheckBox)
-from PySide6.QtCore import Qt
+                               QComboBox, QFileDialog, QApplication, QCheckBox, QFrame)
 import logging
 import os
 import json
@@ -8,7 +7,7 @@ import json
 logger = logging.getLogger(__name__)
 
 from core.config import config, get_resource_path
-from core.styles import get_font_gray_style, get_button_style
+from core.styles import get_button_style
 
 # 导入爬虫相关的类
 from .achievement_table import AchievementTable
@@ -207,242 +206,141 @@ class ManageTab(QWidget):
         self.load_local_data()
 
     def on_theme_changed(self, theme):
-        """主题切换时更新按钮样式"""
-        from core.styles import get_button_style
-        self.import_btn.setStyleSheet(get_button_style(theme))
-        self.import_excel_btn.setStyleSheet(get_button_style(theme))
-        self.export_excel_btn.setStyleSheet(get_button_style(theme))
-        self.export_json_btn.setStyleSheet(get_button_style(theme))
-        self.settings_btn.setStyleSheet(get_button_style(theme))
-        self.help_btn.setStyleSheet(get_button_style(theme))
+        """主题切换时更新页面样式。"""
+        self.apply_theme(theme)
 
     def init_ui(self):
-        """初始化UI"""
+        """初始化成就工作区。"""
+        from core.widgets import PageHeader
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(15)
+        layout.setContentsMargins(24, 20, 24, 18)
+        layout.setSpacing(14)
 
-        # 筛选面板
-        filter_group = QGroupBox()
-        filter_main_layout = QVBoxLayout(filter_group)
+        layout.addWidget(PageHeader(
+            "成就管理",
+            "检索成就、维护完成状态，并导入或导出本地数据。",
+        ))
 
-        # 第一行筛选
-        filter_layout = QHBoxLayout()
+        toolbar = QFrame()
+        toolbar.setObjectName("toolbar")
+        toolbar_layout = QVBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(14, 12, 14, 12)
+        toolbar_layout.setSpacing(9)
 
-        # 第二行筛选
-        filter_layout2 = QHBoxLayout()
+        primary_filters = QHBoxLayout()
+        primary_filters.setSpacing(8)
 
-        # 第一行筛选
-        filter_layout.setSpacing(5)
-
-        # 成就搜索
-        search_label = QLabel("成就搜索:")
-        search_label.setFixedWidth(70)
-        search_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        filter_layout.addWidget(search_label)
-
+        search_label = QLabel("搜索")
+        search_label.setObjectName("sectionLabel")
+        primary_filters.addWidget(search_label)
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("搜索成就名称或描述...")
-        self.search_input.setFixedWidth(270)
-        self.search_input.setFixedHeight(26)
+        self.search_input.setPlaceholderText("输入名称或描述")
+        self.search_input.setMinimumWidth(180)
         self.search_input.textChanged.connect(self.filter_data)
-        filter_layout.addWidget(self.search_input)
+        primary_filters.addWidget(self.search_input, 1)
 
-        # 版本筛选
-        version_label = QLabel("版本:")
-        version_label.setFixedWidth(70)
-        version_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        filter_layout.addWidget(version_label)
-
+        primary_filters.addWidget(QLabel("版本"))
         self.version_filter = QComboBox()
         self.version_filter.addItem("所有版本")
-        self.version_filter.setFixedWidth(100)
+        self.version_filter.setMinimumWidth(90)
         self.version_filter.currentTextChanged.connect(self.filter_data)
-        filter_layout.addWidget(self.version_filter)
+        primary_filters.addWidget(self.version_filter)
 
-        # 获取类型筛选
-        obtainable_label = QLabel("获取类型:")
-        obtainable_label.setFixedWidth(70)
-        obtainable_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        filter_layout.addWidget(obtainable_label)
-
-        self.obtainable_filter = QComboBox()
-        self.obtainable_filter.addItem("全部")
-        self.obtainable_filter.addItem("可获取")
-        self.obtainable_filter.addItem("暂不可获取")
-        self.obtainable_filter.addItem("多选一")
-        self.obtainable_filter.setFixedWidth(100)
-        self.obtainable_filter.currentTextChanged.connect(self.filter_data)
-        filter_layout.addWidget(self.obtainable_filter)
-
-        filter_layout.addStretch()
-
-        # 第二行筛选：第一分类 + 第二分类 + 排序 + 是否隐藏
-        filter_layout2 = QHBoxLayout()
-        filter_layout2.setSpacing(5)
-
-        # 第一分类筛选
-        first_category_label = QLabel("第一分类:")
-        first_category_label.setFixedWidth(70)
-        first_category_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        filter_layout2.addWidget(first_category_label)
-
+        primary_filters.addWidget(QLabel("一级分类"))
         self.first_category_filter = QComboBox()
         self.first_category_filter.addItem("全部")
-        self.first_category_filter.setFixedWidth(100)
+        self.first_category_filter.setMinimumWidth(100)
         self.first_category_filter.currentTextChanged.connect(self.on_first_category_changed)
-        filter_layout2.addWidget(self.first_category_filter)
+        primary_filters.addWidget(self.first_category_filter)
 
-        # 第二分类筛选
-        second_category_label = QLabel("第二分类:")
-        second_category_label.setFixedWidth(70)
-        second_category_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        filter_layout2.addWidget(second_category_label)
-
+        primary_filters.addWidget(QLabel("二级分类"))
         self.second_category_filter = QComboBox()
         self.second_category_filter.addItem("全部")
-        self.second_category_filter.setFixedWidth(100)
+        self.second_category_filter.setMinimumWidth(120)
         self.second_category_filter.currentTextChanged.connect(self.filter_data)
-        filter_layout2.addWidget(self.second_category_filter)
+        primary_filters.addWidget(self.second_category_filter)
+        toolbar_layout.addLayout(primary_filters)
 
-        # 排序筛选
-        priority_label = QLabel("排序:")
-        priority_label.setFixedWidth(70)
-        priority_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        filter_layout2.addWidget(priority_label)
+        secondary_filters = QHBoxLayout()
+        secondary_filters.setSpacing(8)
 
-        self.priority_filter = QComboBox()
-        self.priority_filter.addItem("默认排序")
-        self.priority_filter.addItem("未完成优先")
-        self.priority_filter.setFixedWidth(100)
-        self.priority_filter.currentTextChanged.connect(self.filter_data)
-        filter_layout2.addWidget(self.priority_filter)
-
-        # 是否隐藏筛选
-        hidden_label = QLabel("是否隐藏:")
-        hidden_label.setFixedWidth(70)
-        hidden_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        filter_layout2.addWidget(hidden_label)
+        self.obtainable_filter = QComboBox()
+        self.obtainable_filter.addItems(["全部", "可获取", "暂不可获取", "多选一"])
+        self.obtainable_filter.setMinimumWidth(112)
+        self.obtainable_filter.currentTextChanged.connect(self.filter_data)
+        secondary_filters.addWidget(self.obtainable_filter)
 
         self.hidden_filter = QComboBox()
-        self.hidden_filter.addItem("所有")
-        self.hidden_filter.addItem("仅隐藏")
-        self.hidden_filter.addItem("仅非隐藏")
-        self.hidden_filter.setFixedWidth(100)
+        self.hidden_filter.addItems(["所有", "仅隐藏", "仅非隐藏"])
+        self.hidden_filter.setMinimumWidth(112)
         self.hidden_filter.currentTextChanged.connect(self.filter_data)
-        filter_layout2.addWidget(self.hidden_filter)
+        secondary_filters.addWidget(self.hidden_filter)
+
+        self.priority_filter = QComboBox()
+        self.priority_filter.addItems(["默认排序", "未完成优先"])
+        self.priority_filter.setMinimumWidth(112)
+        self.priority_filter.currentTextChanged.connect(self.filter_data)
+        secondary_filters.addWidget(self.priority_filter)
 
         self.hide_completed_checkbox = QCheckBox("隐藏已完成")
         self.hide_completed_checkbox.stateChanged.connect(self.filter_data)
-        filter_layout2.addWidget(self.hide_completed_checkbox)
+        secondary_filters.addWidget(self.hide_completed_checkbox)
+        secondary_filters.addStretch()
+        toolbar_layout.addLayout(secondary_filters)
 
-        filter_layout2.addStretch()
+        file_actions = QHBoxLayout()
+        file_actions.setSpacing(8)
+        action_label = QLabel("文件操作")
+        action_label.setObjectName("sectionLabel")
+        file_actions.addWidget(action_label)
+        file_actions.addStretch()
 
-        # 将两行布局添加到筛选主布局中
-        filter_main_layout.addLayout(filter_layout)
-        filter_main_layout.addLayout(filter_layout2)
-
-        # 减少筛选区域的垂直间距
-        filter_main_layout.setSpacing(3)
-        filter_main_layout.setContentsMargins(8, 5, 8, 5)
-
-        # 按钮区域
-        button_group = QGroupBox()
-        button_layout = QVBoxLayout(button_group)
-        button_layout.setSpacing(5)
-        button_layout.setContentsMargins(8, 5, 8, 5)
-
-        # 第一行：导入JSON、导出JSON、设置
-        first_row = QHBoxLayout()
-        first_row.setSpacing(5)
-        self.import_btn = QPushButton("导入JSON")
-        self.import_btn.setStyleSheet(get_button_style(config.theme))
+        self.import_btn = QPushButton("导入 JSON")
         self.import_btn.clicked.connect(self.import_json)
-        self.import_btn.setFixedWidth(80)
-        first_row.addWidget(self.import_btn)
+        file_actions.addWidget(self.import_btn)
 
-        self.export_json_btn = QPushButton("导出JSON")
-        self.export_json_btn.setStyleSheet(get_button_style(config.theme))
-        self.export_json_btn.clicked.connect(self.export_full_json)
-        self.export_json_btn.setFixedWidth(80)
-        first_row.addWidget(self.export_json_btn)
-
-        self.settings_btn = QPushButton("设置")
-        self.settings_btn.setStyleSheet(get_button_style(config.theme))
-        self.settings_btn.clicked.connect(self.open_settings)
-        self.settings_btn.setFixedWidth(80)
-        first_row.addWidget(self.settings_btn)
-        first_row.addStretch()
-
-        button_layout.addLayout(first_row)
-
-        # 第二行：导入Excel、导出Excel、帮助
-        second_row = QHBoxLayout()
-        second_row.setSpacing(5)
-        self.import_excel_btn = QPushButton("导入Excel")
-        self.import_excel_btn.setStyleSheet(get_button_style(config.theme))
+        self.import_excel_btn = QPushButton("导入 Excel")
         self.import_excel_btn.clicked.connect(self.import_excel)
-        self.import_excel_btn.setFixedWidth(80)
-        second_row.addWidget(self.import_excel_btn)
+        file_actions.addWidget(self.import_excel_btn)
 
-        self.export_excel_btn = QPushButton("导出Excel")
-        self.export_excel_btn.setStyleSheet(get_button_style(config.theme))
+        self.export_json_btn = QPushButton("导出 JSON")
+        self.export_json_btn.clicked.connect(self.export_full_json)
+        file_actions.addWidget(self.export_json_btn)
+
+        self.export_excel_btn = QPushButton("导出 Excel")
+        self.export_excel_btn.setProperty("buttonRole", "primary")
         self.export_excel_btn.clicked.connect(self.export_excel)
-        self.export_excel_btn.setFixedWidth(80)
-        second_row.addWidget(self.export_excel_btn)
+        file_actions.addWidget(self.export_excel_btn)
+        toolbar_layout.addLayout(file_actions)
+        layout.addWidget(toolbar)
 
-        self.help_btn = QPushButton("帮助")
-        self.help_btn.setStyleSheet(get_button_style(config.theme))
-        self.help_btn.clicked.connect(self.open_help)
-        self.help_btn.setFixedWidth(80)
-        second_row.addWidget(self.help_btn)
-        second_row.addStretch()
+        stats_strip = QFrame()
+        stats_strip.setObjectName("metricStrip")
+        stats_layout = QHBoxLayout(stats_strip)
+        stats_layout.setContentsMargins(16, 8, 16, 8)
+        stats_layout.setSpacing(22)
 
-        button_layout.addLayout(second_row)
-
-        # 创建主水平布局，包含筛选区域和按钮区域
-        main_filter_layout = QHBoxLayout()
-        main_filter_layout.addWidget(filter_group, 3)  # 筛选区域占3份
-        main_filter_layout.addWidget(button_group, 1)  # 按钮区域占1份
-
-        layout.addLayout(main_filter_layout)
-
-        # 统计信息
-        stats_group = QGroupBox("统计信息")
-        stats_layout = QHBoxLayout(stats_group)
-
-        # 总计
-        self.total_label = QLabel("📊 总计: 0")
-        stats_layout.addWidget(self.total_label)
-
-        # 已完成
-        self.completed_label = QLabel("✅ 已完成: 0")
-        stats_layout.addWidget(self.completed_label)
-
-        # 未完成
-        self.incomplete_label = QLabel("⭕ 未完成: 0")
-        stats_layout.addWidget(self.incomplete_label)
-
-        # 隐藏成就
-        self.hidden_label = QLabel("🙈 隐藏成就: 0")
-        stats_layout.addWidget(self.hidden_label)
-
-        # 暂不可获取
-        self.unavailable_label = QLabel("🚫 暂不可获取: 0")
-        stats_layout.addWidget(self.unavailable_label)
-
-        # 多选一
-        self.multi_choice_label = QLabel("🎯 多选一: 0")
-        stats_layout.addWidget(self.multi_choice_label)
-
+        self.total_label = QLabel("总计  0")
+        self.completed_label = QLabel("已完成  0")
+        self.incomplete_label = QLabel("未完成  0")
+        self.hidden_label = QLabel("隐藏  0")
+        self.unavailable_label = QLabel("暂不可获取  0")
+        self.multi_choice_label = QLabel("多选一  0")
+        for stat_label in (
+            self.total_label, self.completed_label, self.incomplete_label,
+            self.hidden_label, self.unavailable_label, self.multi_choice_label,
+        ):
+            stat_label.setObjectName("metricValue")
+            stats_layout.addWidget(stat_label)
         stats_layout.addStretch()
-        layout.addWidget(stats_group)
+        layout.addWidget(stats_strip)
 
-        # 管理表格
         self.manager_table = AchievementTable()
-        layout.addWidget(self.manager_table)
+        self.manager_table.setAlternatingRowColors(True)
+        layout.addWidget(self.manager_table, 1)
 
-        # 初始日志
+        self.apply_theme(config.theme)
         logger.info("成就管理标签页已初始化")
 
     def load_data(self, achievements):
@@ -618,12 +516,12 @@ class ManageTab(QWidget):
         # 使用统一的统计方法
         statistics = self.calculate_statistics(data)
 
-        self.total_label.setText(f"📊 总计: {statistics['total']}")
-        self.completed_label.setText(f"✅ 已完成: {statistics['completed']}")
-        self.incomplete_label.setText(f"⭕ 未完成: {statistics['incomplete']}")
-        self.hidden_label.setText(f"🙈 隐藏成就: {statistics['hidden']}")
-        self.unavailable_label.setText(f"🚫 暂不可获取: {statistics['unavailable']}")
-        self.multi_choice_label.setText(f"🎯 多选一成就: {statistics['multi_choice']}")
+        self.total_label.setText(f"总计  {statistics['total']}")
+        self.completed_label.setText(f"已完成  {statistics['completed']}")
+        self.incomplete_label.setText(f"未完成  {statistics['incomplete']}")
+        self.hidden_label.setText(f"隐藏  {statistics['hidden']}")
+        self.unavailable_label.setText(f"暂不可获取  {statistics['unavailable']}")
+        self.multi_choice_label.setText(f"多选一  {statistics['multi_choice']}")
 
     def open_settings(self):
         """打开设置对话框"""
@@ -1988,69 +1886,18 @@ class ManageTab(QWidget):
             traceback.print_exc()
 
     def apply_theme(self, theme):
-        """应用主题"""
-        # 更新按钮样式
-        if hasattr(self, 'import_btn'):
-            self.import_btn.setStyleSheet(get_button_style(theme))
-        if hasattr(self, 'import_excel_btn'):
-            self.import_excel_btn.setStyleSheet(get_button_style(theme))
-        if hasattr(self, 'export_excel_btn'):
-            self.export_excel_btn.setStyleSheet(get_button_style(theme))
-        if hasattr(self, 'export_json_btn'):
-            self.export_json_btn.setStyleSheet(get_button_style(theme))
-
-        # 更新文字样式
-        if hasattr(self, 'total_label'):
-            self.total_label.setStyleSheet(get_font_gray_style(theme))
-        if hasattr(self, 'completed_label'):
-            self.completed_label.setStyleSheet(get_font_gray_style(theme))
-        if hasattr(self, 'incomplete_label'):
-            self.incomplete_label.setStyleSheet(get_font_gray_style(theme))
-        if hasattr(self, 'hidden_label'):
-            self.hidden_label.setStyleSheet(get_font_gray_style(theme))
-
-        # 更新输入框样式
-        if hasattr(self, 'search_input'):
-            from core.styles import BaseStyles
-            input_style = BaseStyles.get_text_input_style(theme)
-            self.search_input.setStyleSheet(input_style)
-
-        # 更新下拉框样式
-        if hasattr(self, 'version_filter'):
-            from core.styles import BaseStyles
-            combo_style = BaseStyles.get_combobox_style(theme)
-            self.version_filter.setStyleSheet(combo_style)
-        if hasattr(self, 'first_category_filter'):
-            from core.styles import BaseStyles
-            combo_style = BaseStyles.get_combobox_style(theme)
-            self.first_category_filter.setStyleSheet(combo_style)
-        if hasattr(self, 'second_category_filter'):
-            from core.styles import BaseStyles
-            combo_style = BaseStyles.get_combobox_style(theme)
-            self.second_category_filter.setStyleSheet(combo_style)
-        if hasattr(self, 'priority_filter'):
-            from core.styles import BaseStyles
-            combo_style = BaseStyles.get_combobox_style(theme)
-            self.priority_filter.setStyleSheet(combo_style)
-        if hasattr(self, 'hidden_filter'):
-            from core.styles import BaseStyles
-            combo_style = BaseStyles.get_combobox_style(theme)
-            self.hidden_filter.setStyleSheet(combo_style)
-        if hasattr(self, 'obtainable_filter'):
-            from core.styles import BaseStyles
-            combo_style = BaseStyles.get_combobox_style(theme)
-            self.obtainable_filter.setStyleSheet(combo_style)
-        if hasattr(self, 'hide_completed_checkbox'):
-            from core.styles import ColorPalette
-            colors = ColorPalette.Dark if theme == "dark" else ColorPalette.Light
-            self.hide_completed_checkbox.setStyleSheet(f"color: {colors.TEXT_PRIMARY};")
-
-        # 更新表格样式
-        if hasattr(self, 'manager_table'):
-            from core.styles import BaseStyles, get_scrollbar_style
-            table_style = BaseStyles.get_text_input_style(theme)
-            scrollbar = get_scrollbar_style(theme)
-            self.manager_table.setStyleSheet(table_style + scrollbar)
+        """应用主题并刷新表格局部样式。"""
+        from core.styles import BaseStyles, get_scrollbar_style
+        for button_name in (
+            "import_btn", "import_excel_btn", "export_excel_btn", "export_json_btn"
+        ):
+            button = getattr(self, button_name, None)
+            if button is not None:
+                button.setStyleSheet(get_button_style(theme))
+        if hasattr(self, "manager_table"):
+            self.manager_table.setStyleSheet(
+                BaseStyles.get_text_input_style(theme) + get_scrollbar_style(theme)
+            )
 
 
 def show_notification(parent, message):

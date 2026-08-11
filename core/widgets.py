@@ -1,11 +1,28 @@
 ﻿import os
 
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPainter, QPixmap, QBrush, QPainterPath, QColor
 
 from core.config import config
 from core.signal_bus import signal_bus
+
+
+class PageHeader(QWidget):
+    """Consistent title block for the four core work pages."""
+
+    def __init__(self, title, subtitle, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(3)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("pageTitle")
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setObjectName("pageSubtitle")
+        layout.addWidget(title_label)
+        layout.addWidget(subtitle_label)
 
 
 def load_background_image(theme="light"):

@@ -3,7 +3,7 @@
                                QDialogButtonBox, QFileDialog, QGroupBox, QCheckBox, QTableWidget,
                                QTableWidgetItem, QComboBox, QMessageBox)
 from PySide6.QtGui import QColor
-from PySide6.QtCore import Qt, Signal, QObject
+from PySide6.QtCore import Qt, Signal, QUrl
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebEngineCore import QWebEngineProfile, QWebEngineUrlRequestInterceptor
 import logging
@@ -60,11 +60,10 @@ class BrowserAuthDialog(QDialog):
         self._profile.setUrlRequestInterceptor(self._interceptor)
 
         self._view = QWebEngineView(self)
-        page_cls = self._view.page().__class__
         from PySide6.QtWebEngineCore import QWebEnginePage
         self._page = QWebEnginePage(self._profile, self)
         self._view.setPage(self._page)
-        self._view.load("https://www.kurobbs.com/")
+        self._view.load(QUrl("https://www.kurobbs.com/"))
         layout.addWidget(self._view)
 
     def _on_captured(self, devcode, token):

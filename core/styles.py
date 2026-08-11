@@ -1,612 +1,331 @@
-﻿# ui/styles.py
-"""
-统一的样式定义文件
-"""
+"""Application-wide visual tokens and Qt styles."""
+
 from PySide6.QtGui import QIcon
+
 from core.config import get_resource_path
 
-# 图标资源路径
+
 ICON_PATH = get_resource_path("resources/icons")
 
 
-# ============================================
-# 辅助函数
-# ============================================
+class ColorPalette:
+    """Shared semantic colors for light and dark themes."""
+
+    class Opacity:
+        # Kept for compatibility with older dialogs.
+        GROUPBOX = 255
+        TEXT_INPUT = 255
+        TAB_WIDGET_PANE = 255
+        TAB_WIDGET_TAB = 255
+        TAB_SELECTED = 255
+        TAB_HOVER = 255
+        SETTINGS_DESC = 255
+        TABLE_HEADER = 255
+        TABLE_SELECTION = 255
+        COMBOBOX = 255
+        COMBOBOX_VIEW = 255
+        MAIN_WINDOW = 255
+        DIALOG = 255
+        STATUSBAR_LIGHT = 255
+        STATUSBAR_DARK = 255
+        MESSAGEBOX = 255
+        SCROLLBAR = 255
+        HELP_TEXT = 255
+
+    class Light:
+        APP_BG = "#eef2f0"
+        SIDEBAR_BG = "#e5ebe8"
+        SURFACE = "#ffffff"
+        SURFACE_ALT = "#f5f8f6"
+        SURFACE_HOVER = "#eaf1ee"
+        SUCCESS = "#087f5b"
+        SUCCESS_HOVER = "#066b4c"
+        SUCCESS_PRESSED = "#05583f"
+        ACCENT = "#087f5b"
+        ACCENT_SOFT = "#dcefe8"
+        REWARD = "#9a6b12"
+        BG_GRAY = SURFACE_ALT
+        TEXT_PRIMARY = "#17211e"
+        TEXT_SECONDARY = "#4f5f59"
+        TEXT_GRAY = "#6b7a75"
+        BORDER = "#d3ddd9"
+        BORDER_STRONG = "#b9c8c2"
+        DISABLED_BG = "#dce3e0"
+        DISABLED_TEXT = "#87958f"
+        TABLE_GRID = "#e2e9e6"
+        TABLE_SELECTION = "#dcefe8"
+        TABLE_HEADER = "#f0f5f2"
+        SCROLLBAR_BG = "#e9efec"
+        SCROLLBAR_HANDLE = "#aebdb7"
+        TAB_HOVER = SURFACE_HOVER
+        SETTINGS_DESC_BG = SURFACE_ALT
+        SETTINGS_DESC_TEXT = TEXT_SECONDARY
+        DANGER = "#b42318"
+        WARNING = "#9a6700"
+
+    class Dark:
+        APP_BG = "#101412"
+        SIDEBAR_BG = "#141a17"
+        SURFACE = "#181f1c"
+        SURFACE_ALT = "#1e2723"
+        SURFACE_HOVER = "#25312c"
+        SUCCESS = "#48d6a2"
+        SUCCESS_HOVER = "#61e2b3"
+        SUCCESS_PRESSED = "#34ba89"
+        ACCENT = "#48d6a2"
+        ACCENT_SOFT = "#173c30"
+        REWARD = "#d8b35a"
+        BG_GRAY = SURFACE_ALT
+        TEXT_PRIMARY = "#edf4f1"
+        TEXT_SECONDARY = "#b5c2bd"
+        TEXT_GRAY = "#93a39d"
+        BORDER = "#303b36"
+        BORDER_STRONG = "#43524c"
+        DISABLED_BG = "#29312e"
+        DISABLED_TEXT = "#71807a"
+        TABLE_GRID = "#28322e"
+        TABLE_SELECTION = "#1d4a3b"
+        TABLE_HEADER = "#202925"
+        SCROLLBAR_BG = "#1a211e"
+        SCROLLBAR_HANDLE = "#53635d"
+        TAB_HOVER = SURFACE_HOVER
+        SETTINGS_DESC_BG = SURFACE_ALT
+        SETTINGS_DESC_TEXT = TEXT_SECONDARY
+        DANGER = "#ff776d"
+        WARNING = "#e3b341"
+
+
+def _colors(theme):
+    return ColorPalette.Dark if theme == "dark" else ColorPalette.Light
+
+
 def _get_rgba_color(r, g, b, opacity):
-    """生成rgba颜色字符串的辅助函数
-
-    Args:
-        r, g, b: RGB颜色值 (0-255)
-        opacity: 透明度 (0-255)
-
-    Returns:
-        str: rgba颜色字符串，如 "rgba(255, 255, 255, 200)"
-    """
+    """Compatibility helper retained for external callers."""
     return f"rgba({r}, {g}, {b}, {opacity})"
 
 
-class ColorPalette:
-    """颜色调色板 - 统一管理所有颜色"""
-
-    # ============================================
-    # 透明度配置 - 统一管理所有控件的透明度
-    # 数值范围: 0(完全透明) - 255(完全不透明)
-    # ============================================
-    class Opacity:
-        """透明度配置 - 方便统一调整"""
-        # 基础控件透明度
-        GROUPBOX = 80           # 分组框背景
-        TEXT_INPUT = 100        # 文本输入框、表格、列表
-        TAB_WIDGET_PANE = 80   # 标签页面板
-        TAB_WIDGET_TAB = 80    # 标签页标签
-        TAB_SELECTED = 80      # 选中的标签
-        TAB_HOVER = 80         # 悬停的标签
-        SETTINGS_DESC = 80     # 设置中的提示
-
-        # 表格相关
-        TABLE_HEADER = 80      # 表头
-        TABLE_SELECTION = 80   # 表格选中项
-
-        # 特殊控件
-        COMBOBOX = 80          # 下拉框
-        COMBOBOX_VIEW = 200     # 下拉框弹出列表
-        
-        # 窗口和容器
-        MAIN_WINDOW = 80       # 主窗口背景
-        DIALOG = 80            # 对话框背景
-        STATUSBAR_LIGHT = 230  # 浅色状态栏
-        STATUSBAR_DARK = 220   # 深色状态栏
-        MESSAGEBOX = 80        # 消息框背景
-        
-        # 滚动条
-        SCROLLBAR = 80         # 滚动条透明度
-        
-        # 通知和帮助
-        HELP_TEXT = 200        # 帮助文本背景
-
-    # 浅色主题颜色
-    class Light:
-        # 成功色（绿色系）
-        SUCCESS, SUCCESS_HOVER, SUCCESS_PRESSED = "#ffc107", "#ffb300", "#ffa000"  # 太阳金黄色系
-
-        # 背景色
-        BG_GRAY = "#e9ecef"
-
-        # 文字色
-        TEXT_PRIMARY, TEXT_GRAY = "#495057", "#868e96"
-
-        # 边框色
-        BORDER = "#dee2e6"
-
-        # 禁用状态
-        DISABLED_BG, DISABLED_TEXT = "#adb5bd", "#868e96"
-
-        # 表格色
-        TABLE_GRID, TABLE_SELECTION = "#dee2e6", "#e7f5ff"
-        TABLE_HEADER = "#f8f9fa"
-
-        # 滚动条颜色
-        SCROLLBAR_BG = "#f1f3f4"  # 滚动条背景
-        SCROLLBAR_HANDLE = "#c1c1c1"  # 滚动条滑块
-
-        # 特殊组件颜色
-        TAB_HOVER = "#f1f3f5"  # Tab悬停背景
-        SETTINGS_DESC_BG = "#f5f5f5"  # 设置说明背景
-        SETTINGS_DESC_TEXT = "#666"  # 设置说明文字
-
-    # 深色主题颜色
-    class Dark:
-        # 成功色（绿色系）
-        SUCCESS, SUCCESS_HOVER, SUCCESS_PRESSED = "#64b5f6", "#42a5f5", "#2196f3"  # 月亮蓝色系
-
-        # 文字色
-        TEXT_PRIMARY, TEXT_GRAY = "#e0e0e0", "#9e9e9e"
-
-        # 边框色
-        BORDER = "#424242"
-
-        # 禁用状态
-        DISABLED_BG, DISABLED_TEXT = "#424242", "#757575"
-
-        # 表格色
-        TABLE_GRID, TABLE_SELECTION = "#424242", "#455a64"
-        TABLE_HEADER = "#37474f"
-
-        # 滚动条颜色
-        SCROLLBAR_BG = "#424242"  # 滚动条背景
-        SCROLLBAR_HANDLE = "#757575"  # 滚动条滑块
-
-        # 特殊组件颜色
-        TAB_HOVER = "#455a64"  # Tab悬停背景
-        SETTINGS_DESC_BG = "#424242"  # 设置说明背景
-        SETTINGS_DESC_TEXT = "#bdbdbd"  # 设置说明文字
-
-
 class _BaseStylesClass:
-    """基础样式类 - 统一的样式定义"""
-
     @staticmethod
     def get_button_style(theme="light"):
-        """生成按钮样式 - 统一使用太阳色/月亮色"""
-        colors = ColorPalette.Dark if theme == "dark" else ColorPalette.Light
-        
-        bg, hover, pressed = colors.SUCCESS, colors.SUCCESS_HOVER, colors.SUCCESS_PRESSED
-        text_color = "white" if theme == "dark" else "#8b6914"
-
+        c = _colors(theme)
+        primary_text = "#082019" if theme == "dark" else "#ffffff"
         return f"""
         QPushButton {{
-            background-color: {bg};
-            color: {text_color};
-            border: none;
-            border-radius: 6px;
-            padding: 4px 10px;
-            font-weight: bold;
+            min-height: 30px;
+            padding: 0 14px;
+            border: 1px solid {c.BORDER_STRONG};
+            border-radius: 5px;
+            background: {c.SURFACE_ALT};
+            color: {c.TEXT_PRIMARY};
             font-size: 12px;
-            min-height: 20px;
+            font-weight: 600;
         }}
-        QPushButton:hover {{
-            background-color: {hover};
-        }}
-        QPushButton:pressed {{
-            background-color: {pressed};
-        }}
+        QPushButton:hover {{ background: {c.SURFACE_HOVER}; border-color: {c.ACCENT}; }}
+        QPushButton:pressed {{ background: {c.ACCENT_SOFT}; }}
         QPushButton:disabled {{
-            background-color: {colors.DISABLED_BG};
-            color: {colors.DISABLED_TEXT};
+            background: {c.DISABLED_BG}; color: {c.DISABLED_TEXT}; border-color: {c.BORDER};
         }}
+        QPushButton[buttonRole="primary"] {{
+            background: {c.SUCCESS}; color: {primary_text}; border-color: {c.SUCCESS};
+        }}
+        QPushButton[buttonRole="primary"]:hover {{ background: {c.SUCCESS_HOVER}; border-color: {c.SUCCESS_HOVER}; }}
+        QPushButton[buttonRole="primary"]:pressed {{ background: {c.SUCCESS_PRESSED}; border-color: {c.SUCCESS_PRESSED}; }}
+        QPushButton[buttonRole="quiet"] {{ background: transparent; border-color: transparent; color: {c.TEXT_SECONDARY}; }}
+        QPushButton[buttonRole="quiet"]:hover {{ background: {c.SURFACE_HOVER}; color: {c.TEXT_PRIMARY}; }}
+        QPushButton[buttonRole="danger"] {{ background: transparent; color: {c.DANGER}; border-color: {c.BORDER}; }}
         """
 
     @staticmethod
     def get_groupbox_style(theme="light"):
-        """生成分组框样式"""
-        colors = ColorPalette.Dark if theme == "dark" else ColorPalette.Light
-        border_color = colors.BORDER if theme == "dark" else colors.BG_GRAY
-
-        # 使用统一配置的透明度
-        opacity = ColorPalette.Opacity.GROUPBOX
-        bg_color = _get_rgba_color(50, 50, 50, opacity) if theme == "dark" else _get_rgba_color(255, 255, 255, opacity)
-
+        c = _colors(theme)
         return f"""
         QGroupBox {{
-            font-weight: bold;
-            font-size: 13px;
-            border: 2px solid {border_color};
-            border-radius: 8px;
+            color: {c.TEXT_PRIMARY};
+            background: {c.SURFACE};
+            border: 1px solid {c.BORDER};
+            border-radius: 6px;
             margin-top: 10px;
-            padding-top: 10px;
-            background-color: {bg_color};
+            padding-top: 12px;
+            font-size: 12px;
+            font-weight: 600;
         }}
         QGroupBox::title {{
             subcontrol-origin: margin;
             left: 10px;
-            padding: 0 8px 0 8px;
-            color: {colors.TEXT_PRIMARY};
+            padding: 0 6px;
+            color: {c.TEXT_SECONDARY};
         }}
         """
 
     @staticmethod
     def get_tab_widget_style(theme="light"):
-        """生成标签页样式"""
-        colors = ColorPalette.Dark if theme == "dark" else ColorPalette.Light
-        color_style = f"color: {colors.TEXT_PRIMARY};" if theme == "dark" else ""
-
-        # 使用统一配置的透明度
-        opacity_pane = ColorPalette.Opacity.TAB_WIDGET_PANE
-        opacity_tab = ColorPalette.Opacity.TAB_WIDGET_TAB
-        opacity_selected = ColorPalette.Opacity.TAB_SELECTED
-        opacity_hover = ColorPalette.Opacity.TAB_HOVER
-
-        if theme == "dark":
-            pane_bg = _get_rgba_color(40, 40, 40, opacity_pane)
-            tab_bg = _get_rgba_color(60, 60, 60, opacity_tab)
-            tab_selected_bg = _get_rgba_color(80, 80, 80, opacity_selected)
-            tab_hover_bg = _get_rgba_color(84, 110, 122, opacity_hover)
-        else:
-            pane_bg = _get_rgba_color(255, 255, 255, opacity_pane)
-            tab_bg = _get_rgba_color(230, 230, 230, opacity_tab)
-            tab_selected_bg = _get_rgba_color(255, 255, 255, opacity_selected)
-            tab_hover_bg = _get_rgba_color(241, 243, 245, opacity_hover)
-
+        c = _colors(theme)
         return f"""
-        QTabWidget::pane {{
-            border: 1px solid {colors.BORDER};
-            border-radius: 6px;
-            background-color: {pane_bg};
-            min-height: 30px;
-        }}
+        QTabWidget::pane {{ border: 1px solid {c.BORDER}; background: {c.SURFACE}; border-radius: 6px; }}
         QTabBar::tab {{
-            background-color: {tab_bg};
-            border: 1px solid {colors.BORDER};
-            border-bottom: none;
-            border-top-left-radius: 6px;
-            border-top-right-radius: 6px;
-            padding: 12px 16px;
-            margin-right: 2px;
-            font-weight: 500;
-            min-width: 80px;
-            min-height: 20px;
-            {color_style}
+            min-height: 30px; min-width: 82px; padding: 0 12px;
+            border: none; border-bottom: 2px solid transparent;
+            background: transparent; color: {c.TEXT_SECONDARY}; font-weight: 600;
         }}
-        QTabBar::tab:selected {{
-            background-color: {tab_selected_bg};
-            border-bottom: 1px solid {tab_selected_bg};
-        }}
-        QTabBar::tab:hover {{
-            background-color: {tab_hover_bg};
-        }}
+        QTabBar::tab:hover {{ color: {c.TEXT_PRIMARY}; background: {c.SURFACE_HOVER}; }}
+        QTabBar::tab:selected {{ color: {c.ACCENT}; border-bottom-color: {c.ACCENT}; }}
         """
 
     @staticmethod
     def get_text_input_style(theme="light"):
-        """生成文本输入样式"""
-        colors = ColorPalette.Dark if theme == "dark" else ColorPalette.Light
-        color_style = f"color: {colors.TEXT_PRIMARY};" if theme == "dark" else ""
-
-        # 使用统一配置的透明度
-        opacity_input = ColorPalette.Opacity.TEXT_INPUT
-        opacity_header = ColorPalette.Opacity.TABLE_HEADER
-        opacity_selection = ColorPalette.Opacity.TABLE_SELECTION
-
-        input_bg = _get_rgba_color(40, 40, 40, opacity_input) if theme == "dark" else _get_rgba_color(255, 255, 255, opacity_input)
-        header_bg = _get_rgba_color(55, 71, 79, opacity_header) if theme == "dark" else _get_rgba_color(248, 249, 250, opacity_header)
-        selection_bg = _get_rgba_color(69, 90, 100, opacity_selection) if theme == "dark" else _get_rgba_color(231, 245, 255, opacity_selection)
-
+        c = _colors(theme)
         return f"""
-        QTextEdit, QLineEdit, QTableWidget, QListWidget {{
-            border: 1px solid {colors.BORDER};
-            border-radius: 6px;
-            background-color: {input_bg};
-            {color_style}
-            font-size: 12px;
-            color: {colors.TEXT_PRIMARY};
+        QLineEdit, QTextEdit, QPlainTextEdit, QTableWidget, QListWidget {{
+            background: {c.SURFACE}; color: {c.TEXT_PRIMARY};
+            border: 1px solid {c.BORDER}; border-radius: 5px;
+            selection-background-color: {c.TABLE_SELECTION};
+            selection-color: {c.TEXT_PRIMARY};
         }}
-        QTableWidget {{
-            gridline-color: {colors.TABLE_GRID};
-            selection-background-color: {selection_bg};
-            outline: 0px;
-            border: 1px solid {colors.BORDER};
-        }}
-        QTableWidget::item {{
-            padding: 5px;
-            border: none;
-            outline: 0px;
-            border-left: none;
-            border-right: none;
-            border-top: none;
-            border-bottom: none;
-        }}
-        QTableWidget::item:selected {{
-            background-color: {selection_bg};
-            border: none;
-            outline: 0px;
-            border-left: none;
-            border-right: none;
-            border-top: none;
-            border-bottom: none;
-            color: {colors.TEXT_PRIMARY};
-        }}
-        QTableWidget::item:focus {{
-            border: none;
-            outline: 0px;
-            border-left: none;
-            border-right: none;
-            border-top: none;
-            border-bottom: none;
-        }}
-        QTableWidget:focus {{
-            border: 1px solid {colors.BORDER};
-            outline: 0px;
-        }}
-        /* 强制移除所有可能的边框 */
-        QTableWidget::item:hover {{
-            border: none;
-            outline: 0px;
-        }}
-        QTableWidget::item:selected:hover {{
-            border: none;
-            outline: 0px;
-        }}
-        QListWidget {{
-            background-color: {input_bg};
-            color: {colors.TEXT_PRIMARY};
-        }}
-        QListWidget::item:selected {{
-            background-color: {selection_bg};
-            color: {colors.TEXT_PRIMARY};
-        }}
+        QLineEdit {{ min-height: 30px; padding: 0 9px; }}
+        QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {{ border-color: {c.ACCENT}; }}
+        QTableWidget {{ gridline-color: {c.TABLE_GRID}; alternate-background-color: {c.SURFACE_ALT}; outline: 0; }}
+        QTableWidget::item {{ padding: 6px; border: none; }}
+        QTableWidget::item:selected {{ background: {c.TABLE_SELECTION}; color: {c.TEXT_PRIMARY}; }}
         QHeaderView::section {{
-            background-color: {header_bg};
-            color: {colors.TEXT_PRIMARY};
-            padding: 4px;
-            border: 1px solid {colors.BORDER};
+            min-height: 32px; padding: 0 8px;
+            background: {c.TABLE_HEADER}; color: {c.TEXT_SECONDARY};
+            border: none; border-right: 1px solid {c.TABLE_GRID}; border-bottom: 1px solid {c.BORDER};
+            font-size: 11px; font-weight: 600;
         }}
-        QTableCornerButton::section {{
-            background-color: {header_bg};
-            border: 1px solid {colors.BORDER};
-        }}
+        QTableCornerButton::section {{ background: {c.TABLE_HEADER}; border: none; border-bottom: 1px solid {c.BORDER}; }}
+        QListWidget::item {{ min-height: 30px; padding: 0 8px; }}
+        QListWidget::item:selected {{ background: {c.TABLE_SELECTION}; color: {c.TEXT_PRIMARY}; }}
         """
 
     @staticmethod
     def get_label_style(theme="light", label_type="normal"):
-        """生成标签样式"""
-        colors = ColorPalette.Dark if theme == "dark" else ColorPalette.Light
-        color = colors.TEXT_GRAY if label_type == "gray" else colors.TEXT_PRIMARY
-
-        return f"""
-        QLabel {{
-            color: {color};
-            font-size: 12px;
-        }}
-        """
+        c = _colors(theme)
+        color = c.TEXT_GRAY if label_type == "gray" else c.TEXT_PRIMARY
+        return f"QLabel {{ color: {color}; }}"
 
     @staticmethod
     def get_combobox_style(theme="light"):
-        """生成下拉框样式"""
-        colors = ColorPalette.Dark if theme == "dark" else ColorPalette.Light
-        color_style = f"color: {colors.TEXT_PRIMARY};" if theme == "dark" else ""
-
-        # 使用统一配置的透明度
-        opacity_combo = ColorPalette.Opacity.COMBOBOX
-        opacity_view = ColorPalette.Opacity.COMBOBOX_VIEW
-        opacity_selection = ColorPalette.Opacity.TAB_HOVER
-
-        bg_color = _get_rgba_color(40, 40, 40, opacity_combo) if theme == "dark" else _get_rgba_color(255, 255, 255, opacity_combo)
-        view_bg = _get_rgba_color(43, 43, 43, opacity_view) if theme == "dark" else _get_rgba_color(255, 255, 255, opacity_view)
-        selection_bg = _get_rgba_color(69, 90, 100, opacity_selection) if theme == "dark" else _get_rgba_color(231, 245, 255, opacity_selection)
-
+        c = _colors(theme)
         return f"""
         QComboBox {{
-            border: 1px solid {colors.BORDER};
-            border-radius: 4px;
-            padding: 4px;
-            background-color: {bg_color};
-            {color_style}
-            min-width: 60px;
+            min-height: 30px; padding: 0 28px 0 9px;
+            background: {c.SURFACE}; color: {c.TEXT_PRIMARY};
+            border: 1px solid {c.BORDER}; border-radius: 5px;
         }}
-        QComboBox::drop-down {{
-            border: none;
-        }}
+        QComboBox:hover, QComboBox:focus {{ border-color: {c.ACCENT}; }}
+        QComboBox::drop-down {{ width: 24px; border: none; }}
         QComboBox QAbstractItemView {{
-            border: 1px solid {colors.BORDER};
-            background-color: {view_bg};
-            color: {colors.TEXT_PRIMARY};
-            selection-background-color: {selection_bg};
+            background: {c.SURFACE}; color: {c.TEXT_PRIMARY};
+            border: 1px solid {c.BORDER_STRONG};
+            selection-background-color: {c.TABLE_SELECTION};
+            selection-color: {c.TEXT_PRIMARY}; outline: 0;
         }}
         """
 
 
-# 创建BaseStyles实例供使用
 BaseStyles = _BaseStylesClass()
 
 
 def get_icon(icon_name):
-    """获取图标"""
     icon_path = ICON_PATH / f"{icon_name}.ico"
-    if icon_path.exists():
-        return QIcon(str(icon_path))
-    return QIcon()  # 返回空图标
+    return QIcon(str(icon_path)) if icon_path.exists() else QIcon()
+
 
 def get_main_window_style(theme="light"):
-    """主窗口样式"""
-    colors = ColorPalette.Dark if theme == "dark" else ColorPalette.Light
-
-    # 使用统一配置的透明度
-    opacity = ColorPalette.Opacity.MAIN_WINDOW
-    main_bg = _get_rgba_color(30, 30, 30, opacity) if theme == "dark" else _get_rgba_color(248, 249, 250, opacity)
-    # 状态栏使用和BackgroundWidget遮罩层相同的颜色，保持视觉一致
-    statusbar_opacity = ColorPalette.Opacity.STATUSBAR_DARK if theme == "dark" else ColorPalette.Opacity.STATUSBAR_LIGHT
-    statusbar_bg = _get_rgba_color(0, 0, 0, statusbar_opacity) if theme == "dark" else _get_rgba_color(255, 255, 255, statusbar_opacity)
-    messagebox_bg = _get_rgba_color(43, 43, 43, ColorPalette.Opacity.MESSAGEBOX) if theme == "dark" else _get_rgba_color(255, 255, 255, ColorPalette.Opacity.MESSAGEBOX)
-
-    # 获取对应主题的基础样式
-    base_styles = (
-        BaseStyles.get_groupbox_style(theme) +
-        BaseStyles.get_button_style(theme) +
-        BaseStyles.get_text_input_style(theme) +
-        BaseStyles.get_tab_widget_style(theme) +
-        BaseStyles.get_label_style(theme) +
-        BaseStyles.get_combobox_style(theme)
-    )
-
+    c = _colors(theme)
     return f"""
-    QMainWindow {{
-        background-color: transparent;
-        font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+    QMainWindow {{ background: transparent; font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; }}
+    QWidget#appRoot {{ background: {c.APP_BG}; border: 1px solid {c.BORDER_STRONG}; border-radius: 8px; }}
+    QFrame#appSidebar {{ background: {c.SIDEBAR_BG}; border: none; border-right: 1px solid {c.BORDER}; }}
+    QFrame#contentArea {{ background: {c.APP_BG}; border: none; }}
+    QLabel#brandTitle {{ color: {c.TEXT_PRIMARY}; font-size: 15px; font-weight: 700; }}
+    QLabel#brandSubtitle {{ color: {c.TEXT_GRAY}; font-size: 10px; }}
+    QLabel#sidebarSection {{ color: {c.TEXT_GRAY}; font-size: 10px; font-weight: 600; }}
+    QPushButton#navButton {{
+        min-height: 42px; padding: 0 14px; text-align: left;
+        background: transparent; color: {c.TEXT_SECONDARY};
+        border: none; border-left: 3px solid transparent; border-radius: 0;
+        font-size: 13px; font-weight: 600;
     }}
-    QMainWindow > QWidget {{
-        background-color: {main_bg};
-        border: none;
-        border-top-left-radius: 15px;
-        border-top-right-radius: 15px;
-        border-bottom-left-radius: 15px;
-        border-bottom-right-radius: 15px;
+    QPushButton#navButton:hover {{ background: {c.SURFACE_HOVER}; color: {c.TEXT_PRIMARY}; }}
+    QPushButton#navButton:checked {{
+        background: {c.ACCENT_SOFT}; color: {c.ACCENT}; border-left-color: {c.ACCENT};
     }}
-    QMainWindow QStatusBar {{
-        background-color: {statusbar_bg} !important;
-        color: {colors.TEXT_PRIMARY};
-        font-size: 11px;
-        border: 1px solid {colors.BORDER};
-        border-top: none;
-        margin-top: -1px;
-        border-top-left-radius: 0px !important;
-        border-top-right-radius: 0px !important;
-        border-bottom-left-radius: 8px !important;
-        border-bottom-right-radius: 8px !important;
+    QLabel#pageTitle {{ color: {c.TEXT_PRIMARY}; font-size: 22px; font-weight: 700; }}
+    QLabel#pageSubtitle {{ color: {c.TEXT_GRAY}; font-size: 11px; }}
+    QLabel#sectionLabel {{ color: {c.TEXT_SECONDARY}; font-size: 11px; font-weight: 600; }}
+    QFrame#toolbar, QFrame#metricStrip, QFrame#statusStrip {{
+        background: {c.SURFACE}; border: 1px solid {c.BORDER}; border-radius: 6px;
     }}
-    QStatusBar {{
-        background-color: {statusbar_bg};
-        color: {colors.TEXT_PRIMARY};
-        font-size: 11px;
-        border-top-left-radius: 0px;
-        border-top-right-radius: 0px;
-        border-bottom-left-radius: 8px;
-        border-bottom-right-radius: 8px;
-    }}
-    QMessageBox {{
-        background-color: {messagebox_bg};
-        color: {colors.TEXT_PRIMARY};
-    }}
-    QMessageBox QLabel {{
-        color: {colors.TEXT_PRIMARY};
-    }}
-    QMessageBox QPushButton {{
-        min-width: 60px;
-    }}
-    """ + base_styles
+    QFrame#metricItem {{ background: transparent; border: none; border-right: 1px solid {c.BORDER}; }}
+    QLabel#metricValue {{ color: {c.TEXT_PRIMARY}; font-size: 18px; font-weight: 700; }}
+    QLabel#metricLabel {{ color: {c.TEXT_GRAY}; font-size: 10px; }}
+    QLabel#statusGood {{ color: {c.ACCENT}; font-weight: 600; }}
+    QLabel#statusWarning {{ color: {c.WARNING}; font-weight: 600; }}
+    QLabel {{ color: {c.TEXT_PRIMARY}; }}
+    QCheckBox {{ color: {c.TEXT_SECONDARY}; spacing: 7px; }}
+    QCheckBox::indicator {{ width: 15px; height: 15px; border: 1px solid {c.BORDER_STRONG}; border-radius: 3px; background: {c.SURFACE}; }}
+    QCheckBox::indicator:checked {{ background: {c.ACCENT}; border-color: {c.ACCENT}; }}
+    QProgressBar {{ min-height: 7px; max-height: 7px; border: none; border-radius: 3px; background: {c.SURFACE_ALT}; text-align: center; color: transparent; }}
+    QProgressBar::chunk {{ border-radius: 3px; background: {c.ACCENT}; }}
+    QToolTip {{ color: {c.TEXT_PRIMARY}; background: {c.SURFACE_ALT}; border: 1px solid {c.BORDER_STRONG}; padding: 5px; }}
+    QStatusBar {{ background: {c.SURFACE}; color: {c.TEXT_SECONDARY}; border-top: 1px solid {c.BORDER}; }}
+    QMessageBox, QDialog {{ background: {c.APP_BG}; color: {c.TEXT_PRIMARY}; }}
+    """ + BaseStyles.get_button_style(theme) + BaseStyles.get_groupbox_style(theme) + BaseStyles.get_tab_widget_style(theme) + BaseStyles.get_text_input_style(theme) + BaseStyles.get_combobox_style(theme) + get_scrollbar_style(theme)
 
 
 def get_dialog_style(theme="light"):
-    """对话框样式"""
-    colors = ColorPalette.Dark if theme == "dark" else ColorPalette.Light
-
-    # 使用统一配置的透明度
-    opacity = ColorPalette.Opacity.DIALOG
-    dialog_bg = _get_rgba_color(58, 58, 58, opacity) if theme == "dark" else _get_rgba_color(248, 249, 250, opacity)
-
-    # 获取对应主题的基础样式
-    base_styles = (
-        BaseStyles.get_tab_widget_style(theme) +
-        BaseStyles.get_groupbox_style(theme) +
-        BaseStyles.get_button_style(theme) +
-        BaseStyles.get_text_input_style(theme)
-    )
-
+    c = _colors(theme)
     return f"""
-    QDialog {{
-        background-color: transparent;
-        font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
-    }}
-    QDialog #dialogContainer {{
-        background-color: {dialog_bg};
-        border: 1px solid {colors.BORDER};
-        border-radius: 8px;
-    }}
-    """ + base_styles
+    QDialog {{ background: transparent; font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; }}
+    QDialog #dialogContainer {{ background: {c.APP_BG}; border: 1px solid {c.BORDER_STRONG}; border-radius: 8px; }}
+    QLabel {{ color: {c.TEXT_PRIMARY}; }}
+    QCheckBox {{ color: {c.TEXT_SECONDARY}; }}
+    """ + BaseStyles.get_button_style(theme) + BaseStyles.get_groupbox_style(theme) + BaseStyles.get_tab_widget_style(theme) + BaseStyles.get_text_input_style(theme) + BaseStyles.get_combobox_style(theme) + get_scrollbar_style(theme)
+
+
 def get_settings_desc_style(theme="light"):
-    """设置说明文本样式"""
-    colors = ColorPalette.Dark if theme == "dark" else ColorPalette.Light
-    # 使用统一配置的透明度
-    opacity = ColorPalette.Opacity.SETTINGS_DESC
-    bg_color = _get_rgba_color(66, 66, 66, opacity) if theme == "dark" else _get_rgba_color(245, 245, 245, opacity)
-    text_color = colors.SETTINGS_DESC_TEXT
-    return f"color: {text_color}; font-size: 12px; background-color: {bg_color}; padding: 10px; border-radius: 5px;"
+    c = _colors(theme)
+    return f"color: {c.SETTINGS_DESC_TEXT}; font-size: 12px; background: {c.SETTINGS_DESC_BG}; padding: 10px; border-radius: 5px;"
 
 
 def get_button_style(theme="light"):
-    """按钮样式 - 统一使用太阳色/月亮色"""
     return BaseStyles.get_button_style(theme)
 
 
 def get_font_gray_style(theme="light"):
-    """灰色文字样式"""
     return BaseStyles.get_label_style(theme, "gray")
 
 
-
 def get_scrollbar_style(theme="light"):
-    """滚动条样式 - 用于表格等控件"""
-    opacity = ColorPalette.Opacity.SCROLLBAR
-    if theme == "dark":
-        bg_color = _get_rgba_color(66, 66, 66, opacity)
-        handle_color = _get_rgba_color(158, 158, 158, opacity)
-    else:
-        bg_color = _get_rgba_color(245, 245, 245, opacity)
-        handle_color = _get_rgba_color(193, 193, 193, opacity)
-    
+    c = _colors(theme)
     return f"""
-    QScrollBar:vertical {{
-        background-color: {bg_color};
-        width: 12px;
-        border-radius: 6px;
-        margin: 0px;
-    }}
-    QScrollBar::handle:vertical {{
-        background-color: {handle_color};
-        border-radius: 6px;
-        min-height: 20px;
-    }}
-    QScrollBar::add-line:vertical,
-    QScrollBar::sub-line:vertical {{
-        height: 0px;
-        width: 0px;
-    }}
-    QScrollBar::add-page:vertical,
-    QScrollBar::sub-page:vertical {{
-        background: none;
-    }}
-    QScrollBar:horizontal {{
-        background-color: {bg_color};
-        height: 12px;
-        border-radius: 6px;
-        margin: 0px;
-    }}
-    QScrollBar::handle:horizontal {{
-        background-color: {handle_color};
-        border-radius: 6px;
-        min-width: 20px;
-    }}
-    QScrollBar::add-line:horizontal,
-    QScrollBar::sub-line:horizontal {{
-        width: 0px;
-        height: 0px;
-    }}
-    QScrollBar::add-page:horizontal,
-    QScrollBar::sub-page:horizontal {{
-        background: none;
-    }}
+    QScrollBar:vertical {{ background: {c.SCROLLBAR_BG}; width: 10px; margin: 0; }}
+    QScrollBar::handle:vertical {{ background: {c.SCROLLBAR_HANDLE}; border-radius: 5px; min-height: 28px; margin: 2px; }}
+    QScrollBar:horizontal {{ background: {c.SCROLLBAR_BG}; height: 10px; margin: 0; }}
+    QScrollBar::handle:horizontal {{ background: {c.SCROLLBAR_HANDLE}; border-radius: 5px; min-width: 28px; margin: 2px; }}
+    QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+    QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
     """
 
 
 def get_scroll_area_style(theme="light"):
-    """滚动区域样式 - 包含滚动区域、内容Widget和滚动条"""
-    return f"""
-        QScrollArea {{ 
-            background-color: transparent; 
-            border: none; 
-        }}
-        QScrollArea QWidget {{ 
-            background-color: transparent; 
-        }}
-    """ + get_scrollbar_style(theme)
+    return "QScrollArea { background: transparent; border: none; } QScrollArea > QWidget > QWidget { background: transparent; }" + get_scrollbar_style(theme)
+
 
 def get_label_style(theme="light"):
-    return _BaseStylesClass.get_label_style(theme)
+    return BaseStyles.get_label_style(theme)
+
 
 def get_notification_style(theme="light"):
-    """通知样式 - 使用主题色"""
-    colors = ColorPalette.Dark if theme == "dark" else ColorPalette.Light
-    bg_color = colors.SUCCESS
-    
-    return f"""
-        QLabel {{
-            background-color: {bg_color};
-            color: white;
-            padding: 12px 20px;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: bold;
-        }}
-    """
+    c = _colors(theme)
+    return f"QLabel {{ background: {c.SURFACE_ALT}; color: {c.TEXT_PRIMARY}; border: 1px solid {c.ACCENT}; padding: 10px 16px; border-radius: 5px; font-weight: 600; }}"
 
 
 def get_text_input_style(theme="light"):
-    """文本输入样式"""
     return BaseStyles.get_text_input_style(theme)
 
 
 def get_help_text_style(theme="light"):
-    """帮助文本样式"""
-    opacity = ColorPalette.Opacity.HELP_TEXT
-    bg_color = _get_rgba_color(43, 43, 43, opacity) if theme == "dark" else _get_rgba_color(255, 255, 255, opacity)
-    
-    return f"""
-        QLabel {{
-            background-color: {bg_color};
-            padding: 20px;
-            border-radius: 8px;
-        }}
-        QLabel a {{
-            color: #3498db;
-            text-decoration: underline;
-        }}
-    """
+    c = _colors(theme)
+    return f"QLabel {{ background: {c.SURFACE}; color: {c.TEXT_PRIMARY}; border: 1px solid {c.BORDER}; padding: 18px; border-radius: 6px; }} QLabel a {{ color: {c.ACCENT}; }}"

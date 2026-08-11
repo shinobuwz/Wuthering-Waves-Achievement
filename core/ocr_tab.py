@@ -4,13 +4,12 @@ OCR 扫描标签页
 """
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QTableWidget, QTableWidgetItem,
-                               QGroupBox, QProgressBar, QComboBox)
-from PySide6.QtCore import Qt, QThread, Signal
+                               QComboBox, QFrame, QHeaderView)
+from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QColor
 
 from core.config import config
 from core.signal_bus import signal_bus
-from core.styles import get_button_style, get_font_gray_style, ColorPalette
 
 
 class OCRScanWorker(QThread):
@@ -94,82 +93,83 @@ class OCRScanTab(QWidget):
         self.init_ui()
 
     def init_ui(self):
+        """初始化 OCR 扫描工作区。"""
+        from core.widgets import PageHeader
+
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
+        layout.setContentsMargins(24, 20, 24, 18)
+        layout.setSpacing(14)
+        layout.addWidget(PageHeader(
+            "OCR 扫描",
+            "检测游戏窗口，扫描当前页面或自动遍历全部成就分类。",
+        ))
 
-        # === 窗口检测区域 ===
-        detect_group = QGroupBox("游戏窗口")
-        detect_layout = QHBoxLayout(detect_group)
+        toolbar = QFrame()
+        toolbar.setObjectName("toolbar")
+        toolbar_layout = QVBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(14, 11, 14, 11)
+        toolbar_layout.setSpacing(8)
 
+        control_row = QHBoxLayout()
+        control_row.setSpacing(8)
         self.detect_btn = QPushButton("检测游戏窗口")
         self.detect_btn.clicked.connect(self.on_detect_window)
-        detect_layout.addWidget(self.detect_btn)
+        control_row.addWidget(self.detect_btn)
 
-        self.window_status_label = QLabel("未检测")
-        detect_layout.addWidget(self.window_status_label, 1)
+        self.window_status_label = QLabel("尚未检测游戏窗口")
+        self.window_status_label.setObjectName("pageSubtitle")
+        control_row.addWidget(self.window_status_label, 1)
 
-        layout.addWidget(detect_group)
-
-        # === 扫描控制区域 ===
-        scan_group = QGroupBox("扫描控制")
-        scan_layout = QHBoxLayout(scan_group)
-
+        control_row.addWidget(QLabel("扫描范围"))
         self.scan_mode_combo = QComboBox()
         self.scan_mode_combo.addItems(["全局扫描", "单页扫描"])
         self.scan_mode_combo.setCurrentIndex(0)
-        scan_layout.addWidget(self.scan_mode_combo)
+        self.scan_mode_combo.setMinimumWidth(110)
+        control_row.addWidget(self.scan_mode_combo)
 
         self.scan_btn = QPushButton("开始扫描")
+        self.scan_btn.setProperty("buttonRole", "primary")
         self.scan_btn.clicked.connect(self.on_scan_toggle)
         self.scan_btn.setEnabled(False)
-        scan_layout.addWidget(self.scan_btn)
+        control_row.addWidget(self.scan_btn)
+        toolbar_layout.addLayout(control_row)
 
+        progress_row = QHBoxLayout()
         self.scan_status_label = QLabel("就绪")
-        scan_layout.addWidget(self.scan_status_label, 1)
+        self.scan_status_label.setObjectName("sectionLabel")
+        progress_row.addWidget(self.scan_status_label)
+        progress_row.addStretch()
+        self.progress_label = QLabel("已识别  0 条成就")
+        self.progress_label.setObjectName("pageSubtitle")
+        progress_row.addWidget(self.progress_label)
+        toolbar_layout.addLayout(progress_row)
+        layout.addWidget(toolbar)
 
-        layout.addWidget(scan_group)
-
-        # === 进度区域 ===
-        progress_group = QGroupBox("扫描进度")
-        progress_layout = QVBoxLayout(progress_group)
-
-        self.progress_label = QLabel("已识别: 0 条成就")
-        progress_layout.addWidget(self.progress_label)
-
-        layout.addWidget(progress_group)
-
-        # === 结果预览表格 ===
-        result_group = QGroupBox("扫描结果")
-        result_layout = QVBoxLayout(result_group)
-
-        # 操作按钮行
-        btn_layout = QHBoxLayout()
-        self.save_btn = QPushButton("保存到用户进度")
+        result_header = QHBoxLayout()
+        result_title = QLabel("扫描结果")
+        result_title.setObjectName("sectionLabel")
+        result_header.addWidget(result_title)
+        result_header.addStretch()
+        self.save_btn = QPushButton("保存到当前进度")
+        self.save_btn.setProperty("buttonRole", "primary")
         self.save_btn.clicked.connect(self.on_save_results)
         self.save_btn.setEnabled(False)
-        btn_layout.addWidget(self.save_btn)
-        btn_layout.addStretch()
-        result_layout.addLayout(btn_layout)
+        result_header.addWidget(self.save_btn)
+        layout.addLayout(result_header)
 
         self.result_table = QTableWidget()
         self.result_table.setColumnCount(4)
-        self.result_table.setHorizontalHeaderLabels(
-            ["编号", "成就名称", "状态", "OCR原文"]
-        )
-        self.result_table.horizontalHeader().setStretchLastSection(True)
+        self.result_table.setHorizontalHeaderLabels(["编号", "成就名称", "状态", "OCR 原文"])
         self.result_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.result_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        # 设置列宽
-        self.result_table.setColumnWidth(0, 250)
-        self.result_table.setColumnWidth(1, 250)
-        self.result_table.setColumnWidth(2, 100)
-        self.result_table.setColumnWidth(3, 80)
+        self.result_table.setAlternatingRowColors(True)
+        header = self.result_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.result_table, 1)
 
-        result_layout.addWidget(self.result_table)
-
-        layout.addWidget(result_group, 1)  # 表格区域占剩余空间
-
-        # 应用样式
         self.apply_theme(config.theme)
 
     def on_detect_window(self):
@@ -371,40 +371,10 @@ class OCRScanTab(QWidget):
         signal_bus.settings_changed.emit({})
 
     def apply_theme(self, theme=None):
-        """适配明暗主题"""
+        """适配明暗主题。"""
         if theme is None:
             theme = config.theme
-
-        colors = ColorPalette.Dark if theme == "dark" else ColorPalette.Light
-
-        # 按钮样式
-        btn_style = get_button_style(theme)
-        self.detect_btn.setStyleSheet(btn_style)
-        self.scan_btn.setStyleSheet(btn_style)
-        self.save_btn.setStyleSheet(btn_style)
-        self.scan_mode_combo.setStyleSheet(f"color: {colors.TEXT_PRIMARY};")
-
-        # 标签颜色
-        label_style = f"color: {colors.TEXT_PRIMARY};"
-        self.window_status_label.setStyleSheet(label_style)
-        self.scan_status_label.setStyleSheet(label_style)
-        self.progress_label.setStyleSheet(label_style)
-
-        # GroupBox 样式
-        group_style = f"""
-            QGroupBox {{
-                color: {colors.TEXT_PRIMARY};
-                font-weight: bold;
-                border: 1px solid {colors.TEXT_SECONDARY if hasattr(colors, 'TEXT_SECONDARY') else '#ccc'};
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }}
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }}
-        """
-        for group in self.findChildren(QGroupBox):
-            group.setStyleSheet(group_style)
+        from core.styles import BaseStyles, get_scrollbar_style
+        self.result_table.setStyleSheet(
+            BaseStyles.get_text_input_style(theme) + get_scrollbar_style(theme)
+        )

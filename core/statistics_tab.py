@@ -4,7 +4,7 @@
 import logging
 import math
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-                               QComboBox, QGroupBox, QGridLayout)
+                               QComboBox, QGridLayout, QFrame)
 from PySide6.QtCore import Qt, QRect
 from PySide6.QtGui import QPainter, QColor, QFontMetrics
 
@@ -23,7 +23,7 @@ class SimpleChartWidget(QWidget):
         self.chart_type = chart_type
         self.data = {}
         self.theme = config.theme
-        self.setMinimumSize(400, 300)
+        self.setMinimumSize(260, 220)
 
         # hover效果相关
         self.hover_index = -1  # 当前hover的条形索引
@@ -841,144 +841,96 @@ class StatisticsTab(QWidget):
         self.load_data()
 
     def init_ui(self):
-        """初始化UI"""
+        """初始化统计工作区。"""
+        from core.widgets import PageHeader
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(15)
+        layout.setContentsMargins(24, 20, 24, 18)
+        layout.setSpacing(14)
+        layout.addWidget(PageHeader(
+            "统计分析",
+            "按分类和版本查看当前进度、完成率与成就分布。",
+        ))
 
-        # 控制面板
-        control_group = QGroupBox("统计控制")
-        control_main_layout = QVBoxLayout(control_group)
+        toolbar = QFrame()
+        toolbar.setObjectName("toolbar")
+        filter_layout = QHBoxLayout(toolbar)
+        filter_layout.setContentsMargins(14, 10, 14, 10)
+        filter_layout.setSpacing(8)
 
-        # 第一行筛选
-        filter_layout = QHBoxLayout()
-
-        # 用户选择
-        user_label = QLabel("用户:")
-        user_label.setFixedWidth(100)
-        user_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        filter_layout.addWidget(user_label)
-
+        # Keep the selector for data compatibility, but do not expose profile management.
         self.user_combo = QComboBox()
         self.user_combo.currentTextChanged.connect(self.on_user_changed)
-        self.user_combo.setFixedWidth(120)
-        filter_layout.addWidget(self.user_combo)
+        self.user_combo.hide()
 
-        # 第一分类筛选
-        first_category_label = QLabel("第一分类:")
-        first_category_label.setFixedWidth(70)
-        first_category_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        filter_layout.addWidget(first_category_label)
-
+        filter_layout.addWidget(QLabel("一级分类"))
         self.first_category_filter = QComboBox()
         self.first_category_filter.addItem("全部")
-        self.first_category_filter.setFixedWidth(120)
+        self.first_category_filter.setMinimumWidth(140)
         self.first_category_filter.currentTextChanged.connect(self.on_first_category_changed)
         filter_layout.addWidget(self.first_category_filter)
 
-        # 第二分类筛选
-        second_category_label = QLabel("第二分类:")
-        second_category_label.setFixedWidth(70)
-        second_category_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        filter_layout.addWidget(second_category_label)
-
+        filter_layout.addWidget(QLabel("二级分类"))
         self.second_category_filter = QComboBox()
         self.second_category_filter.addItem("全部")
-        self.second_category_filter.setFixedWidth(120)
+        self.second_category_filter.setMinimumWidth(180)
         self.second_category_filter.currentTextChanged.connect(self.update_statistics)
         filter_layout.addWidget(self.second_category_filter)
 
-        # 版本筛选
-        version_label = QLabel("版本:")
-        version_label.setFixedWidth(50)
-        version_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        filter_layout.addWidget(version_label)
-
+        filter_layout.addWidget(QLabel("版本"))
         self.version_filter = QComboBox()
         self.version_filter.addItem("全部")
-        self.version_filter.setFixedWidth(100)
+        self.version_filter.setMinimumWidth(105)
         self.version_filter.currentTextChanged.connect(self.update_statistics)
         filter_layout.addWidget(self.version_filter)
-
-        # 添加弹性空间
         filter_layout.addStretch()
 
-        # 刷新按钮
-        self.refresh_btn = QPushButton("刷新统计")
+        self.refresh_btn = QPushButton("刷新数据")
+        self.refresh_btn.setProperty("buttonRole", "primary")
         self.refresh_btn.clicked.connect(self.load_data)
-        self.refresh_btn.setFixedWidth(100)
         filter_layout.addWidget(self.refresh_btn)
+        layout.addWidget(toolbar)
 
-        control_main_layout.addLayout(filter_layout)
-        layout.addWidget(control_group)
-
-        # 统计信息
-        stats_group = QGroupBox("统计概览")
-        stats_layout = QHBoxLayout(stats_group)
-
-        # 添加左侧弹性空间
+        stats_strip = QFrame()
+        stats_strip.setObjectName("metricStrip")
+        stats_layout = QHBoxLayout(stats_strip)
+        stats_layout.setContentsMargins(18, 10, 18, 10)
+        stats_layout.setSpacing(38)
+        self.total_label = QLabel("总成就  0")
+        self.completed_label = QLabel("已完成  0")
+        self.completion_rate_label = QLabel("完成率  0%")
+        self.unavailable_label = QLabel("暂不可获取  0")
+        for stat_label in (
+            self.total_label, self.completed_label,
+            self.completion_rate_label, self.unavailable_label,
+        ):
+            stat_label.setObjectName("metricValue")
+            stats_layout.addWidget(stat_label)
         stats_layout.addStretch()
+        layout.addWidget(stats_strip)
 
-        # 总成就数
-        self.total_label = QLabel("总成就数: 0")
-        self.total_label.setStyleSheet("font-size: 16px; font-weight: bold;")
-        stats_layout.addWidget(self.total_label)
-
-        # 添加中间间距
-        stats_layout.addSpacing(80)
-
-        # 已完成
-        self.completed_label = QLabel("已完成: 0")
-        self.completed_label.setStyleSheet("color: #27ae60; font-size: 16px; font-weight: bold;")
-        stats_layout.addWidget(self.completed_label)
-
-        # 添加中间间距
-        stats_layout.addSpacing(80)
-
-        # 完成率
-        self.completion_rate_label = QLabel("完成率: 0%")
-        self.completion_rate_label.setStyleSheet("color: #3498db; font-size: 16px; font-weight: bold;")
-        stats_layout.addWidget(self.completion_rate_label)
-
-        # 添加中间间距
-        stats_layout.addSpacing(80)
-
-        # 暂不可获取
-        self.unavailable_label = QLabel("暂不可获取: 0")
-        self.unavailable_label.setStyleSheet("color: #e67e22; font-size: 16px; font-weight: bold;")
-        stats_layout.addWidget(self.unavailable_label)
-
-        # 添加右侧弹性空间
-        stats_layout.addStretch()
-
-        layout.addWidget(stats_group)
-
-        # 图表区域
         charts_layout = QGridLayout()
-        charts_layout.setSpacing(10)  # 设置组件之间的间距
-        charts_layout.setContentsMargins(0, 0, 0, 0)  # 移除布局边距
+        charts_layout.setSpacing(12)
+        charts_layout.setContentsMargins(0, 0, 0, 0)
+        charts_layout.setColumnStretch(0, 2)
+        charts_layout.setColumnStretch(1, 3)
+        charts_layout.setRowStretch(0, 3)
+        charts_layout.setRowStretch(1, 2)
 
-        # 1. 完成状态饼图（缩小尺寸）
         self.pie_chart = SimpleChartWidget("pie")
-        self.pie_chart.setMinimumSize(250, 250)
+        self.pie_chart.setMinimumSize(260, 230)
         charts_layout.addWidget(self.pie_chart, 0, 0)
 
-        # 2. 分类完成情况柱状图（增大宽度和高度）
         self.bar_chart = SimpleChartWidget("bar")
-        self.bar_chart.setMinimumSize(600, 350)
+        self.bar_chart.setMinimumSize(420, 230)
         charts_layout.addWidget(self.bar_chart, 0, 1)
 
-        # 3. 版本分布图
         self.version_chart = SimpleChartWidget("horizontal_bar")
-        self.version_chart.setMinimumSize(800, 200)
+        self.version_chart.setMinimumSize(680, 180)
         charts_layout.addWidget(self.version_chart, 1, 0, 1, 2)
+        layout.addLayout(charts_layout, 1)
 
-        layout.addLayout(charts_layout)
-
-        # 应用按钮样式
-        self.refresh_btn.setStyleSheet(get_button_style(config.theme))
-
-        self.setLayout(layout)
+        self.on_theme_changed(config.theme)
 
     def on_user_switched(self, username):
         """用户切换时更新数据"""
@@ -1477,10 +1429,10 @@ class StatisticsTab(QWidget):
 
     def update_stat_labels(self, stats):
         """更新统计标签"""
-        self.total_label.setText(f"总成就数: {stats['total']}")
-        self.completed_label.setText(f"已完成: {stats['completed']}")
-        self.completion_rate_label.setText(f"完成率: {stats['completion_rate']}%")
-        self.unavailable_label.setText(f"暂不可获取: {stats['unavailable']}")
+        self.total_label.setText(f"总成就  {stats['total']}")
+        self.completed_label.setText(f"已完成  {stats['completed']}")
+        self.completion_rate_label.setText(f"完成率  {stats['completion_rate']}%")
+        self.unavailable_label.setText(f"暂不可获取  {stats['unavailable']}")
 
     def update_charts(self, stats, filtered_achievements):
         """更新图表"""

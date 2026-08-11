@@ -1,6 +1,6 @@
 ﻿from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                                QTableWidget, QTableWidgetItem, QLineEdit,
-                               QGroupBox, QFileDialog)
+                               QFileDialog, QFrame, QDialog)
 from PySide6.QtCore import Qt, QThread, Signal, QObject
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QColor
@@ -18,7 +18,7 @@ from core.manage_tab import show_notification
 from core.signal_bus import signal_bus
 
 logger = logging.getLogger(__name__)
-from core.styles import (get_button_style, get_font_gray_style)
+from core.styles import get_button_style
 
 
 class AchievementCrawler(QObject):
@@ -136,7 +136,7 @@ class AchievementCrawler(QObject):
                 self.progress.emit("认证信息未配置，使用本地缓存")
                 logger.info("认证信息缺失，使用本地缓存")
                 return cached_data
-            raise Exception("请先在设置中配置认证信息")
+            raise Exception("请先获取数据认证信息")
 
         # 读取本地缓存元数据
         cache_meta, cached_data = self._read_cache_meta(cache_file)
@@ -505,10 +505,9 @@ class AchievementTable(QTableWidget):
         self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.horizontalHeader().setStretchLastSection(True)
         
-        # 设置垂直表头（序号列）样式
-        self.verticalHeader().setVisible(True)
+        # Row numbers add no value in the preview and leave a bright empty gutter.
+        self.verticalHeader().setVisible(False)
         self.verticalHeader().setDefaultSectionSize(25)
-        self.verticalHeader().setMinimumWidth(40)
         
         # 去掉选中框和焦点
         self.setShowGrid(False)
@@ -618,104 +617,120 @@ class CrawlTab(QWidget):
         # self.load_local_data()
         
     def init_ui(self):
-        """初始化UI"""
+        """初始化数据获取工作区。"""
+        from core.widgets import PageHeader
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(15)
-        
-        # 控制面板
-        control_group = QGroupBox("控制面板")
-        control_layout = QHBoxLayout(control_group)
-        
+        layout.setContentsMargins(24, 20, 24, 18)
+        layout.setSpacing(14)
+        layout.addWidget(PageHeader(
+            "数据获取",
+            "从社区 Wiki 同步成就数据，或通过 JSON / Excel 与本地文件交换。",
+        ))
+
+        toolbar = QFrame()
+        toolbar.setObjectName("toolbar")
+        toolbar_layout = QVBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(14, 12, 14, 12)
+        toolbar_layout.setSpacing(9)
+
+        crawl_row = QHBoxLayout()
+        crawl_row.setSpacing(8)
+        crawl_row.addWidget(QLabel("目标版本"))
         self.version_input = QLineEdit()
-        self.version_input.setPlaceholderText("输入版本号（如：1.0, 1.1, 2.0）")
-        self.version_input.setMaximumWidth(150)
-        # 添加输入验证器，只允许数字和小数点
+        self.version_input.setPlaceholderText("例如 3.2")
+        self.version_input.setFixedWidth(130)
         from PySide6.QtGui import QRegularExpressionValidator
         from PySide6.QtCore import QRegularExpression
-        version_validator = QRegularExpressionValidator(QRegularExpression(r"^\d*\.?\d*$"))
-        self.version_input.setValidator(version_validator)
-        # 连接焦点失去信号，用于自动格式化
+        self.version_input.setValidator(
+            QRegularExpressionValidator(QRegularExpression(r"^\d*\.?\d*$"))
+        )
         self.version_input.editingFinished.connect(self.format_version_input)
-        control_layout.addWidget(QLabel("版本:"))
-        control_layout.addWidget(self.version_input)
-        
-        self.crawl_btn = QPushButton("开始爬取")
-        self.crawl_btn.setStyleSheet(get_button_style(config.theme))
+        crawl_row.addWidget(self.version_input)
+
+        self.crawl_btn = QPushButton("开始同步")
+        self.crawl_btn.setProperty("buttonRole", "primary")
         self.crawl_btn.clicked.connect(self.start_crawling)
-        self.crawl_btn.setMaximumWidth(100)
-        control_layout.addWidget(self.crawl_btn)
-        
-        self.merge_btn = QPushButton("确认覆盖")
-        self.merge_btn.setStyleSheet(get_button_style(config.theme))
+        crawl_row.addWidget(self.crawl_btn)
+
+        self.merge_btn = QPushButton("写入成就库")
         self.merge_btn.clicked.connect(self.merge_to_manage)
         self.merge_btn.setEnabled(False)
-        self.merge_btn.setMaximumWidth(100)
-        control_layout.addWidget(self.merge_btn)
-        
-        self.wiki_btn = QPushButton("打开WIKI")
-        self.wiki_btn.setStyleSheet(get_button_style(config.theme))
-        self.wiki_btn.clicked.connect(self.open_wiki)
-        self.wiki_btn.setMaximumWidth(100)
-        control_layout.addWidget(self.wiki_btn)
-        
+        crawl_row.addWidget(self.merge_btn)
+
+        self.auth_btn = QPushButton("获取认证")
+        self.auth_btn.setProperty("buttonRole", "quiet")
+        self.auth_btn.clicked.connect(self.configure_auth)
+        crawl_row.addWidget(self.auth_btn)
+
         self.clear_cache_btn = QPushButton("清除缓存")
-        self.clear_cache_btn.setStyleSheet(get_button_style(config.theme))
+        self.clear_cache_btn.setProperty("buttonRole", "quiet")
         self.clear_cache_btn.clicked.connect(self.clear_cache)
-        self.clear_cache_btn.setMaximumWidth(100)
-        control_layout.addWidget(self.clear_cache_btn)
-        
-        self.download_page_btn = QPushButton("下载页面")
-        self.download_page_btn.setStyleSheet(get_button_style(config.theme))
-        self.download_page_btn.clicked.connect(self.open_download_page)
-        self.download_page_btn.setMaximumWidth(100)
-        control_layout.addWidget(self.download_page_btn)
-        
-        self.bilibili_up_btn = QPushButton("B站UP主")
-        self.bilibili_up_btn.setStyleSheet(get_button_style(config.theme))
-        self.bilibili_up_btn.clicked.connect(self.open_bilibili_up)
-        self.bilibili_up_btn.setMaximumWidth(100)
-        control_layout.addWidget(self.bilibili_up_btn)
-        
-        self.export_template_btn = QPushButton("导出范本")
-        self.export_template_btn.setStyleSheet(get_button_style(config.theme))
+        crawl_row.addWidget(self.clear_cache_btn)
+        crawl_row.addStretch()
+
+        self.status_label = QLabel("等待同步")
+        self.status_label.setObjectName("pageSubtitle")
+        crawl_row.addWidget(self.status_label)
+        toolbar_layout.addLayout(crawl_row)
+
+        file_row = QHBoxLayout()
+        file_row.setSpacing(8)
+        file_label = QLabel("文件操作")
+        file_label.setObjectName("sectionLabel")
+        file_row.addWidget(file_label)
+
+        self.export_template_btn = QPushButton("导出 Excel 范本")
         self.export_template_btn.clicked.connect(self.export_excel_template)
-        self.export_template_btn.setMaximumWidth(100)
-        control_layout.addWidget(self.export_template_btn)
-        
-        self.import_excel_btn = QPushButton("导入Excel")
-        self.import_excel_btn.setStyleSheet(get_button_style(config.theme))
+        file_row.addWidget(self.export_template_btn)
+
+        self.import_excel_btn = QPushButton("导入 Excel")
         self.import_excel_btn.clicked.connect(self.import_excel)
-        self.import_excel_btn.setMaximumWidth(100)
-        control_layout.addWidget(self.import_excel_btn)
-        
-        self.export_btn = QPushButton("导出JSON")
-        self.export_btn.setStyleSheet(get_button_style(config.theme))
+        file_row.addWidget(self.import_excel_btn)
+
+        self.export_btn = QPushButton("导出 JSON")
         self.export_btn.clicked.connect(self.export_json)
         self.export_btn.setEnabled(False)
-        self.export_btn.setMaximumWidth(100)
-        control_layout.addWidget(self.export_btn)
-        
-        self.export_excel_btn = QPushButton("导出Excel")
-        self.export_excel_btn.setStyleSheet(get_button_style(config.theme))
+        file_row.addWidget(self.export_btn)
+
+        self.export_excel_btn = QPushButton("导出 Excel")
         self.export_excel_btn.clicked.connect(self.export_excel)
         self.export_excel_btn.setEnabled(False)
-        self.export_excel_btn.setMaximumWidth(100)
-        control_layout.addWidget(self.export_excel_btn)
-        
-        control_layout.addStretch()
-        layout.addWidget(control_group)
-        
-        # 数据表格
+        file_row.addWidget(self.export_excel_btn)
+        file_row.addStretch()
+        toolbar_layout.addLayout(file_row)
+        layout.addWidget(toolbar)
+
         self.table = AchievementTable()
-        layout.addWidget(self.table)
-        
-        # 初始日志
+        self.table.setAlternatingRowColors(True)
+        layout.addWidget(self.table, 1)
+
+        self.apply_theme(config.theme)
         logger.info("数据爬取标签页已初始化")
     
     def _load_auth_config(self):
         """从配置中加载认证信息"""
         self.devcode, self.token = config.get_auth_data()
+
+    def configure_auth(self):
+        """通过内嵌库街区登录自动获取数据接口凭据。"""
+        try:
+            from core.settings_dialog import BrowserAuthDialog
+            dialog = BrowserAuthDialog(self)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            if not dialog.devcode or not dialog.token:
+                self.status_label.setText("未获取到认证信息")
+                return
+            config.devcode = dialog.devcode
+            config.token = dialog.token
+            config.save_config()
+            self._load_auth_config()
+            self.status_label.setText("认证信息已自动获取并保存")
+        except Exception as exc:
+            logger.error("自动获取认证信息失败: %s", exc, exc_info=True)
+            self.status_label.setText("认证窗口启动失败")
+            self.show_notification(f"认证窗口启动失败: {exc}")
     
     def _on_settings_changed(self, settings_data):
         """配置变化时的处理"""
@@ -769,7 +784,7 @@ class CrawlTab(QWidget):
         # 检查认证信息是否完整
         if not self.devcode or not self.token:
             self.crawl_btn.setEnabled(True)
-            self.show_notification("请先在设置中配置认证信息")
+            self.show_notification("请先点击“获取认证”并完成库街区登录")
             return
         
         # 创建爬虫对象和线程
@@ -785,6 +800,7 @@ class CrawlTab(QWidget):
     
     def update_progress(self, message):
         """更新进度"""
+        self.status_label.setText(message)
         logger.info("%s", message)
     
     def on_crawl_finished(self, achievements):
@@ -795,6 +811,7 @@ class CrawlTab(QWidget):
         self.export_excel_btn.setEnabled(True)
         self.crawl_btn.setEnabled(True)
         
+        self.status_label.setText(f"同步完成，共 {len(achievements)} 条")
         self.show_notification(f"爬取完成，共获取 {len(achievements)} 条成就数据")
         
         # 更新配置中的默认输出文件名（包含版本）
@@ -842,6 +859,7 @@ class CrawlTab(QWidget):
     def on_crawl_error(self, error_message):
         """爬取出错"""
         self.crawl_btn.setEnabled(True)
+        self.status_label.setText(f"同步失败：{error_message}")
         self.show_notification(f"爬取失败: {error_message}")
         logger.error("爬取失败: %s", error_message)
     
@@ -1022,7 +1040,7 @@ class CrawlTab(QWidget):
         # 显示多个通知
         if has_new_categories:
             # 先显示新分类通知
-            self.show_notification("发现新分类，已自动分配排序。建议到设置→分类管理中手动调整顺序。")
+            self.show_notification("发现新分类，已自动分配到分类末尾。")
             # 延迟0.5秒后显示成功通知
             from PySide6.QtCore import QTimer
             QTimer.singleShot(500, lambda: self.show_notification(f"成功新增 {len(to_add)} 条成就，总计 {len(all_achievements)} 条成就数据"))
@@ -1054,8 +1072,8 @@ class CrawlTab(QWidget):
         self.merge_btn.setEnabled(False)
         
         # 切换到管理标签页
-        if hasattr(main_window, 'tab_widget'):
-            main_window.tab_widget.setCurrentIndex(0)  # 成就管理现在是第一个标签页
+        if hasattr(main_window, "set_current_page"):
+            main_window.set_current_page(0)
     
     def show_notification(self, message):
         """显示右上角自动关闭的提示"""
