@@ -1,1 +1,0 @@
-The red contract tests and initial core files persisted. I’m resuming from those exact files, checking the current compile state first, then I’ll finish the adapters and WPF composition and remove only obsolete template artifacts under `native/**`.

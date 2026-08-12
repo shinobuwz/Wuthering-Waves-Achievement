@@ -150,6 +150,12 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
+# Native/.NET and orchestration outputs
+.pi-subagents/
+**/bin/
+**/obj/
+native/publish/
+
 # Nuitka 构建文件
 *.exe
 *.bin

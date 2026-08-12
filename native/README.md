@@ -15,4 +15,12 @@ The application targets .NET 8 / `net8.0-windows` and does not require Python at
 
 For bounded smoke tests, set `WUWA_NATIVE_DATA_ROOT` to a temporary directory. Legacy files are read-only inputs; native status changes never write `resources/config.json` or `resources/user_progress_*.json`.
 
-The native application currently covers management, four progress statuses, grouped transitions, filtering/statistics, transactional generations, explicit legacy import, anonymous Wiki reconciliation seam, JSON and TSV/Excel-compatible exchange, theme switching, and GitHub release checking. Native OCR, game automation, and overlay behavior are intentionally outside this workspace release.
+The native application currently covers management, four progress statuses, grouped transitions, filtering/statistics, transactional generations, explicit legacy import, anonymous Wiki reconciliation seam, JSON and TSV/Excel-compatible exchange, theme switching, and GitHub release checking.
+
+Native OCR is being added as the next side-by-side change under `native/ocr/`. The first C++ vertical slice provides the PP-OCRv5 recognition runtime and managed ABI adapter; build it with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File native/scripts/build-native-ocr.ps1 -Configuration Release
+```
+
+Detector/OpenCV/Clipper2, game automation, scan preview/merge, and overlay behavior remain later tasks. The Python OCR stays available until parity is verified.
