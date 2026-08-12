@@ -15,6 +15,7 @@ set(WUWA_ONNXRUNTIME_VERSION "1.22.1" CACHE STRING "ONNX Runtime NuGet package v
 set(ONNXRUNTIME_ROOT "" CACHE PATH "Root of the Microsoft.ML.OnnxRuntime NuGet package")
 set(WUWA_OCR_REC_MODEL "" CACHE FILEPATH "Optional recognition model used by native integration tests")
 set(WUWA_OCR_DET_MODEL "" CACHE FILEPATH "Optional detection model used by native integration tests")
+set(WUWA_OCR_CLS_MODEL "" CACHE FILEPATH "Optional classifier model used by native integration tests")
 set(WUWA_OCR_DICTIONARY "" CACHE FILEPATH "Optional PP-OCR recognition dictionary used by native integration tests")
 
 if(NOT ONNXRUNTIME_ROOT AND DEFINED ENV{ONNXRUNTIME_ROOT})
@@ -66,6 +67,7 @@ add_library(Wuwa.Ocr.Native SHARED
     src/ocr_engine.cpp
     src/ocr_engine.h
     src/detection.cpp
+    src/classifier.cpp
     src/exports.cpp)
 
 target_include_directories(Wuwa.Ocr.Native
@@ -87,7 +89,7 @@ add_custom_command(TARGET Wuwa.Ocr.Native POST_BUILD
 
 include(CTest)
 if(BUILD_TESTING)
-    add_executable(Wuwa.Ocr.Native.Tests tests/ocr_tests.cpp src/ocr_engine.cpp src/ocr_engine.h src/detection.cpp)
+    add_executable(Wuwa.Ocr.Native.Tests tests/ocr_tests.cpp src/ocr_engine.cpp src/ocr_engine.h src/detection.cpp src/classifier.cpp)
     target_include_directories(Wuwa.Ocr.Native.Tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_SOURCE_DIR}/src" "${ONNXRUNTIME_INCLUDE_DIR}" ${OpenCV_INCLUDE_DIRS})
     target_link_libraries(Wuwa.Ocr.Native.Tests PRIVATE "${ONNXRUNTIME_LIBRARY}" ${OpenCV_LIBS} clipper2)
@@ -106,7 +108,7 @@ if(BUILD_TESTING)
     add_test(NAME Wuwa.Ocr.Native.Unit COMMAND Wuwa.Ocr.Native.Tests)
     if(WUWA_OCR_REC_MODEL AND WUWA_OCR_DICTIONARY)
         add_test(NAME Wuwa.Ocr.Native.ModelSmoke
-            COMMAND Wuwa.Ocr.Native.Tests "${WUWA_OCR_REC_MODEL}" "${WUWA_OCR_DICTIONARY}" "${WUWA_OCR_DET_MODEL}")
+            COMMAND Wuwa.Ocr.Native.Tests "${WUWA_OCR_REC_MODEL}" "${WUWA_OCR_DICTIONARY}" "${WUWA_OCR_DET_MODEL}" "${WUWA_OCR_CLS_MODEL}")
     endif()
 endif()
 

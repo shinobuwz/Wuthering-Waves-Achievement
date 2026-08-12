@@ -15,6 +15,7 @@ $ocrRoot = Join-Path $repoRoot 'native/ocr'
 $buildRoot = Join-Path $ocrRoot 'build'
 $modelPath = Join-Path $repoRoot 'onnxocr/models/ppocrv5/rec/rec.onnx'
 $detectionModelPath = Join-Path $repoRoot 'onnxocr/models/ppocrv5/det/det.onnx'
+$classifierModelPath = Join-Path $repoRoot 'onnxocr/models/ppocrv5/cls/cls.onnx'
 $dictionaryPath = Join-Path $repoRoot 'onnxocr/models/ppocrv5/ppocrv5_dict.txt'
 $packageRoot = Join-Path $env:USERPROFILE ".nuget/packages/microsoft.ml.onnxruntime/$OnnxRuntimeVersion"
 $dependencyRoot = Join-Path $env:LOCALAPPDATA 'WuwaNativeDeps'
@@ -67,6 +68,7 @@ if (-not (Test-Path $cmake)) { throw "CMake was not found under $visualStudio." 
     "-DOpenCV_DIR=$openCvRoot" `
     "-DWUWA_OCR_REC_MODEL=$modelPath" `
     "-DWUWA_OCR_DET_MODEL=$detectionModelPath" `
+    "-DWUWA_OCR_CLS_MODEL=$classifierModelPath" `
     "-DWUWA_OCR_DICTIONARY=$dictionaryPath"
 & $cmake --build $buildRoot --config $Configuration --parallel
 if (-not $SkipTests) {

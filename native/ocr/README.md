@@ -20,7 +20,7 @@ powershell -ExecutionPolicy Bypass -File native/scripts/build-native-ocr.ps1 -Co
 The command builds the DLL and runs:
 
 - dictionary/UTF-8 and CTC decoder unit tests;
-- real PP-OCRv5 `det.onnx` and `rec.onnx` session smoke using a synthetic BGR image;
+- real PP-OCRv5 `det.onnx`, `cls.onnx`, and `rec.onnx` session smoke using a synthetic BGR image;
 - DB bitmap/contour/unclip/perspective-crop execution on the blank smoke image.
 
 Outputs are written to `native/ocr/build/Release` and are intentionally ignored by Git.
@@ -40,19 +40,19 @@ The packaged application will instead place these files in its `ocr/` directory.
 
 Implemented now:
 
-- detector/recognizer model and dictionary validation;
+- detector/classifier/recognizer model and dictionary validation;
 - PP-OCRv5 DB detector preprocessing and postprocessing;
 - OpenCV contours, rotated boxes, perspective crops, and reading-order sorting;
 - Clipper2 box expansion;
 - dynamic-width PP-OCRv5 recognition preprocessing;
+- optional 0°/180° angle classification and crop rotation;
 - CPU ONNX Runtime sessions;
 - CTC decoding and confidence;
 - single-line and full-page UTF-8 C ABI plus managed safe-handle wrapper.
 
 Still to implement in the same native DLL:
 
-- optional angle classifier;
-- multi-crop recognition batching;
+- multi-crop recognition/classification batching;
 - captured-image Python/C++ differential fixtures;
 - game-window capture, scan orchestration, preview, cancellation, and workspace merge.
 

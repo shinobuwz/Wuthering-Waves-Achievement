@@ -26,6 +26,7 @@ public sealed class NativeOcrIntegrationTests
         var image = Enumerable.Repeat((byte)255, 48 * 160 * 3).ToArray();
         var result = client.RecognizeBgr(image, 160, 48, 160 * 3);
         client.EnableDetection(Path.Combine(modelRoot!, "det", "det.onnx"));
+        client.EnableClassifier(Path.Combine(modelRoot!, "cls", "cls.onnx"));
         var page = client.DetectAndRecognizeBgr(image, 160, 48, 160 * 3);
 
         Assert.IsTrue(float.IsFinite(result.Score));

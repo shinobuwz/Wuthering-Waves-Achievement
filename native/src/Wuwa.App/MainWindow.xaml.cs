@@ -207,8 +207,9 @@ public partial class MainWindow : Window
         var modelRoot = Environment.GetEnvironmentVariable("WUWA_NATIVE_OCR_MODEL_ROOT") ?? Path.Combine(ocrRoot, "models", "ppocrv5");
         var recognitionModel = Path.Combine(modelRoot, "rec", "rec.onnx");
         var detectionModel = Path.Combine(modelRoot, "det", "det.onnx");
+        var classifierModel = Path.Combine(modelRoot, "cls", "cls.onnx");
         var dictionary = Path.Combine(modelRoot, "ppocrv5_dict.txt");
-        if (!File.Exists(Path.Combine(ocrRoot, "Wuwa.Ocr.Native.dll")) || !File.Exists(recognitionModel) || !File.Exists(detectionModel) || !File.Exists(dictionary))
+        if (!File.Exists(Path.Combine(ocrRoot, "Wuwa.Ocr.Native.dll")) || !File.Exists(recognitionModel) || !File.Exists(detectionModel) || !File.Exists(classifierModel) || !File.Exists(dictionary))
         {
             ShowError("原生 OCR 组件尚未部署。请先运行 native/scripts/build-native-ocr.ps1，或安装包含 ocr/ 资产的发布包。");
             return;
@@ -223,6 +224,7 @@ public partial class MainWindow : Window
         {
             using var client = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.5f));
             client.EnableDetection(detectionModel);
+            client.EnableClassifier(classifierModel);
             using var reader = new NativeOcrTextReader(client);
             var service = new SinglePageOcrScanService(new WindowsGameWindowCapture(), reader);
             WindowState = WindowState.Minimized;

@@ -101,6 +101,25 @@ public sealed partial class NativeOcrClient : IDisposable
         }
     }
 
+    public void EnableClassifier(string classifierModelPath, float rotationThreshold = 0.9f)
+    {
+        if (string.IsNullOrWhiteSpace(classifierModelPath)) throw new ArgumentException("Classifier model path is required.", nameof(classifierModelPath));
+        var nativePath = Marshal.StringToHGlobalUni(Path.GetFullPath(classifierModelPath));
+        try
+        {
+            lock (_syncRoot)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                var status = NativeMethods.EnableClassifier(_handle, nativePath, rotationThreshold);
+                if (status != NativeOcrStatus.Ok) throw new NativeOcrException(status, ReadLastError(_handle.DangerousGetHandle()));
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(nativePath);
+        }
+    }
+
     public unsafe IReadOnlyList<NativeOcrTextLine> DetectAndRecognizeBgr(ReadOnlySpan<byte> pixels, int width, int height, int stride)
     {
         ValidateImage(pixels, width, height, stride);
@@ -264,6 +283,10 @@ public sealed partial class NativeOcrClient : IDisposable
         [LibraryImport(Library, EntryPoint = "wuwa_ocr_enable_detection")]
         [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
         internal static partial NativeOcrStatus EnableDetection(SafeOcrHandle handle, IntPtr detectionModelPath, float bitmapThreshold, float boxThreshold, float unclipRatio, int limitSideLength);
+
+        [LibraryImport(Library, EntryPoint = "wuwa_ocr_enable_classifier")]
+        [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+        internal static partial NativeOcrStatus EnableClassifier(SafeOcrHandle handle, IntPtr classifierModelPath, float rotationThreshold);
 
         [LibraryImport(Library, EntryPoint = "wuwa_ocr_detect_and_recognize_bgr")]
         [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]

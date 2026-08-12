@@ -28,13 +28,13 @@
 ## Verification
 
 - `powershell -ExecutionPolicy Bypass -File native/scripts/build-native-ocr.ps1 -Configuration Release -Clean`: passed; CMake/MSVC x64 build succeeded.
-- CTest: 2/2 passed, including real shipped `det.onnx` + `rec.onnx` initialization/inference and DB postprocess smoke.
+- CTest: 2/2 passed, including real shipped `det.onnx` + `cls.onnx` + `rec.onnx` initialization/inference, DB postprocess, classifier, and CTC smoke.
 - Managed integration with `WUWA_NATIVE_OCR_ROOT` and `WUWA_NATIVE_OCR_MODEL_ROOT`: C# → C ABI → C++ → OpenCV/Clipper2/ONNX Runtime passed for line recognition and blank-page full OCR.
-- `dotnet test native/WutheringWavesAchievement.sln -c Release --no-restore`: scan/matching/apply contract tests pass; full suite currently has 23 ordinary passes plus 2 opt-in native/capture smokes.
+- `dotnet test native/WutheringWavesAchievement.sln -c Release --no-restore`: scan/matching/apply contract tests and native det/cls/rec integration pass; 24 passed plus 1 opt-in capture smoke skipped.
 - Real Win32 smoke launched the WPF app, found it by process name, captured its visible client area, and validated a non-black top-down BGR frame.
 - `dotnet build native/WutheringWavesAchievement.sln -c Release --no-restore`: 0 warnings, 0 errors.
 - `native/scripts/publish-native.ps1`: self-contained `win-x64` package succeeded and copied the C++ OCR DLL, ONNX Runtime, OpenCV, det/rec models, dictionary, and third-party notice into `ocr/`.
 - Managed OCR integration smoke passed against the packaged `ocr/` directory.
 - Packaged WPF executable stayed alive for 5 seconds with temporary `WUWA_NATIVE_DATA_ROOT`, created `current.json`, and found its packaged OCR DLL.
 
-Remaining risk: optional classifier, multi-crop batching, captured game-image differential fixtures, DirectX exclusive-fullscreen capture, and global tab navigation are not implemented in this checkpoint.
+Remaining risk: multi-crop batching, captured game-image differential fixtures, DirectX exclusive-fullscreen capture, and global tab navigation are not implemented in this checkpoint.

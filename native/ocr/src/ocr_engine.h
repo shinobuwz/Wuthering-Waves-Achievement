@@ -52,6 +52,8 @@ public:
         float unclip_ratio,
         std::int32_t limit_side_length);
 
+    void EnableClassifier(const std::filesystem::path& model_path, float rotation_threshold);
+
     const std::vector<TextLineResult>& DetectAndRecognizeBgr(
         const std::uint8_t* pixels,
         std::int32_t width,
@@ -85,12 +87,14 @@ private:
     static std::vector<const char*> NamePointers(const std::vector<std::string>& storage);
     RecognitionResult RecognizeMat(const cv::Mat& image);
     std::vector<std::array<cv::Point2f, 4>> Detect(const cv::Mat& image);
+    bool ShouldRotate180(const cv::Mat& image);
     static cv::Mat CropTextLine(const cv::Mat& image, const std::array<cv::Point2f, 4>& box);
 
     Ort::Env environment_;
     Ort::SessionOptions session_options_;
     std::unique_ptr<Ort::Session> recognition_session_;
     std::unique_ptr<Ort::Session> detection_session_;
+    std::unique_ptr<Ort::Session> classifier_session_;
     std::vector<std::string> input_names_storage_;
     std::vector<const char*> input_names_;
     std::vector<std::string> output_names_storage_;
@@ -99,6 +103,10 @@ private:
     std::vector<const char*> detection_input_names_;
     std::vector<std::string> detection_output_names_storage_;
     std::vector<const char*> detection_output_names_;
+    std::vector<std::string> classifier_input_names_storage_;
+    std::vector<const char*> classifier_input_names_;
+    std::vector<std::string> classifier_output_names_storage_;
+    std::vector<const char*> classifier_output_names_;
     std::vector<std::string> characters_;
     std::int32_t recognition_height_;
     std::int32_t recognition_min_width_;
@@ -108,6 +116,7 @@ private:
     float detection_box_threshold_ = 0.6F;
     float detection_unclip_ratio_ = 1.5F;
     std::int32_t detection_limit_side_length_ = 64;
+    float classifier_rotation_threshold_ = 0.9F;
     std::string last_result_text_;
     std::vector<TextLineResult> last_page_;
     std::string last_error_;

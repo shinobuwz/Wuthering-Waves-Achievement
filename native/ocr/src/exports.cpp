@@ -145,6 +145,30 @@ WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_enable_detection(
     }
 }
 
+WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_enable_classifier(
+    WuwaOcrHandle handle,
+    const wchar_t* classifier_model_path,
+    float rotation_threshold) {
+    if (handle == nullptr || classifier_model_path == nullptr) {
+        return StoreError(handle, WUWA_OCR_INVALID_ARGUMENT, "OCR handle and classifier model path are required.");
+    }
+    try {
+        static_cast<wuwa::ocr::OcrEngine*>(handle)->EnableClassifier(std::filesystem::path(classifier_model_path), rotation_threshold);
+        g_last_error.clear();
+        return WUWA_OCR_OK;
+    } catch (const std::invalid_argument& exception) {
+        return StoreError(handle, WUWA_OCR_INVALID_ARGUMENT, exception.what());
+    } catch (const wuwa::ocr::IoError& exception) {
+        return StoreError(handle, WUWA_OCR_IO_ERROR, exception.what());
+    } catch (const Ort::Exception& exception) {
+        return StoreError(handle, WUWA_OCR_MODEL_ERROR, exception.what());
+    } catch (const std::exception& exception) {
+        return StoreError(handle, WUWA_OCR_MODEL_ERROR, exception.what());
+    } catch (...) {
+        return StoreError(handle, WUWA_OCR_INTERNAL_ERROR, "Unknown native OCR classifier initialization failure.");
+    }
+}
+
 WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_detect_and_recognize_bgr(
     WuwaOcrHandle handle,
     const std::uint8_t* pixels,

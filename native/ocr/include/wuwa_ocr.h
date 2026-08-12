@@ -84,6 +84,11 @@ WUWA_OCR_API WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_enable_detection(
     float unclip_ratio,
     int32_t limit_side_length);
 
+WUWA_OCR_API WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_enable_classifier(
+    WuwaOcrHandle handle,
+    const wchar_t* classifier_model_path,
+    float rotation_threshold);
+
 WUWA_OCR_API WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_detect_and_recognize_bgr(
     WuwaOcrHandle handle,
     const uint8_t* pixels,

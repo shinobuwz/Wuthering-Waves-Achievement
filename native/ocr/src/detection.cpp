@@ -214,6 +214,7 @@ const std::vector<TextLineResult>& OcrEngine::DetectAndRecognizeBgr(
     last_page_.clear();
     for (const auto& box : Detect(image)) {
         auto crop = CropTextLine(image, box);
+        if (ShouldRotate180(crop)) cv::rotate(crop, crop, cv::ROTATE_180);
         auto recognition = RecognizeMat(crop);
         if (recognition.text.empty()) continue;
         TextLineResult result;

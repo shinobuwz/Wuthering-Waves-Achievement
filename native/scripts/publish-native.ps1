@@ -34,6 +34,7 @@ $modelTarget = Join-Path $packageOcrRoot 'models/ppocrv5'
 New-Item $packageOcrRoot -ItemType Directory -Force | Out-Null
 New-Item (Join-Path $modelTarget 'det') -ItemType Directory -Force | Out-Null
 New-Item (Join-Path $modelTarget 'rec') -ItemType Directory -Force | Out-Null
+New-Item (Join-Path $modelTarget 'cls') -ItemType Directory -Force | Out-Null
 
 foreach ($file in @('Wuwa.Ocr.Native.dll', 'onnxruntime.dll', 'onnxruntime_providers_shared.dll', 'opencv_world4120.dll')) {
     $source = Join-Path $ocrOutput $file
@@ -42,6 +43,7 @@ foreach ($file in @('Wuwa.Ocr.Native.dll', 'onnxruntime.dll', 'onnxruntime_provi
 }
 Copy-Item (Join-Path $repoRoot 'onnxocr/models/ppocrv5/det/det.onnx') (Join-Path $modelTarget 'det/det.onnx') -Force
 Copy-Item (Join-Path $repoRoot 'onnxocr/models/ppocrv5/rec/rec.onnx') (Join-Path $modelTarget 'rec/rec.onnx') -Force
+Copy-Item (Join-Path $repoRoot 'onnxocr/models/ppocrv5/cls/cls.onnx') (Join-Path $modelTarget 'cls/cls.onnx') -Force
 Copy-Item (Join-Path $repoRoot 'onnxocr/models/ppocrv5/ppocrv5_dict.txt') $modelTarget -Force
 Copy-Item (Join-Path $repoRoot 'native/ocr/THIRD_PARTY.md') $packageOcrRoot -Force
 
