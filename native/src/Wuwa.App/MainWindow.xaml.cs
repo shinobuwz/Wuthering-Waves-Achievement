@@ -15,6 +15,7 @@ public partial class MainWindow : Window
     private readonly AchievementWorkspace _workspace;
     private WorkspaceView? _view;
     private bool _initializingFilters;
+    private CancellationTokenSource? _ocrCancellation;
 
     public MainWindow(AchievementWorkspace workspace)
     {
@@ -190,6 +191,92 @@ public partial class MainWindow : Window
         GroupCombo.SelectedIndex = 0;
         SortCombo.SelectedIndex = 0;
         RefreshView();
+    }
+
+    private async void OcrScan_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_ocrCancellation is not null)
+        {
+            _ocrCancellation.Cancel();
+            OcrScanButton.IsEnabled = false;
+            HintText.Text = "正在取消 OCR 扫描…";
+            return;
+        }
+
+        var ocrRoot = Environment.GetEnvironmentVariable("WUWA_NATIVE_OCR_ROOT") ?? Path.Combine(AppContext.BaseDirectory, "ocr");
+        var modelRoot = Environment.GetEnvironmentVariable("WUWA_NATIVE_OCR_MODEL_ROOT") ?? Path.Combine(ocrRoot, "models", "ppocrv5");
+        var recognitionModel = Path.Combine(modelRoot, "rec", "rec.onnx");
+        var detectionModel = Path.Combine(modelRoot, "det", "det.onnx");
+        var dictionary = Path.Combine(modelRoot, "ppocrv5_dict.txt");
+        if (!File.Exists(Path.Combine(ocrRoot, "Wuwa.Ocr.Native.dll")) || !File.Exists(recognitionModel) || !File.Exists(detectionModel) || !File.Exists(dictionary))
+        {
+            ShowError("原生 OCR 组件尚未部署。请先运行 native/scripts/build-native-ocr.ps1，或安装包含 ocr/ 资产的发布包。");
+            return;
+        }
+
+        _ocrCancellation = new CancellationTokenSource();
+        OcrScanButton.Content = "取消 OCR";
+        HintText.Text = "正在检测游戏窗口并扫描当前页面…";
+        ErrorText.Text = string.Empty;
+        var previousState = WindowState;
+        try
+        {
+            using var client = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.5f));
+            client.EnableDetection(detectionModel);
+            using var reader = new NativeOcrTextReader(client);
+            var service = new SinglePageOcrScanService(new WindowsGameWindowCapture(), reader);
+            WindowState = WindowState.Minimized;
+            await Task.Delay(350, _ocrCancellation.Token);
+            var scan = await service.ScanAsync(
+                ["Client-Win64-Shipping.exe", "Wuthering Waves.exe"],
+                expectedWidth: 1920,
+                expectedHeight: 1080,
+                cancellationToken: _ocrCancellation.Token);
+            WindowState = previousState;
+            Activate();
+            if (!scan.IsSuccess)
+            {
+                if (scan.Error?.Code == OcrScanErrorCode.Cancelled) HintText.Text = "OCR 扫描已取消。";
+                else ShowError(scan.Error?.Message ?? "OCR 扫描失败。");
+                return;
+            }
+            var preview = AchievementOcrMatcher.CreatePreview(scan.Lines, _workspace.Query().Rows);
+            if (preview.Candidates.Count == 0)
+            {
+                ShowError($"OCR 扫描完成，但没有匹配到成就。检测到 {scan.Lines.Count} 条文字，未匹配 {preview.Unmatched.Count} 条。");
+                return;
+            }
+            var previewWindow = new OcrPreviewWindow(preview) { Owner = this };
+            if (previewWindow.ShowDialog() != true || previewWindow.AcceptedPreview is null)
+            {
+                HintText.Text = "OCR 结果未应用，当前进度保持不变。";
+                return;
+            }
+            var applied = await _workspace.ApplyOcrPreviewAsync(previewWindow.AcceptedPreview, confirm: true, cancellationToken: _ocrCancellation.Token);
+            if (!applied.IsSuccess)
+            {
+                ShowError(applied.Error?.Message ?? "OCR 结果应用失败。");
+                return;
+            }
+            RefreshView();
+            HintText.Text = $"OCR 已应用 {applied.Updated} 条 · 防止降级 {applied.PreventedDowngrades} 条 · 未变化 {applied.Unchanged} 条";
+        }
+        catch (OperationCanceledException)
+        {
+            HintText.Text = "OCR 扫描已取消。";
+        }
+        catch (Exception exception)
+        {
+            ShowError($"OCR 扫描失败：{exception.Message}");
+        }
+        finally
+        {
+            WindowState = previousState;
+            _ocrCancellation.Dispose();
+            _ocrCancellation = null;
+            OcrScanButton.Content = "OCR 单页扫描";
+            OcrScanButton.IsEnabled = true;
+        }
     }
 
     private async void Import_OnClick(object sender, RoutedEventArgs e)

@@ -43,6 +43,7 @@
                 <ComboBox x:Name="SortCombo" Width="125" SelectionChanged="Filter_OnChanged" />
                 <Button Content="清除筛选" Click="ClearFilters_OnClick" />
                 <Button Content="浅色主题" Click="Theme_OnClick" />
+                <Button x:Name="OcrScanButton" Content="OCR 单页扫描" Click="OcrScan_OnClick" />
                 <Button Content="导入 JSON/TSV" Click="Import_OnClick" />
                 <Button Content="导出 JSON" Click="Export_OnClick" />
                 <Button Content="同步 Wiki" Click="Sync_OnClick" />

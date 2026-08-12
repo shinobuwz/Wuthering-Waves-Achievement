@@ -14,9 +14,8 @@
   - [x] Port achievement-name normalization, Levenshtein matching threshold, duplicate ambiguity quarantine, date/in-progress status parsing, and same-row status association.
   - [ ] Port primary/secondary tab discovery, scrolling/navigation safeguards, and full-scan progress reporting.
 
-- [ ] **05 — Preview and transactional merge UI**
-  - [x] Add immutable preview candidates and confirmed one-revision merge through `AchievementWorkspace`, including completed-status downgrade prevention.
-  - [ ] Add WPF scan surface and preview/selection/conflict UI.
+- [x] **05 — Preview and transactional merge UI**
+  - Added an OCR single-page command with cancel/minimize/restore lifecycle, immutable candidates, selectable preview, unmatched/unknown status feedback, and confirmed one-revision merge through `AchievementWorkspace`, including completed-status downgrade prevention.
 
 - [ ] **06 — Native OCR release verification**
   - Package DLLs and models, run C++/managed tests, captured-image differential checks, leak/cancellation stress, self-contained publish, and side-by-side launch verification before considering Python OCR removal.

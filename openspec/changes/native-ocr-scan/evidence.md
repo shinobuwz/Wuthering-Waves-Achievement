@@ -22,8 +22,8 @@
 
 ### OCR only mutates progress after preview confirmation | implementation
 背景：Raw OCR can be ambiguous or omit status text, and the legacy workflow intentionally prevents completed achievements from being downgraded.
-事件：Added name normalization/edit-distance matching, ambiguity quarantine, date/in-progress parsing, nearest-line status association, and `AchievementWorkspace.ApplyOcrPreviewAsync`.
-结论：Scanning produces immutable review candidates; explicit confirmation applies accepted statuses in one generation and preserves completed-status downgrade protection.
+事件：Added name normalization/edit-distance matching, ambiguity quarantine, date/in-progress parsing, nearest-line status association, `AchievementWorkspace.ApplyOcrPreviewAsync`, and a selectable WPF preview dialog.
+结论：Scanning produces immutable review candidates; explicit confirmation applies selected statuses in one generation and preserves completed-status downgrade protection.
 
 ## Verification
 
@@ -33,5 +33,8 @@
 - `dotnet test native/WutheringWavesAchievement.sln -c Release --no-restore`: scan/matching/apply contract tests pass; full suite currently has 23 ordinary passes plus 2 opt-in native/capture smokes.
 - Real Win32 smoke launched the WPF app, found it by process name, captured its visible client area, and validated a non-black top-down BGR frame.
 - `dotnet build native/WutheringWavesAchievement.sln -c Release --no-restore`: 0 warnings, 0 errors.
+- `native/scripts/publish-native.ps1`: self-contained `win-x64` package succeeded and copied the C++ OCR DLL, ONNX Runtime, OpenCV, det/rec models, dictionary, and third-party notice into `ocr/`.
+- Managed OCR integration smoke passed against the packaged `ocr/` directory.
+- Packaged WPF executable stayed alive for 5 seconds with temporary `WUWA_NATIVE_DATA_ROOT`, created `current.json`, and found its packaged OCR DLL.
 
-Remaining risk: optional classifier, multi-crop batching, captured game-image differential fixtures, DirectX exclusive-fullscreen capture, global navigation, WPF preview UI, and packaged native assets are not implemented in this checkpoint.
+Remaining risk: optional classifier, multi-crop batching, captured game-image differential fixtures, DirectX exclusive-fullscreen capture, and global tab navigation are not implemented in this checkpoint.
