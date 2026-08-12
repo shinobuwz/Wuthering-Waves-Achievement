@@ -51,19 +51,42 @@ public sealed class AchievementLibrary
     public CategoryCatalog Categories { get; }
 }
 
+public sealed record WorkspaceMetadata(
+    string? ProfileNickname = null,
+    string? ProfileUid = null,
+    string? LegacySourcePath = null,
+    DateTimeOffset? ImportedAtUtc = null,
+    IReadOnlyDictionary<string, string>? Settings = null,
+    IReadOnlyDictionary<string, string>? IdentityMappings = null,
+    IReadOnlySet<AchievementId>? Tombstones = null)
+{
+    public static WorkspaceMetadata Empty { get; } = new();
+
+    public IReadOnlyDictionary<string, string> EffectiveSettings =>
+        Settings ?? new Dictionary<string, string>(StringComparer.Ordinal);
+
+    public IReadOnlyDictionary<string, string> EffectiveIdentityMappings =>
+        IdentityMappings ?? new Dictionary<string, string>(StringComparer.Ordinal);
+
+    public IReadOnlySet<AchievementId> EffectiveTombstones =>
+        Tombstones ?? new HashSet<AchievementId>();
+}
+
 public sealed class WorkspaceState
 {
     public WorkspaceState(
         long revision,
         IEnumerable<Achievement> achievements,
         IReadOnlyDictionary<AchievementId, ProgressStatus> statuses,
-        CategoryCatalog categories)
+        CategoryCatalog categories,
+        WorkspaceMetadata? metadata = null)
     {
         Revision = revision;
         Achievements = Array.AsReadOnly(achievements.OrderBy(item => item.AbsoluteOrder).ToArray());
         Statuses = new ReadOnlyDictionary<AchievementId, ProgressStatus>(
             new Dictionary<AchievementId, ProgressStatus>(statuses));
         Categories = categories;
+        Metadata = metadata ?? WorkspaceMetadata.Empty;
     }
 
     public long Revision { get; }
@@ -73,6 +96,8 @@ public sealed class WorkspaceState
     public IReadOnlyDictionary<AchievementId, ProgressStatus> Statuses { get; }
 
     public CategoryCatalog Categories { get; }
+
+    public WorkspaceMetadata Metadata { get; }
 }
 
 public interface IAppDataStore
@@ -87,13 +112,31 @@ public interface IAchievementLibrarySource
     Task<AchievementLibrary> LoadAsync(CancellationToken cancellationToken = default);
 }
 
+/// <summary>Read-only access to the legacy profile files. Implementations must never write them.</summary>
+public interface ILegacyProfileSource
+{
+    Task<LegacyDiscoveryResult> DiscoverAsync(string configPath, CancellationToken cancellationToken = default);
+
+    Task<LegacyProfileProgress> ReadProgressAsync(LegacyProfileCandidate candidate, CancellationToken cancellationToken = default);
+}
+
 public enum WorkspaceErrorCode
 {
     NotOpen,
     LoadFailed,
     InvalidStatus,
     AchievementNotFound,
-    SaveFailed
+    SaveFailed,
+    Cancelled,
+    LegacyDiscoveryFailed,
+    LegacyProfileNotFound,
+    LegacyProfileAmbiguous,
+    LegacyProfileInvalid,
+    LegacyImportRequiresConfirmation,
+    LegacyImportFailed,
+    ExchangeInvalid,
+    WikiRejected,
+    UpdateCheckFailed
 }
 
 public sealed record WorkspaceError(WorkspaceErrorCode Code, string Message);
@@ -153,7 +196,8 @@ public sealed record WorkspaceSnapshot(
     long Revision,
     IReadOnlyList<AchievementRow> Rows,
     WorkspaceStatistics Statistics,
-    CategoryCatalog Categories)
+    CategoryCatalog Categories,
+    WorkspaceMetadata Metadata)
 {
     public static WorkspaceSnapshot Empty { get; } = new(
         0,
@@ -169,10 +213,52 @@ public sealed record WorkspaceSnapshot(
             new Dictionary<string, int>(),
             new Dictionary<string, int>(),
             new Dictionary<string, int>()),
-        CategoryCatalog.Empty);
+        CategoryCatalog.Empty,
+        WorkspaceMetadata.Empty);
 }
 
 public sealed record WorkspaceCommandResult(
     bool IsSuccess,
     WorkspaceSnapshot Snapshot,
     WorkspaceError? Error = null);
+
+public sealed record LegacyImportOptions(
+    LegacyProfileCandidate? SelectedCandidate = null,
+    bool ConfirmReplace = false);
+
+public sealed record WorkspaceImportResult(
+    bool IsSuccess,
+    WorkspaceSnapshot Snapshot,
+    LegacyDiscoveryResult? Discovery = null,
+    WorkspaceError? Error = null);
+
+public enum LegacyDiscoveryStatus
+{
+    NoCandidates,
+    Unambiguous,
+    RequiresSelection,
+    InvalidCurrentUser,
+    Invalid
+}
+
+public sealed record LegacyProfileCandidate(
+    string Nickname,
+    string Uid,
+    string ProgressPath,
+    int ProgressCount,
+    string? Username = null);
+
+public sealed record LegacyDiscoveryResult(
+    LegacyDiscoveryStatus Status,
+    IReadOnlyList<LegacyProfileCandidate> Candidates,
+    string? CurrentUser = null,
+    WorkspaceError? Error = null)
+{
+    public bool IsSuccess => Status is LegacyDiscoveryStatus.Unambiguous or LegacyDiscoveryStatus.RequiresSelection or LegacyDiscoveryStatus.InvalidCurrentUser;
+
+    public bool RequiresSelection => Status is LegacyDiscoveryStatus.RequiresSelection or LegacyDiscoveryStatus.InvalidCurrentUser;
+}
+
+public sealed record LegacyProfileProgress(
+    LegacyProfileCandidate Candidate,
+    IReadOnlyDictionary<string, ProgressStatus> Statuses);

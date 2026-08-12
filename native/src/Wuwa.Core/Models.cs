@@ -6,6 +6,7 @@ namespace Wuwa.Core;
 public readonly record struct AchievementId(Guid Value)
 {
     private static readonly Guid LegacyNamespace = new("fdc3d099-a7ed-54f6-9f0d-555134ac927a");
+    private static readonly Guid WikiNamespace = new("b147fb71-9ad5-5d57-ae69-744f2c7ba36b");
 
     public static AchievementId FromLegacyCode(string legacyCode)
     {
@@ -25,6 +26,30 @@ public readonly record struct AchievementId(Guid Value)
         hash[6] = (byte)((hash[6] & 0x0f) | 0x50);
         hash[8] = (byte)((hash[8] & 0x3f) | 0x80);
         return new AchievementId(new Guid(hash.AsSpan(0, 16), bigEndian: true));
+    }
+
+    public static AchievementId FromWikiSource(string wikiSourceRef)
+    {
+        if (string.IsNullOrWhiteSpace(wikiSourceRef))
+        {
+            throw new ArgumentException("Wiki source reference cannot be blank.", nameof(wikiSourceRef));
+        }
+
+        return new AchievementId(CreateUuidV5(WikiNamespace, wikiSourceRef.Trim()));
+    }
+
+    private static Guid CreateUuidV5(Guid namespaceId, string name)
+    {
+        Span<byte> namespaceBytes = stackalloc byte[16];
+        namespaceId.TryWriteBytes(namespaceBytes, bigEndian: true, out _);
+        var nameBytes = Encoding.UTF8.GetBytes(name);
+        var input = new byte[namespaceBytes.Length + nameBytes.Length];
+        namespaceBytes.CopyTo(input);
+        nameBytes.CopyTo(input.AsSpan(namespaceBytes.Length));
+        var hash = SHA1.HashData(input);
+        hash[6] = (byte)((hash[6] & 0x0f) | 0x50);
+        hash[8] = (byte)((hash[8] & 0x3f) | 0x80);
+        return new Guid(hash.AsSpan(0, 16), bigEndian: true);
     }
 
     public override string ToString() => Value.ToString("D");
@@ -75,7 +100,13 @@ public sealed record Achievement(
     string Description,
     string Reward,
     bool IsHidden,
-    string? GroupId = null);
+    string? GroupId = null,
+    string? WikiSourceRef = null,
+    bool IsTombstone = false,
+    IReadOnlyList<string>? MutualExclusionCodes = null)
+{
+    public IReadOnlyList<string> EffectiveMutualExclusionCodes => MutualExclusionCodes ?? Array.Empty<string>();
+}
 
 public sealed record AchievementRow(
     AchievementId Id,
@@ -89,7 +120,10 @@ public sealed record AchievementRow(
     string Reward,
     bool IsHidden,
     string? GroupId,
-    ProgressStatus Status)
+    ProgressStatus Status,
+    string? WikiSourceRef = null,
+    bool IsTombstone = false,
+    IReadOnlyList<string>? MutualExclusionCodes = null)
 {
     public string StatusText => Status.ToChinese();
     public string HiddenText => IsHidden ? "隐藏" : string.Empty;
@@ -131,4 +165,5 @@ public sealed record AchievementQuery(
     ObtainabilityFilter Obtainability = ObtainabilityFilter.All,
     CompletionFilter Completion = CompletionFilter.All,
     ProgressStatus? Status = null,
+    bool GroupsOnly = false,
     AchievementSort Sort = AchievementSort.Default);

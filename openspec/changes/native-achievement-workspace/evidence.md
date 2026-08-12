@@ -32,8 +32,8 @@
 
 ## Final Verification
 
-覆盖范围：Not yet verified; implementation has not started.
-验证命令：Pending.
-spec 合规：Pending.
-release risk：Pending.
-结论：Plan ready for implementation after independent review findings were dispositioned in `spec.md` and `tasks.md`.
+覆盖范围：Task 01–06 native side-by-side workspace implementation under `native/**`: workspace behavior, transactional generations/recovery, explicit read-only legacy import, anonymous Wiki adapter/reconciliation seam, JSON and 12-column TSV/Excel-compatible exchange, dark/light shell controls, update checker, and self-contained publish configuration.
+验证命令：`dotnet restore native/WutheringWavesAchievement.sln`；`dotnet test native/WutheringWavesAchievement.sln --no-restore`（17 passed）；`dotnet build native/WutheringWavesAchievement.sln -c Release --no-restore`（0 warnings/0 errors）；`dotnet restore native/src/Wuwa.App/Wuwa.App.csproj -r win-x64`；`dotnet publish native/src/Wuwa.App/Wuwa.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true --no-restore -o native/publish/win-x64`（passed）；published executable bounded launch smoke with temporary `WUWA_NATIVE_DATA_ROOT` kept alive for 5 seconds and created `current.json`；`git diff --check`（passed）。
+spec 合规：WPF 默认启动使用 `JsonAppDataStore`，首次启动先尝试 legacy discovery；旧版配置与进度只读；native generation 使用 atomic manifest 且可从保留 generation 恢复；workspace 对 status/import/sync/exchange 均保留失败前快照；资源经 infrastructure adapter 读取；publish 配置为 `win-x64` self-contained。
+release risk：当前 automated UI Automation、真实 live Wiki probe、截图人工检查和 Windows 安装/卸载生命周期尚未在此环境中完成；Excel 使用无第三方依赖的 TSV 兼容实现而不是原生 `.xlsx` 库。Wiki 远程业务字段的实际 schema 仍需现场 fixture/live probe 验证。
+结论：native solution、行为测试、Release build 和 self-contained win-x64 publish 均通过；可进入用户验收，但上述 UI/live/package lifecycle 风险需在验收中重点检查。

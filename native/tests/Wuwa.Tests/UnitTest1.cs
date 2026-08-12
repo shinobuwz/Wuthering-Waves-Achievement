@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Wuwa.Core;
 using Wuwa.Infrastructure;
 
@@ -80,6 +81,23 @@ public sealed class AchievementWorkspaceTests
     }
 
     [TestMethod]
+    public async Task ChangeStatus_CancellationReturnsStructuredFailureAndLeavesStateActive()
+    {
+        var achievement = Achievement("150", 1);
+        var workspace = CreateWorkspace(achievement);
+        await workspace.OpenAsync();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var result = await workspace.ChangeStatusAsync(achievement.Id, ProgressStatus.Completed, cancellation.Token);
+
+        Assert.IsFalse(result.IsSuccess);
+        Assert.AreEqual(WorkspaceErrorCode.Cancelled, result.Error?.Code);
+        Assert.AreEqual(1, result.Snapshot.Revision);
+        Assert.AreEqual(ProgressStatus.Incomplete, result.Snapshot.Rows.Single().Status);
+    }
+
+    [TestMethod]
     public async Task ChangeStatus_CompletingOccupiedMemberTransfersThreeMemberGroup()
     {
         var a = Achievement("101", 1, groupId: "choice-3");
@@ -119,6 +137,20 @@ public sealed class AchievementWorkspaceTests
     }
 
     [TestMethod]
+    public async Task ChangeStatus_ReopeningOccupiedMemberResetsWholeGroup()
+    {
+        var a = Achievement("211", 1, groupId: "choice-2b");
+        var b = Achievement("212", 2, groupId: "choice-2b");
+        var workspace = CreateWorkspace(a, b);
+        await workspace.OpenAsync();
+        await workspace.ChangeStatusAsync(a.Id, ProgressStatus.Completed);
+
+        var reopened = await workspace.ChangeStatusAsync(b.Id, ProgressStatus.Incomplete);
+
+        AssertStatuses(reopened, (a.Id, ProgressStatus.Incomplete), (b.Id, ProgressStatus.Incomplete));
+    }
+
+    [TestMethod]
     public async Task Statistics_CountEachGroupOnceAndExposeFilteredDistributions()
     {
         var a = Achievement("201", 1, "1.0", "探索", "区域一", groupId: "choice-2");
@@ -139,6 +171,91 @@ public sealed class AchievementWorkspaceTests
         Assert.AreEqual(2, view.Statistics.ByFirstCategory["探索"]);
         Assert.AreEqual(1, view.Statistics.BySecondCategory["区域一"]);
         Assert.AreEqual(2, view.Statistics.ByVersion["1.0"]);
+    }
+
+    [TestMethod]
+    public async Task JsonStore_RoundTripsStatusAndRetainsGenerations()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "wuwa-native-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var achievement = Achievement("401", 1);
+            var source = new FixedAchievementLibrarySource(new AchievementLibrary([achievement], CategoryCatalog.Empty));
+            var store = new JsonAppDataStore(root);
+            var workspace = new AchievementWorkspace(store, source);
+            await workspace.OpenAsync();
+            await workspace.ChangeStatusAsync(achievement.Id, ProgressStatus.Completed);
+
+            var reopened = new AchievementWorkspace(new JsonAppDataStore(root), source);
+            var result = await reopened.OpenAsync();
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual(ProgressStatus.Completed, result.Snapshot.Rows.Single().Status);
+            Assert.IsTrue(Directory.EnumerateDirectories(Path.Combine(root, "generations"), "generation-*").Count() >= 2);
+            Assert.IsTrue(File.Exists(Path.Combine(root, "current.json")));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task JsonStore_RecoversPriorGenerationWhenManifestPointsToMissingGeneration()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "wuwa-native-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var achievement = Achievement("402", 1);
+            var source = new FixedAchievementLibrarySource(new AchievementLibrary([achievement], CategoryCatalog.Empty));
+            var store = new JsonAppDataStore(root);
+            var workspace = new AchievementWorkspace(store, source);
+            await workspace.OpenAsync();
+            await workspace.ChangeStatusAsync(achievement.Id, ProgressStatus.Completed);
+            var manifest = Path.Combine(root, "current.json");
+            var json = await File.ReadAllTextAsync(manifest);
+            var current = JsonSerializer.Deserialize<JsonElement>(json).GetProperty("generation").GetString();
+            Directory.Delete(Path.Combine(root, "generations", current!), true);
+
+            var reopened = new AchievementWorkspace(new JsonAppDataStore(root), source);
+            var result = await reopened.OpenAsync();
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual(ProgressStatus.Incomplete, result.Snapshot.Rows.Single().Status);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task LegacySource_ReadsProfilesWithoutChangingLegacyFiles()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "wuwa-legacy-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var config = Path.Combine(root, "config.json");
+            var progress = Path.Combine(root, "user_progress_123.json");
+            await File.WriteAllTextAsync(config, "{\"current_user\":\"Alice\",\"users\":{\"Alice\":{\"nickname\":\"Alice\",\"uid\":\"123\"}}}");
+            await File.WriteAllTextAsync(progress, "{\"401\":{\"获取状态\":\"已完成\"}}");
+            var before = await File.ReadAllBytesAsync(progress);
+            var source = new JsonLegacyProfileSource();
+
+            var discovered = await source.DiscoverAsync(config);
+            var candidate = discovered.Candidates.Single();
+            var read = await source.ReadProgressAsync(candidate);
+            var after = await File.ReadAllBytesAsync(progress);
+
+            Assert.AreEqual(LegacyDiscoveryStatus.Unambiguous, discovered.Status);
+            Assert.AreEqual(ProgressStatus.Completed, read.Statuses["401"]);
+            CollectionAssert.AreEqual(before, after);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
     }
 
     [TestMethod]

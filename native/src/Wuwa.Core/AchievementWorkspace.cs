@@ -1,6 +1,6 @@
 namespace Wuwa.Core;
 
-public sealed class AchievementWorkspace
+public sealed partial class AchievementWorkspace
 {
     private readonly IAppDataStore _store;
     private readonly IAchievementLibrarySource _librarySource;
@@ -13,9 +13,23 @@ public sealed class AchievementWorkspace
         _librarySource = librarySource ?? throw new ArgumentNullException(nameof(librarySource));
     }
 
-    public async Task<WorkspaceCommandResult> OpenAsync(CancellationToken cancellationToken = default)
+    public Task<WorkspaceCommandResult> OpenAsync(CancellationToken cancellationToken = default) =>
+        OpenAsync(createEmptyIfMissing: true, cancellationToken);
+
+    public async Task<WorkspaceCommandResult> OpenAsync(bool createEmptyIfMissing, CancellationToken cancellationToken = default)
     {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return Failure(
+                WorkspaceErrorCode.Cancelled,
+                "Opening the achievement workspace was cancelled.",
+                _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state));
+        }
+
         try
         {
             try
@@ -28,20 +42,147 @@ public sealed class AchievementWorkspace
                         achievement => achievement.Id,
                         _ => ProgressStatus.Incomplete);
                     state = new WorkspaceState(1, library.Achievements, statuses, library.Categories);
-                    await _store.SaveAsync(state, cancellationToken).ConfigureAwait(false);
+                    if (createEmptyIfMissing)
+                    {
+                        await _store.SaveAsync(state, cancellationToken).ConfigureAwait(false);
+                    }
                 }
 
                 ValidateState(state);
                 _state = state;
                 return Success(CreateSnapshot(state));
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (OperationCanceledException)
+            {
+                return Failure(
+                    WorkspaceErrorCode.Cancelled,
+                    "Opening the achievement workspace was cancelled.",
+                    _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state));
+            }
+            catch (Exception exception)
             {
                 return Failure(
                     WorkspaceErrorCode.LoadFailed,
                     $"Unable to open the achievement workspace: {exception.Message}",
                     _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state));
             }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<LegacyDiscoveryResult> DiscoverLegacyProfilesAsync(
+        ILegacyProfileSource legacySource,
+        string configPath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(legacySource);
+        try
+        {
+            return await legacySource.DiscoverAsync(configPath, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return new LegacyDiscoveryResult(
+                LegacyDiscoveryStatus.Invalid,
+                Array.Empty<LegacyProfileCandidate>(),
+                Error: new WorkspaceError(WorkspaceErrorCode.Cancelled, "Legacy profile discovery was cancelled."));
+        }
+        catch (Exception exception)
+        {
+            return new LegacyDiscoveryResult(
+                LegacyDiscoveryStatus.Invalid,
+                Array.Empty<LegacyProfileCandidate>(),
+                Error: new WorkspaceError(WorkspaceErrorCode.LegacyDiscoveryFailed, exception.Message));
+        }
+    }
+
+    public async Task<WorkspaceImportResult> ImportLegacyProfileAsync(
+        ILegacyProfileSource legacySource,
+        LegacyImportOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(legacySource);
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return ImportFailure(WorkspaceErrorCode.Cancelled, "Legacy import was cancelled.", _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state));
+        }
+
+        try
+        {
+            if (_state is null)
+            {
+                return ImportFailure(WorkspaceErrorCode.NotOpen, "The achievement workspace is not open.", WorkspaceSnapshot.Empty);
+            }
+
+            if (options.SelectedCandidate is null)
+            {
+                return ImportFailure(WorkspaceErrorCode.LegacyProfileNotFound, "A legacy profile must be selected before import.", CreateSnapshot(_state));
+            }
+
+            if (!options.ConfirmReplace)
+            {
+                return ImportFailure(WorkspaceErrorCode.LegacyImportRequiresConfirmation, "Legacy import replaces native progress and requires confirmation.", CreateSnapshot(_state));
+            }
+
+            LegacyProfileProgress progress;
+            try
+            {
+                progress = await legacySource.ReadProgressAsync(options.SelectedCandidate, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return ImportFailure(WorkspaceErrorCode.Cancelled, "Legacy import was cancelled.", CreateSnapshot(_state));
+            }
+            catch (Exception exception)
+            {
+                return ImportFailure(WorkspaceErrorCode.LegacyImportFailed, exception.Message, CreateSnapshot(_state));
+            }
+
+            var statuses = _state.Achievements.ToDictionary(item => item.Id, _ => ProgressStatus.Incomplete);
+            var byCode = _state.Achievements.ToDictionary(item => item.LegacyCode, StringComparer.Ordinal);
+            foreach (var item in progress.Statuses)
+            {
+                if (!byCode.TryGetValue(item.Key, out var achievement))
+                {
+                    continue;
+                }
+
+                statuses[achievement.Id] = item.Value;
+            }
+
+            var candidate = new WorkspaceState(
+                _state.Revision + 1,
+                _state.Achievements,
+                statuses,
+                _state.Categories,
+                new WorkspaceMetadata(
+                    options.SelectedCandidate.Nickname,
+                    options.SelectedCandidate.Uid,
+                    options.SelectedCandidate.ProgressPath,
+                    DateTimeOffset.UtcNow));
+
+            try
+            {
+                await _store.SaveAsync(candidate, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return ImportFailure(WorkspaceErrorCode.Cancelled, "Legacy import was cancelled while saving.", CreateSnapshot(_state));
+            }
+            catch (Exception exception)
+            {
+                return ImportFailure(WorkspaceErrorCode.LegacyImportFailed, exception.Message, CreateSnapshot(_state));
+            }
+
+            _state = candidate;
+            return new WorkspaceImportResult(true, CreateSnapshot(candidate));
         }
         finally
         {
@@ -104,6 +245,11 @@ public sealed class AchievementWorkspace
             rows = rows.Where(row => row.Status == status);
         }
 
+        if (query.GroupsOnly)
+        {
+            rows = rows.Where(row => !string.IsNullOrWhiteSpace(row.GroupId));
+        }
+
         rows = query.Sort switch
         {
             AchievementSort.IncompleteFirst => rows
@@ -122,12 +268,156 @@ public sealed class AchievementWorkspace
             Array.AsReadOnly(GetOrderedSecondCategories(state, query.FirstCategory).ToArray()));
     }
 
+    public async Task<WorkspaceCommandResult> SetSettingAsync(
+        string key,
+        string value,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return Failure(WorkspaceErrorCode.ExchangeInvalid, "Setting key cannot be blank.", _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state));
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return Failure(WorkspaceErrorCode.Cancelled, "Setting update was cancelled.", _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state));
+        }
+
+        try
+        {
+            if (_state is null) return Failure(WorkspaceErrorCode.NotOpen, "The achievement workspace is not open.", WorkspaceSnapshot.Empty);
+            var settings = new Dictionary<string, string>(_state.Metadata.EffectiveSettings, StringComparer.Ordinal) { [key.Trim()] = value ?? string.Empty };
+            var candidate = new WorkspaceState(_state.Revision + 1, _state.Achievements, _state.Statuses, _state.Categories, _state.Metadata with { Settings = settings });
+            await _store.SaveAsync(candidate, cancellationToken).ConfigureAwait(false);
+            _state = candidate;
+            return Success(CreateSnapshot(candidate));
+        }
+        catch (OperationCanceledException)
+        {
+            return Failure(WorkspaceErrorCode.Cancelled, "Setting update was cancelled.", _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state));
+        }
+        catch (Exception exception)
+        {
+            return Failure(WorkspaceErrorCode.SaveFailed, exception.Message, _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state));
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<WorkspaceCommandResult> ExportAsync(
+        IAchievementExportSink sink,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sink);
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return Failure(WorkspaceErrorCode.Cancelled, "Export was cancelled.", WorkspaceSnapshot.Empty);
+        }
+
+        try
+        {
+            if (_state is null) return Failure(WorkspaceErrorCode.NotOpen, "The achievement workspace is not open.", WorkspaceSnapshot.Empty);
+            await sink.WriteAsync(_state, cancellationToken).ConfigureAwait(false);
+            return Success(CreateSnapshot(_state));
+        }
+        catch (OperationCanceledException)
+        {
+            return Failure(WorkspaceErrorCode.Cancelled, "Export was cancelled.", _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state));
+        }
+        catch (Exception exception)
+        {
+            return Failure(WorkspaceErrorCode.ExchangeInvalid, exception.Message, _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state));
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<ExchangeImportResult> ImportExchangeAsync(
+        IAchievementImportSource source,
+        bool replace,
+        bool confirmReplace,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return ExchangeFailure(WorkspaceErrorCode.Cancelled, "Exchange import was cancelled.");
+        }
+
+        try
+        {
+            if (_state is null) return ExchangeFailure(WorkspaceErrorCode.NotOpen, "The achievement workspace is not open.");
+            if (replace && !confirmReplace) return ExchangeFailure(WorkspaceErrorCode.LegacyImportRequiresConfirmation, "Replacing workspace data requires confirmation.");
+            ExchangePayload payload;
+            try
+            {
+                payload = await source.ReadAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                return ExchangeFailure(WorkspaceErrorCode.ExchangeInvalid, exception.Message);
+            }
+
+            var rows = replace && payload.Achievements.Count > 0 ? payload.Achievements : _state.Achievements;
+            var statuses = rows.ToDictionary(item => item.Id, item => ProgressStatus.Incomplete);
+            var byCode = rows.ToDictionary(item => item.LegacyCode, StringComparer.Ordinal);
+            foreach (var item in payload.Progress)
+            {
+                if (byCode.TryGetValue(item.Key, out var achievement)) statuses[achievement.Id] = item.Value;
+            }
+            foreach (var item in payload.Achievements)
+            {
+                if (payload.Progress.TryGetValue(item.LegacyCode, out var status)) statuses[item.Id] = status;
+            }
+
+            var candidate = new WorkspaceState(_state.Revision + 1, rows, statuses, _state.Categories, _state.Metadata);
+            await _store.SaveAsync(candidate, cancellationToken).ConfigureAwait(false);
+            _state = candidate;
+            return new ExchangeImportResult(true, CreateSnapshot(candidate), payload.Kind);
+        }
+        catch (OperationCanceledException)
+        {
+            return ExchangeFailure(WorkspaceErrorCode.Cancelled, "Exchange import was cancelled.");
+        }
+        catch (Exception exception)
+        {
+            return ExchangeFailure(WorkspaceErrorCode.ExchangeInvalid, exception.Message);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<WorkspaceCommandResult> ChangeStatusAsync(
         AchievementId achievementId,
         ProgressStatus status,
         CancellationToken cancellationToken = default)
     {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return Failure(
+                WorkspaceErrorCode.Cancelled,
+                "Changing the achievement status was cancelled.",
+                _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state));
+        }
+
         try
         {
             if (_state is null)
@@ -159,7 +449,14 @@ public sealed class AchievementWorkspace
             {
                 await _store.SaveAsync(candidate, cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (OperationCanceledException)
+            {
+                return Failure(
+                    WorkspaceErrorCode.Cancelled,
+                    "Saving the status change was cancelled.",
+                    previousSnapshot);
+            }
+            catch (Exception exception)
             {
                 return Failure(
                     WorkspaceErrorCode.SaveFailed,
@@ -204,7 +501,8 @@ public sealed class AchievementWorkspace
             return;
         }
 
-        if (statuses[selected.Id] == ProgressStatus.Completed && requestedStatus == ProgressStatus.Incomplete)
+        if (requestedStatus == ProgressStatus.Incomplete &&
+            statuses[selected.Id] is ProgressStatus.Completed or ProgressStatus.Occupied)
         {
             foreach (var member in group)
             {
@@ -224,7 +522,8 @@ public sealed class AchievementWorkspace
             state.Revision,
             rows,
             CalculateStatistics(state.Revision, rows),
-            state.Categories);
+            state.Categories,
+            state.Metadata);
     }
 
     private static IEnumerable<AchievementRow> CreateRows(WorkspaceState state) =>
@@ -240,7 +539,10 @@ public sealed class AchievementWorkspace
             achievement.Reward,
             achievement.IsHidden,
             achievement.GroupId,
-            state.Statuses[achievement.Id]));
+            state.Statuses[achievement.Id],
+            achievement.WikiSourceRef,
+            achievement.IsTombstone,
+            achievement.EffectiveMutualExclusionCodes));
 
     private static WorkspaceStatistics CalculateStatistics(long revision, IReadOnlyList<AchievementRow> rows)
     {
@@ -336,6 +638,14 @@ public sealed class AchievementWorkspace
             }
         }
     }
+
+    private ExchangeImportResult ExchangeFailure(WorkspaceErrorCode code, string message) =>
+        new(false, _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state), Error: new WorkspaceError(code, message));
+
+    private static WorkspaceImportResult ImportFailure(
+        WorkspaceErrorCode code,
+        string message,
+        WorkspaceSnapshot snapshot) => new(false, snapshot, null, new WorkspaceError(code, message));
 
     private static WorkspaceCommandResult Success(WorkspaceSnapshot snapshot) => new(true, snapshot);
 
