@@ -21,7 +21,9 @@ public partial class App : Application
             var dataRoot = Environment.GetEnvironmentVariable("WUWA_NATIVE_DATA_ROOT");
             var store = new JsonAppDataStore(dataRoot);
             var workspace = new AchievementWorkspace(store, source);
-            await PrepareWorkspaceAsync(workspace, resourceDirectory, store.HasActiveState);
+            var legacyConfig = GetLegacyConfigArgument(e.Args);
+            var autoImportLegacy = e.Args.Any(argument => string.Equals(argument, "--auto-import-legacy", StringComparison.OrdinalIgnoreCase));
+            await PrepareWorkspaceAsync(workspace, resourceDirectory, store.HasActiveState, legacyConfig, autoImportLegacy);
 
             var window = new MainWindow(workspace)
             {
@@ -41,7 +43,7 @@ public partial class App : Application
         }
     }
 
-    private static async Task PrepareWorkspaceAsync(AchievementWorkspace workspace, string resourceDirectory, bool hasActiveState)
+    private static async Task PrepareWorkspaceAsync(AchievementWorkspace workspace, string resourceDirectory, bool hasActiveState, string? legacyConfigPath, bool autoImportLegacy)
     {
         if (hasActiveState)
         {
@@ -56,14 +58,18 @@ public partial class App : Application
             throw new InvalidDataException(opened.Error?.Message ?? "无法读取 native workspace。");
         }
 
-        var configPath = Path.Combine(resourceDirectory, "config.json");
+        var configPath = !string.IsNullOrWhiteSpace(legacyConfigPath)
+            ? Path.GetFullPath(legacyConfigPath)
+            : Path.Combine(resourceDirectory, "config.json");
         if (File.Exists(configPath))
         {
             var legacySource = new JsonLegacyProfileSource();
             var discovery = await workspace.DiscoverLegacyProfilesAsync(legacySource, configPath);
             if (discovery.Candidates.Count > 0)
             {
-                var candidate = await SelectLegacyCandidateAsync(discovery);
+                var candidate = autoImportLegacy && discovery.Status == LegacyDiscoveryStatus.Unambiguous
+                    ? discovery.Candidates[0]
+                    : await SelectLegacyCandidateAsync(discovery);
                 if (candidate is not null)
                 {
                     var imported = await workspace.ImportLegacyProfileAsync(
@@ -97,7 +103,7 @@ public partial class App : Application
         if (discovery.Status == LegacyDiscoveryStatus.Unambiguous)
         {
             var candidate = discovery.Candidates[0];
-            var prompt = $"发现旧版进度：\n昵称：{candidate.Nickname}\nUID：{candidate.Uid}\n进度条目：{candidate.ProgressCount}\n\n是否导入？";
+            var prompt = $"发现旧版进度：\n用户名：{candidate.Username}\n昵称：{candidate.Nickname}\nUID：{candidate.Uid}\n来源：{candidate.ProgressPath}\n进度条目：{candidate.ProgressCount}\n\n是否导入？";
             return MessageBox.Show(prompt, "导入旧版进度", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes
                 ? candidate
                 : null;
@@ -112,7 +118,11 @@ public partial class App : Application
             ResizeMode = ResizeMode.NoResize
         };
         var panel = new DockPanel { Margin = new Thickness(16) };
-        var list = new ListBox { ItemsSource = discovery.Candidates, DisplayMemberPath = nameof(LegacyProfileCandidate.Nickname) };
+        var list = new ListBox
+        {
+            ItemsSource = discovery.Candidates.Select(candidate => new LegacyCandidateDisplay(candidate)).ToArray(),
+            DisplayMemberPath = nameof(LegacyCandidateDisplay.Display)
+        };
         list.SelectedIndex = 0;
         DockPanel.SetDock(list, Dock.Top);
         panel.Children.Add(list);
@@ -127,7 +137,22 @@ public partial class App : Application
         window.Content = panel;
         var result = window.ShowDialog();
         await Task.CompletedTask;
-        return result == true ? list.SelectedItem as LegacyProfileCandidate : null;
+        return result == true ? (list.SelectedItem as LegacyCandidateDisplay)?.Candidate : null;
+    }
+
+    private static string? GetLegacyConfigArgument(IReadOnlyList<string> arguments)
+    {
+        for (var index = 0; index < arguments.Count; index++)
+        {
+            if (string.Equals(arguments[index], "--legacy-config", StringComparison.OrdinalIgnoreCase) && index + 1 < arguments.Count)
+                return arguments[index + 1];
+        }
+        return null;
+    }
+
+    private sealed record LegacyCandidateDisplay(LegacyProfileCandidate Candidate)
+    {
+        public string Display => $"{Candidate.Nickname} · 用户名 {Candidate.Username} · UID {Candidate.Uid} · {Candidate.ProgressCount} 条 · {Candidate.ProgressPath}";
     }
 
     private static string FindResourceDirectory()

@@ -147,14 +147,16 @@ public sealed partial class AchievementWorkspace
 
             var statuses = _state.Achievements.ToDictionary(item => item.Id, _ => ProgressStatus.Incomplete);
             var byCode = _state.Achievements.ToDictionary(item => item.LegacyCode, StringComparer.Ordinal);
+            var unmatchedCodes = progress.Statuses.Keys.Where(code => !byCode.ContainsKey(code)).OrderBy(code => code, StringComparer.Ordinal).ToArray();
+            if (unmatchedCodes.Length > 0)
+            {
+                var preview = string.Join(", ", unmatchedCodes.Take(10));
+                var suffix = unmatchedCodes.Length > 10 ? $" …（共 {unmatchedCodes.Length} 条）" : string.Empty;
+                return ImportFailure(WorkspaceErrorCode.LegacyImportFailed, $"旧版进度包含当前成就库中不存在的编号：{preview}{suffix}", CreateSnapshot(_state));
+            }
             foreach (var item in progress.Statuses)
             {
-                if (!byCode.TryGetValue(item.Key, out var achievement))
-                {
-                    continue;
-                }
-
-                statuses[achievement.Id] = item.Value;
+                statuses[byCode[item.Key].Id] = item.Value;
             }
 
             var candidate = new WorkspaceState(
@@ -162,11 +164,13 @@ public sealed partial class AchievementWorkspace
                 _state.Achievements,
                 statuses,
                 _state.Categories,
-                new WorkspaceMetadata(
-                    options.SelectedCandidate.Nickname,
-                    options.SelectedCandidate.Uid,
-                    options.SelectedCandidate.ProgressPath,
-                    DateTimeOffset.UtcNow));
+                _state.Metadata with
+                {
+                    ProfileNickname = options.SelectedCandidate.Nickname,
+                    ProfileUid = options.SelectedCandidate.Uid,
+                    LegacySourcePath = options.SelectedCandidate.ProgressPath,
+                    ImportedAtUtc = DateTimeOffset.UtcNow
+                });
 
             try
             {
@@ -371,15 +375,24 @@ public sealed partial class AchievementWorkspace
             }
 
             var rows = replace && payload.Achievements.Count > 0 ? payload.Achievements : _state.Achievements;
-            var statuses = rows.ToDictionary(item => item.Id, item => ProgressStatus.Incomplete);
+            var diagnostics = ValidateExchangeCandidate(rows, payload.Progress, _state.Categories);
+            if (diagnostics.Count > 0)
+            {
+                return new ExchangeImportResult(
+                    false,
+                    CreateSnapshot(_state),
+                    payload.Kind,
+                    diagnostics,
+                    new WorkspaceError(WorkspaceErrorCode.ExchangeInvalid, "Exchange candidate failed validation."));
+            }
+
+            var statuses = replace
+                ? rows.ToDictionary(item => item.Id, _ => ProgressStatus.Incomplete)
+                : new Dictionary<AchievementId, ProgressStatus>(_state.Statuses);
             var byCode = rows.ToDictionary(item => item.LegacyCode, StringComparer.Ordinal);
             foreach (var item in payload.Progress)
             {
                 if (byCode.TryGetValue(item.Key, out var achievement)) statuses[achievement.Id] = item.Value;
-            }
-            foreach (var item in payload.Achievements)
-            {
-                if (payload.Progress.TryGetValue(item.LegacyCode, out var status)) statuses[item.Id] = status;
             }
 
             var candidate = new WorkspaceState(_state.Revision + 1, rows, statuses, _state.Categories, _state.Metadata);
@@ -713,13 +726,82 @@ public sealed partial class AchievementWorkspace
             throw new InvalidDataException("Workspace revision must be positive.");
         }
 
+        var ids = new HashSet<AchievementId>();
+        var codes = new HashSet<string>(StringComparer.Ordinal);
         foreach (var achievement in state.Achievements)
         {
+            if (!ids.Add(achievement.Id) || string.IsNullOrWhiteSpace(achievement.LegacyCode) || !codes.Add(achievement.LegacyCode))
+            {
+                throw new InvalidDataException("Workspace contains blank or duplicate achievement identity.");
+            }
             if (!state.Statuses.TryGetValue(achievement.Id, out var status) || !Enum.IsDefined(status))
             {
                 throw new InvalidDataException($"Achievement {achievement.LegacyCode} has no valid progress status.");
             }
         }
+        if (state.Statuses.Count != state.Achievements.Count)
+        {
+            throw new InvalidDataException("Workspace contains progress for an unknown achievement.");
+        }
+    }
+
+    private static IReadOnlyList<ExchangeDiagnostic> ValidateExchangeCandidate(
+        IReadOnlyList<Achievement> rows,
+        IReadOnlyDictionary<string, ProgressStatus> progress,
+        CategoryCatalog categories)
+    {
+        var diagnostics = new List<ExchangeDiagnostic>();
+        var ids = new Dictionary<AchievementId, int>();
+        var codes = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var index = 0; index < rows.Count; index++)
+        {
+            var rowNumber = index + 1;
+            var row = rows[index];
+            void Required(string value, string field)
+            {
+                if (string.IsNullOrWhiteSpace(value)) diagnostics.Add(new ExchangeDiagnostic("required", $"Row {rowNumber} is missing required field '{field}'.", rowNumber, field));
+            }
+            Required(row.LegacyCode, "legacyCode");
+            Required(row.Version, "version");
+            Required(row.FirstCategory, "firstCategory");
+            Required(row.SecondCategory, "secondCategory");
+            Required(row.Name, "name");
+            Required(row.Description, "description");
+            if (!ids.TryAdd(row.Id, rowNumber)) diagnostics.Add(new ExchangeDiagnostic("duplicate-id", $"Row {rowNumber} duplicates achievement identity from row {ids[row.Id]}.", rowNumber, "id"));
+            if (!string.IsNullOrWhiteSpace(row.LegacyCode) && !codes.TryAdd(row.LegacyCode, rowNumber)) diagnostics.Add(new ExchangeDiagnostic("duplicate-code", $"Row {rowNumber} duplicates legacy code from row {codes[row.LegacyCode]}.", rowNumber, "legacyCode"));
+
+            if (categories.FirstCategories.Count > 0 && !categories.FirstCategories.ContainsKey(row.FirstCategory))
+            {
+                diagnostics.Add(new ExchangeDiagnostic("unknown-category", $"Row {rowNumber} uses unknown first category '{row.FirstCategory}'.", rowNumber, "firstCategory"));
+            }
+            if (categories.SecondCategories.TryGetValue(row.FirstCategory, out var seconds) && !seconds.ContainsKey(row.SecondCategory))
+            {
+                diagnostics.Add(new ExchangeDiagnostic("wrong-subcategory", $"Row {rowNumber} uses second category '{row.SecondCategory}' outside '{row.FirstCategory}'.", rowNumber, "secondCategory"));
+            }
+        }
+
+        foreach (var pair in progress)
+        {
+            if (!Enum.IsDefined(pair.Value)) diagnostics.Add(new ExchangeDiagnostic("invalid-status", $"Progress entry '{pair.Key}' has an invalid status.", Field: "status"));
+            if (rows.Count > 0 && !codes.ContainsKey(pair.Key)) diagnostics.Add(new ExchangeDiagnostic("unknown-progress-code", $"Progress entry '{pair.Key}' does not refer to an imported achievement.", Field: "legacyCode"));
+        }
+
+        for (var index = 0; index < rows.Count; index++)
+        {
+            var row = rows[index];
+            var rowNumber = index + 1;
+            var mutual = row.EffectiveMutualExclusionCodes;
+            if (mutual.Count != mutual.Distinct(StringComparer.Ordinal).Count()) diagnostics.Add(new ExchangeDiagnostic("duplicate-group-reference", $"Row {rowNumber} repeats a mutual-exclusion reference.", rowNumber, "mutualExclusionCodes"));
+            if (mutual.Contains(row.LegacyCode, StringComparer.Ordinal)) diagnostics.Add(new ExchangeDiagnostic("self-reference", $"Row {rowNumber} references itself.", rowNumber, "mutualExclusionCodes"));
+            foreach (var code in mutual)
+            {
+                var target = rows.SingleOrDefault(item => string.Equals(item.LegacyCode, code, StringComparison.Ordinal));
+                if (target is null) diagnostics.Add(new ExchangeDiagnostic("missing-group-target", $"Row {rowNumber} references missing achievement '{code}'.", rowNumber, "mutualExclusionCodes"));
+                else if (string.IsNullOrWhiteSpace(row.GroupId) || !string.Equals(row.GroupId, target.GroupId, StringComparison.Ordinal)) diagnostics.Add(new ExchangeDiagnostic("cross-group-reference", $"Row {rowNumber} references achievement '{code}' outside its group.", rowNumber, "mutualExclusionCodes"));
+                else if (!target.EffectiveMutualExclusionCodes.Contains(row.LegacyCode, StringComparer.Ordinal)) diagnostics.Add(new ExchangeDiagnostic("non-reciprocal-reference", $"Row {rowNumber} has a non-reciprocal reference to '{code}'.", rowNumber, "mutualExclusionCodes"));
+            }
+        }
+        return diagnostics;
     }
 
     private OcrApplyResult OcrApplyFailure(WorkspaceErrorCode code, string message) =>

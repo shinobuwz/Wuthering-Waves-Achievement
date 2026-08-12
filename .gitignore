@@ -155,6 +155,9 @@ Desktop.ini
 **/bin/
 **/obj/
 native/publish/
+native/artifacts/
+**/.vs/
+**/TestResults/
 
 # Nuitka 构建文件
 *.exe

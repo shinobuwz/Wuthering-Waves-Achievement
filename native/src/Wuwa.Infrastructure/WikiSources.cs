@@ -39,19 +39,30 @@ public sealed class KuroWikiAchievementSource : IWikiAchievementSource
         try
         {
             using var document = JsonDocument.Parse(body);
-            var rows = ParseRows(document.RootElement);
-            var lastUpdate = document.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("lastUpdateTime", out var time) ? time.ToString() : null;
+            var root = document.RootElement;
+            var success = root.TryGetProperty("success", out var successValue) && successValue.ValueKind == JsonValueKind.True;
+            var code = root.TryGetProperty("code", out var codeValue) && codeValue.TryGetInt32(out var parsedCode) ? parsedCode : 0;
+            var message = root.TryGetProperty("msg", out var messageValue) ? messageValue.ToString() : string.Empty;
+            if (!success || code != 200)
+            {
+                return new WikiFetchResult(false, Array.Empty<Achievement>(), Error: $"Wiki business response rejected (code {code}): {message}".Trim(), HttpStatusCode: (int)response.StatusCode);
+            }
+
+            var rows = ParseRows(root);
+            var lastUpdate = root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object && data.TryGetProperty("lastUpdateTime", out var time) ? time.ToString() : null;
             return new WikiFetchResult(rows.Count > 0, rows, lastUpdate, rows.Count == 0 ? "Wiki response contained no achievement rows." : null, (int)response.StatusCode);
         }
-        catch (Exception exception) when (exception is JsonException or InvalidDataException)
+        catch (Exception exception) when (exception is JsonException or InvalidDataException or ArgumentException)
         {
             return new WikiFetchResult(false, Array.Empty<Achievement>(), Error: $"Wiki response could not be parsed: {exception.Message}", HttpStatusCode: (int)response.StatusCode);
         }
     }
 
-    private static IReadOnlyList<Achievement> ParseRows(JsonElement root)
+    internal static IReadOnlyList<Achievement> ParseRows(JsonElement root)
     {
-        if (!root.TryGetProperty("data", out var data) || !data.TryGetProperty("content", out var content) || !content.TryGetProperty("modules", out var modules))
+        if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object ||
+            !data.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Object ||
+            !content.TryGetProperty("modules", out var modules) || modules.ValueKind != JsonValueKind.Array)
         {
             throw new InvalidDataException("Wiki response is missing data.content.modules.");
         }
@@ -59,41 +70,67 @@ public sealed class KuroWikiAchievementSource : IWikiAchievementSource
         var result = new List<Achievement>();
         foreach (var module in modules.EnumerateArray())
         {
-            if (!module.TryGetProperty("components", out var components)) continue;
+            if (!module.TryGetProperty("components", out var components) || components.ValueKind != JsonValueKind.Array) continue;
             foreach (var component in components.EnumerateArray())
             {
-                if (!component.TryGetProperty("type", out var type) || type.GetString() != "filter-component" || !component.TryGetProperty("content", out var html)) continue;
-                ParseHtmlTable(html.GetString() ?? string.Empty, result);
+                if (!component.TryGetProperty("type", out var type) || type.GetString() != "filter-component" ||
+                    !component.TryGetProperty("content", out var html) || html.ValueKind != JsonValueKind.String) continue;
+                ParseHtml(html.GetString() ?? string.Empty, result);
             }
         }
+
+        var duplicate = result.GroupBy(item => item.WikiSourceRef, StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1);
+        if (duplicate is not null) throw new InvalidDataException($"Wiki content contains duplicate source reference '{duplicate.Key}'.");
         return result;
     }
 
-    private static void ParseHtmlTable(string html, ICollection<Achievement> result)
+    private static void ParseHtml(string html, ICollection<Achievement> result)
     {
-        var rowIndex = 0;
-        foreach (Match rowMatch in Regex.Matches(html, "<tr\\b(?<attrs>[^>]*)>(?<body>.*?)</tr>", RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        foreach (Match detailsMatch in Regex.Matches(html, "<details\\b[^>]*>(?<body>.*?)</details>", RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            var detailsBody = detailsMatch.Groups["body"].Value;
+            var summary = Regex.Match(detailsBody, "<summary\\b[^>]*>(?<body>.*?)</summary>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            var firstCategory = summary.Success ? StripHtml(summary.Groups["body"].Value) : string.Empty;
+            if (string.IsNullOrWhiteSpace(firstCategory)) throw new InvalidDataException("Wiki details section has no first-category summary.");
+
+            foreach (Match tableMatch in Regex.Matches(detailsBody, "<table\\b(?<attrs>[^>]*)>(?<body>.*?)</table>", RegexOptions.IgnoreCase | RegexOptions.Singleline))
+            {
+                var tableUid = Attribute(tableMatch.Groups["attrs"].Value, "data-uid");
+                if (string.IsNullOrWhiteSpace(tableUid)) throw new InvalidDataException("Wiki achievement table has no stable data-uid.");
+                ParseTable(tableMatch.Groups["body"].Value, tableUid, firstCategory, result);
+            }
+        }
+    }
+
+    private static void ParseTable(string tableBody, string tableUid, string firstCategory, ICollection<Achievement> result)
+    {
+        foreach (Match rowMatch in Regex.Matches(tableBody, "<tr\\b(?<attrs>[^>]*)>(?<body>.*?)</tr>", RegexOptions.IgnoreCase | RegexOptions.Singleline))
         {
             var attrs = rowMatch.Groups["attrs"].Value;
-            var row = rowMatch.Groups["body"].Value;
-            var cells = Regex.Matches(row, "<td\\b[^>]*>(?<cell>.*?)</td>", RegexOptions.IgnoreCase | RegexOptions.Singleline).Select(match => StripHtml(match.Groups["cell"].Value)).ToArray();
-            if (cells.Length < 5) continue;
+            if (attrs.Contains("data-freeze", StringComparison.OrdinalIgnoreCase)) continue;
+            var cells = Regex.Matches(rowMatch.Groups["body"].Value, "<td\\b[^>]*>(?<cell>.*?)</td>", RegexOptions.IgnoreCase | RegexOptions.Singleline)
+                .Select(match => StripHtml(match.Groups["cell"].Value)).ToArray();
+            if (cells.Length == 0) continue;
+            if (cells.Length < 5) throw new InvalidDataException("Wiki achievement row does not contain the required columns.");
+
+            var rowDataIndex = Attribute(attrs, "data-index");
+            if (string.IsNullOrWhiteSpace(rowDataIndex)) throw new InvalidDataException("Wiki achievement row has no stable data-index.");
+            var sourceRef = $"{EntryId}/{tableUid}/{rowDataIndex}";
             var name = cells[0].Replace("「隐藏成就」", string.Empty, StringComparison.Ordinal).Trim();
             var hidden = cells[0].Contains("隐藏成就", StringComparison.Ordinal);
-            var second = cells.Length > 2 ? cells[2].Trim() : string.Empty;
-            var rowDataIndex = Regex.Match(attrs, "(?:data-row-index|data-index)=\\\"(?<index>[^\\\"]+)\\\"", RegexOptions.IgnoreCase).Groups["index"].Value;
-            var tableUid = Regex.Match(attrs, "(?:data-table-data-uid|data-uid)=\\\"(?<uid>[^\\\"]+)\\\"", RegexOptions.IgnoreCase).Groups["uid"].Value;
-            if (string.IsNullOrWhiteSpace(rowDataIndex)) rowDataIndex = rowIndex.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            if (string.IsNullOrWhiteSpace(tableUid)) tableUid = "unknown-table";
-            var sourceRef = $"{EntryId}/{tableUid}/{rowDataIndex}";
-            rowIndex++;
+            var secondCategory = FilterTag(attrs, "合集") ?? cells[2].Trim();
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(cells[1]) || string.IsNullOrWhiteSpace(secondCategory) || string.IsNullOrWhiteSpace(cells[3]))
+            {
+                throw new InvalidDataException($"Wiki achievement row '{sourceRef}' has missing required fields.");
+            }
+
             result.Add(new Achievement(
                 AchievementId.FromWikiSource(sourceRef),
-                $"wiki-{rowIndex:000000}",
-                rowIndex,
+                $"wiki-{result.Count + 1:000000}",
+                result.Count + 1,
                 cells[1].Trim(),
-                string.Empty,
-                second,
+                firstCategory,
+                secondCategory,
                 name,
                 cells[3].Trim(),
                 cells[4].Trim(),
@@ -103,9 +140,27 @@ public sealed class KuroWikiAchievementSource : IWikiAchievementSource
         }
     }
 
+    private static string? FilterTag(string attributes, string prefix)
+    {
+        var tags = Attribute(attributes, "data-filter-tag");
+        if (string.IsNullOrWhiteSpace(tags)) return null;
+        foreach (var tag in System.Net.WebUtility.HtmlDecode(tags).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = tag.IndexOf('-');
+            if (separator > 0 && string.Equals(tag[..separator].Trim(), prefix, StringComparison.Ordinal)) return tag[(separator + 1)..].Trim();
+        }
+        return null;
+    }
+
+    private static string Attribute(string attributes, string name)
+    {
+        var match = Regex.Match(attributes, $"(?:^|\\s){Regex.Escape(name)}\\s*=\\s*(?:\"(?<double>[^\"]*)\"|'(?<single>[^']*)')", RegexOptions.IgnoreCase);
+        return System.Net.WebUtility.HtmlDecode(match.Groups["double"].Success ? match.Groups["double"].Value : match.Groups["single"].Value).Trim();
+    }
+
     private static string StripHtml(string value)
     {
-        var withoutTags = System.Text.RegularExpressions.Regex.Replace(value, "<.*?>", string.Empty);
-        return System.Net.WebUtility.HtmlDecode(withoutTags).Trim();
+        var withoutTags = Regex.Replace(value, "<.*?>", string.Empty, RegexOptions.Singleline);
+        return System.Net.WebUtility.HtmlDecode(withoutTags).Replace('\u00a0', ' ').Trim();
     }
 }

@@ -1,26 +1,61 @@
 # Native Wuthering Waves Achievement Workspace
 
-This directory contains the side-by-side Windows-native workspace rewrite.
+`native/` 是与 Python/PySide6 版并行运行的 Windows 原生实现，使用 Visual Studio 2022、.NET 8、WPF、C++20 和 ONNX Runtime。
 
-## Build
+## 并存和数据边界
+
+- Python 源码、入口、依赖和 legacy 数据不会被 native 版删除或改写。
+- Legacy `resources/config.json` 与 `resources/user_progress_{uid}.json` 只作为显式、一次性的导入输入。
+- 两个版本之间没有 watcher、后台同步或双向合并；重新导入属于需要确认的 native 状态替换。
+- Native 可变状态位于 `%LocalAppData%\WutheringWavesAchievement`，以完整 generation 加原子 `current.json` 指针保存。
+- 便携程序覆盖升级、删除或重新部署不会主动删除上述 LocalAppData 数据。
+- 自动化或 smoke test 应设置 `WUWA_NATIVE_DATA_ROOT` 指向临时目录，避免接触正式用户状态。
+
+## 当前功能
+
+- 958 条 shipped 成就加载、搜索、筛选、排序和虚拟化表格。
+- 四种进度状态、互斥成就组转换和同 revision 统计。
+- 事务化 generations、故障恢复和只读 legacy profile 导入。
+- 匿名 Kuro Wiki 拉取、业务状态/结构校验、稳定身份协调、歧义隔离和 tombstone。
+- Progress JSON、完整 JSON、TSV 和原生 `.xlsx` 导入导出；导入先验证后激活。
+- 深色/浅色主题和受限 GitHub Releases 更新检查。
+- 单页 native OCR：窗口发现、GDI 捕获、C++ PP-OCRv5 det/cls/rec、预览确认和防降级事务合并。
+
+尚未完成：native OCR 全局 Tab 导航/滚动扫描、捕获游戏图差异验证、tracker overlay 和最终 Python cutover。
+
+## 构建与测试
 
 ```powershell
 dotnet restore native/WutheringWavesAchievement.sln
-dotnet test native/WutheringWavesAchievement.sln
+dotnet test native/WutheringWavesAchievement.sln -c Release
 dotnet build native/WutheringWavesAchievement.sln -c Release
+```
+
+## 发布
+
+```powershell
 powershell -ExecutionPolicy Bypass -File native/scripts/publish-native.ps1 -Configuration Release
 ```
 
-The application targets .NET 8 / `net8.0-windows` and does not require Python at runtime. Shipped immutable resources are copied beside the executable. Mutable native generations are stored under `%LocalAppData%\WutheringWavesAchievement`.
+发布脚本固定使用 `native/global.json` 的 .NET 8 SDK，构建并测试 C++ OCR，生成 self-contained `win-x64` 包，将 immutable resources、OCR DLL/模型和 `package-manifest.json` 放入 `native/publish/win-x64/`。输出目录被限制在 `native/publish/` 下，并使用 staged replacement 避免误删任意目录或先删除已知良好包。
 
-For bounded smoke tests, set `WUWA_NATIVE_DATA_ROOT` to a temporary directory. Legacy files are read-only inputs; native status changes never write `resources/config.json` or `resources/user_progress_*.json`.
+## 独立验收命令
 
-The native application currently covers management, four progress statuses, grouped transitions, filtering/statistics, transactional generations, explicit legacy import, anonymous Wiki reconciliation seam, JSON and TSV/Excel-compatible exchange, theme switching, and GitHub release checking.
+```powershell
+# 真实匿名 Wiki；只使用临时 native data root
+powershell -ExecutionPolicy Bypass -File native/scripts/verify-wiki-live.ps1
 
-Native OCR is being added as the next side-by-side change under `native/ocr/`. The first C++ vertical slice provides the PP-OCRv5 recognition runtime and managed ABI adapter; build it with:
+# WPF UI Automation 可达性和四张深/浅主题截图
+powershell -ExecutionPolicy Bypass -File native/scripts/verify-ui.ps1
+
+# 便携包启动、重启、alternate-copy 启动、删除程序目录和重新部署模拟
+powershell -ExecutionPolicy Bypass -File native/scripts/verify-portable-lifecycle.ps1
+```
+
+`verify-portable-lifecycle.ps1 -LegacyConfig <copied-fixture-config.json>` 还会执行无交互的 legacy migration smoke，并验证 profile metadata、完成状态和 legacy 文件 hash。请仅传入复制出来的测试 fixture，不要把自动化脚本指向正式用户文件。
+
+## Native OCR 单独构建
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File native/scripts/build-native-ocr.ps1 -Configuration Release
 ```
-
-The native app now includes a one-page OCR workflow: process/window discovery, client-area capture, C++ PP-OCRv5 detection/recognition, achievement matching, preview selection, cancellation, and confirmed transactional merge with completed-status downgrade protection. Global tab navigation, captured-game differential validation, optional angle classification/batching, and the overlay remain later tasks. The Python OCR stays available until parity is verified.

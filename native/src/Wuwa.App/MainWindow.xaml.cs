@@ -3,6 +3,8 @@ using System.Windows.Controls;
 using Microsoft.Win32;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using System.Diagnostics;
 using System.IO;
 using Wuwa.Core;
@@ -16,6 +18,7 @@ public partial class MainWindow : Window
     private WorkspaceView? _view;
     private bool _initializingFilters;
     private CancellationTokenSource? _ocrCancellation;
+    private bool _isLightTheme;
 
     public MainWindow(AchievementWorkspace workspace)
     {
@@ -40,6 +43,13 @@ public partial class MainWindow : Window
         }
         PopulateFilters(opened.Snapshot);
         RefreshView();
+        var captureDirectory = Environment.GetEnvironmentVariable("WUWA_NATIVE_UI_CAPTURE_DIR");
+        if (!string.IsNullOrWhiteSpace(captureDirectory))
+        {
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            await Task.Delay(1500);
+            await RunVisualVerificationAsync(Path.GetFullPath(captureDirectory));
+        }
     }
 
     private void PopulateFilters(WorkspaceSnapshot snapshot)
@@ -281,16 +291,72 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void ImportLegacy_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Filter = "旧版配置 (config.json)|config.json|JSON files (*.json)|*.json", FileName = "config.json" };
+        if (dialog.ShowDialog(this) != true) return;
+        var source = new JsonLegacyProfileSource();
+        var discovery = await _workspace.DiscoverLegacyProfilesAsync(source, dialog.FileName);
+        if (discovery.Candidates.Count == 0)
+        {
+            ShowError(discovery.Error?.Message ?? "没有找到可导入的旧版进度。");
+            return;
+        }
+        var candidate = SelectLegacyCandidate(discovery.Candidates);
+        if (candidate is null) return;
+        var confirm = MessageBox.Show(
+            $"将用以下旧版进度替换当前 native 进度：\n\n用户名：{candidate.Username}\n昵称：{candidate.Nickname}\nUID：{candidate.Uid}\n来源：{candidate.ProgressPath}\n进度条目：{candidate.ProgressCount}\n\n当前 generation 会保留。是否继续？",
+            "导入旧版进度", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes) return;
+        var imported = await _workspace.ImportLegacyProfileAsync(source, new LegacyImportOptions(candidate, ConfirmReplace: true));
+        if (!imported.IsSuccess) { ShowError(imported.Error?.Message ?? "旧版进度导入失败。"); return; }
+        PopulateFilters(imported.Snapshot);
+        RefreshView();
+    }
+
+    private LegacyProfileCandidate? SelectLegacyCandidate(IReadOnlyList<LegacyProfileCandidate> candidates)
+    {
+        if (candidates.Count == 1) return candidates[0];
+        var choices = candidates.Select(candidate => $"{candidate.Nickname} · {candidate.Username} · UID {candidate.Uid} · {candidate.ProgressCount} 条 · {candidate.ProgressPath}").ToArray();
+        var window = new Window { Owner = this, Title = "选择旧版进度", Width = 760, Height = 360, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        var panel = new DockPanel { Margin = new Thickness(16) };
+        var list = new ListBox { ItemsSource = choices, SelectedIndex = 0 };
+        DockPanel.SetDock(list, Dock.Top);
+        panel.Children.Add(list);
+        var confirm = new Button { Content = "选择", Width = 100, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
+        confirm.Click += (_, _) => window.DialogResult = true;
+        panel.Children.Add(confirm);
+        window.Content = panel;
+        return window.ShowDialog() == true && list.SelectedIndex >= 0 ? candidates[list.SelectedIndex] : null;
+    }
+
     private async void Import_OnClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Filter = "JSON files (*.json)|*.json|TSV files (*.tsv;*.txt)|*.tsv;*.txt|All files (*.*)|*.*" };
+        var dialog = new OpenFileDialog { Filter = "JSON files (*.json)|*.json|Excel workbook (*.xlsx)|*.xlsx|TSV files (*.tsv;*.txt)|*.tsv;*.txt" };
         if (dialog.ShowDialog(this) != true) return;
-        var result = MessageBox.Show("导入将替换当前 native 成就数据，当前 generation 会保留。是否继续？", "确认导入", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (result != MessageBoxResult.Yes) return;
-        IAchievementImportSource source = Path.GetExtension(dialog.FileName).Equals(".json", StringComparison.OrdinalIgnoreCase)
-            ? new JsonAchievementExchange(dialog.FileName)
-            : new ExcelAchievementExchange(dialog.FileName);
-        var imported = await _workspace.ImportExchangeAsync(source, replace: true, confirmReplace: true);
+        var progressJson = false;
+        if (Path.GetExtension(dialog.FileName).Equals(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var document = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(dialog.FileName));
+                progressJson = document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object;
+            }
+            catch (Exception exception) when (exception is IOException or System.Text.Json.JsonException)
+            {
+                ShowError($"无法读取导入文件：{exception.Message}");
+                return;
+            }
+        }
+        if (!progressJson)
+        {
+            var result = MessageBox.Show("导入将替换当前 native 成就数据，当前 generation 会保留。是否继续？", "确认导入", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (result != MessageBoxResult.Yes) return;
+        }
+        IAchievementImportSource source;
+        try { source = AchievementExchangeFactory.CreateImport(dialog.FileName); }
+        catch (NotSupportedException exception) { ShowError(exception.Message); return; }
+        var imported = await _workspace.ImportExchangeAsync(source, replace: !progressJson, confirmReplace: !progressJson);
         if (!imported.IsSuccess)
         {
             ShowError(imported.Error?.Message ?? "导入失败。");
@@ -302,19 +368,18 @@ public partial class MainWindow : Window
 
     private async void Export_OnClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new SaveFileDialog { Filter = "JSON files (*.json)|*.json|TSV files (*.tsv)|*.tsv", FileName = "wuthering-waves-achievements.json" };
+        var dialog = new SaveFileDialog { Filter = "JSON files (*.json)|*.json|Excel workbook (*.xlsx)|*.xlsx|TSV files (*.tsv)|*.tsv", FileName = "wuthering-waves-achievements.json" };
         if (dialog.ShowDialog(this) != true) return;
-        IAchievementExportSink sink = Path.GetExtension(dialog.FileName).Equals(".json", StringComparison.OrdinalIgnoreCase)
-            ? new JsonAchievementExchange(dialog.FileName)
-            : new ExcelAchievementExchange(dialog.FileName);
+        IAchievementExportSink sink;
+        try { sink = AchievementExchangeFactory.CreateExport(dialog.FileName); }
+        catch (NotSupportedException exception) { ShowError(exception.Message); return; }
         var exported = await _workspace.ExportAsync(sink);
         if (!exported.IsSuccess) ShowError(exported.Error?.Message ?? "导出失败。");
     }
 
     private async void Theme_OnClick(object sender, RoutedEventArgs e)
     {
-        var light = (SolidColorBrush)FindResource("WindowBrush");
-        var useLight = light.Color.R == 245;
+        var useLight = !_isLightTheme;
         SetTheme(useLight);
         var result = await _workspace.SetSettingAsync("theme", useLight ? "light" : "dark");
         if (!result.IsSuccess) ShowError(result.Error?.Message ?? "主题偏好保存失败。");
@@ -338,18 +403,27 @@ public partial class MainWindow : Window
     {
         try
         {
-            var release = await new GitHubUpdateChecker().GetLatestReleaseAsync();
-            if (release is null)
+            var checker = new GitHubUpdateChecker();
+            var update = await checker.CheckAsync();
+            if (update.Status == UpdateCheckStatus.Unavailable || update.Release is null)
             {
-                ShowError("暂时无法取得 GitHub 最新版本。");
+                ShowError(update.Error ?? "暂时无法取得 GitHub 最新版本。");
+                return;
+            }
+            if (update.Status == UpdateCheckStatus.Current)
+            {
+                MessageBox.Show($"当前已是最新版本：{update.Release.TagName}", "检查更新", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (update.Status == UpdateCheckStatus.DevelopmentBuild)
+            {
+                MessageBox.Show($"当前版本不低于公开版本 {update.Release.TagName}，无需更新。", "检查更新", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            var result = MessageBox.Show($"最新版本：{release.TagName}\n\n是否打开发布页面？", "检查更新", MessageBoxButton.YesNo, MessageBoxImage.Information);
-            if (result == MessageBoxResult.Yes)
-            {
-                Process.Start(new ProcessStartInfo(release.HtmlUrl) { UseShellExecute = true });
-            }
+            var result = MessageBox.Show($"发现新版本：{update.Release.TagName}\n\n是否打开发布页面？", "检查更新", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (result == MessageBoxResult.Yes && checker.IsTrustedReleaseUrl(update.Release.HtmlUrl))
+                Process.Start(new ProcessStartInfo(update.Release.HtmlUrl) { UseShellExecute = true });
         }
         catch (Exception exception)
         {
@@ -359,13 +433,52 @@ public partial class MainWindow : Window
 
     private void SetTheme(bool light)
     {
+        _isLightTheme = light;
+        ThemeButton.Content = light ? "深色主题" : "浅色主题";
         var colors = light
-            ? new Dictionary<string, string> { ["WindowBrush"] = "#F5F8F7", ["PanelBrush"] = "#FFFFFF", ["PanelAltBrush"] = "#E8F0EE", ["BorderBrush"] = "#C3D4D0", ["TextBrush"] = "#19302D", ["MutedTextBrush"] = "#5A7470", ["InputBrush"] = "#FFFFFF" }
-            : new Dictionary<string, string> { ["WindowBrush"] = "#182124", ["PanelBrush"] = "#222E32", ["PanelAltBrush"] = "#29383D", ["BorderBrush"] = "#3A5055", ["TextBrush"] = "#E8F2F0", ["MutedTextBrush"] = "#9BB3AF", ["InputBrush"] = "#172225" };
+            ? new Dictionary<string, string> { ["WindowBrush"] = "#F5F8F7", ["PanelBrush"] = "#FFFFFF", ["PanelAltBrush"] = "#E8F0EE", ["BorderBrush"] = "#C3D4D0", ["TextBrush"] = "#19302D", ["MutedTextBrush"] = "#5A7470", ["InputBrush"] = "#FFFFFF", ["RowBorderBrush"] = "#D7E2DF", ["SelectionBrush"] = "#B8E8DF", ["ErrorBrush"] = "#A52714" }
+            : new Dictionary<string, string> { ["WindowBrush"] = "#182124", ["PanelBrush"] = "#222E32", ["PanelAltBrush"] = "#29383D", ["BorderBrush"] = "#3A5055", ["TextBrush"] = "#E8F2F0", ["MutedTextBrush"] = "#9BB3AF", ["InputBrush"] = "#172225", ["RowBorderBrush"] = "#304247", ["SelectionBrush"] = "#285A5A", ["ErrorBrush"] = "#FF9A8D" };
         foreach (var pair in colors)
         {
-            var brush = (SolidColorBrush)FindResource(pair.Key);
-            brush.Color = (Color)ColorConverter.ConvertFromString(pair.Value);
+            Application.Current.Resources[pair.Key] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(pair.Value));
+        }
+    }
+
+    private async Task RunVisualVerificationAsync(string outputDirectory)
+    {
+        try
+        {
+            Directory.CreateDirectory(outputDirectory);
+            foreach (var light in new[] { false, true })
+            {
+                SetTheme(light);
+                foreach (var size in new[] { (Width: 1080d, Height: 700d), (Width: 1440d, Height: 900d) })
+                {
+                    Width = size.Width;
+                    Height = size.Height;
+                    WindowState = WindowState.Normal;
+                    UpdateLayout();
+                    await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+                    UpdateLayout();
+                    var pixelWidth = Math.Max(1, (int)Math.Ceiling(ActualWidth));
+                    var pixelHeight = Math.Max(1, (int)Math.Ceiling(ActualHeight));
+                    var bitmap = new RenderTargetBitmap(pixelWidth, pixelHeight, 96, 96, PixelFormats.Pbgra32);
+                    bitmap.Render(this);
+                    var encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                    var theme = light ? "light" : "dark";
+                    await using var stream = File.Create(Path.Combine(outputDirectory, $"{(int)size.Width}x{(int)size.Height}-{theme}.png"));
+                    encoder.Save(stream);
+                }
+            }
+            File.WriteAllText(Path.Combine(outputDirectory, "completed.txt"), DateTimeOffset.UtcNow.ToString("O"));
+            Application.Current.Shutdown();
+        }
+        catch (Exception exception)
+        {
+            Directory.CreateDirectory(outputDirectory);
+            File.WriteAllText(Path.Combine(outputDirectory, "error.txt"), exception.ToString());
+            Application.Current.Shutdown(2);
         }
     }
 

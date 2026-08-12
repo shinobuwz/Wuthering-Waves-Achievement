@@ -124,6 +124,10 @@ public sealed class ExcelAchievementExchange : IAchievementImportSource, IAchiev
     {
         var code = get("编号");
         if (string.IsNullOrWhiteSpace(code)) throw new InvalidDataException($"Row {rowNumber} has no 编号.");
+        foreach (var required in new[] { "版本", "第一分类", "第二分类", "名称", "描述" })
+        {
+            if (string.IsNullOrWhiteSpace(get(required))) throw new InvalidDataException($"Row {rowNumber} has no required field {required}.");
+        }
         var statusText = get("获取状态");
         if (!ProgressStatusText.TryParseChinese(statusText, out var status)) throw new InvalidDataException($"Row {rowNumber} has an invalid 获取状态.");
         var achievement = new Achievement(
@@ -199,7 +203,7 @@ public sealed class ExcelAchievementExchange : IAchievementImportSource, IAchiev
             }
             sheetData.Add(row);
         }
-        return new XDocument(new XDeclaration("1.0", "UTF-8", "yes"), new XElement(ns + "worksheet", new XAttribute(XNamespace.Xmlns + "", ns), sheetData)).ToString(SaveOptions.DisableFormatting);
+        return new XDocument(new XDeclaration("1.0", "UTF-8", "yes"), new XElement(ns + "worksheet", sheetData)).ToString(SaveOptions.DisableFormatting);
     }
 
     private static string ColumnName(int index)

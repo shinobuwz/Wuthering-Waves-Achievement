@@ -4,11 +4,11 @@
         Title="鸣潮成就工作区"
         Width="1280"
         Height="780"
-        MinWidth="960"
-        MinHeight="620"
+        MinWidth="1080"
+        MinHeight="700"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource WindowBrush}"
-        Foreground="{StaticResource TextBrush}">
+        Background="{DynamicResource WindowBrush}"
+        Foreground="{DynamicResource TextBrush}">
     <Grid Margin="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -20,16 +20,16 @@
 
         <DockPanel Grid.Row="0" Margin="0,0,0,14">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="修订 " Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
-                <TextBlock x:Name="RevisionText" Text="—" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="修订 " Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+                <TextBlock x:Name="RevisionText" Text="—" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>
             <StackPanel>
                 <TextBlock Text="成就工作区" FontSize="25" FontWeight="SemiBold" />
-                <TextBlock Text="958 条 shipped 成就 · 本地进度追踪" Foreground="{StaticResource MutedTextBrush}" Margin="0,3,0,0" />
+                <TextBlock Text="958 条 shipped 成就 · 本地进度追踪" Foreground="{DynamicResource MutedTextBrush}" Margin="0,3,0,0" />
             </StackPanel>
         </DockPanel>
 
-        <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="5" Padding="12" Margin="0,0,0,10">
+        <Border Grid.Row="1" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="5" Padding="12" Margin="0,0,0,10">
             <WrapPanel VerticalAlignment="Center">
                 <TextBox x:Name="SearchBox" Width="230" ToolTip="搜索名称或描述" TextChanged="SearchBox_OnTextChanged" />
                 <ComboBox x:Name="VersionCombo" Width="110" SelectionChanged="Filter_OnChanged" />
@@ -42,12 +42,13 @@
                 <ComboBox x:Name="GroupCombo" Width="110" SelectionChanged="Filter_OnChanged" />
                 <ComboBox x:Name="SortCombo" Width="125" SelectionChanged="Filter_OnChanged" />
                 <Button Content="清除筛选" Click="ClearFilters_OnClick" />
-                <Button Content="浅色主题" Click="Theme_OnClick" />
-                <Button x:Name="OcrScanButton" Content="OCR 单页扫描" Click="OcrScan_OnClick" />
-                <Button Content="导入 JSON/TSV" Click="Import_OnClick" />
-                <Button Content="导出 JSON" Click="Export_OnClick" />
-                <Button Content="同步 Wiki" Click="Sync_OnClick" />
-                <Button Content="检查更新" Click="Update_OnClick" />
+                <Button x:Name="ThemeButton" AutomationProperties.AutomationId="ThemeButton" Content="浅色主题" Click="Theme_OnClick" />
+                <Button x:Name="OcrScanButton" AutomationProperties.AutomationId="OcrScanButton" Content="OCR 单页扫描" Click="OcrScan_OnClick" />
+                <Button AutomationProperties.AutomationId="LegacyImportButton" Content="导入旧版进度" Click="ImportLegacy_OnClick" />
+                <Button AutomationProperties.AutomationId="ExchangeImportButton" Content="导入 JSON/Excel" Click="Import_OnClick" />
+                <Button AutomationProperties.AutomationId="ExchangeExportButton" Content="导出 JSON/Excel" Click="Export_OnClick" />
+                <Button AutomationProperties.AutomationId="WikiSyncButton" Content="同步 Wiki" Click="Sync_OnClick" />
+                <Button AutomationProperties.AutomationId="UpdateButton" Content="检查更新" Click="Update_OnClick" />
             </WrapPanel>
         </Border>
 
@@ -61,27 +62,27 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <Border Grid.Column="0" Style="{StaticResource MetricCardStyle}" Margin="0,0,8,0">
-                <StackPanel><TextBlock Text="当前结果" Foreground="{StaticResource MutedTextBrush}" /><TextBlock x:Name="TotalText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
+                <StackPanel><TextBlock Text="当前结果" Foreground="{DynamicResource MutedTextBrush}" /><TextBlock x:Name="TotalText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
             </Border>
             <Border Grid.Column="1" Style="{StaticResource MetricCardStyle}" Margin="0,0,8,0">
-                <StackPanel><TextBlock Text="已完成" Foreground="{StaticResource MutedTextBrush}" /><TextBlock x:Name="CompletedText" FontSize="21" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" /></StackPanel>
+                <StackPanel><TextBlock Text="已完成" Foreground="{DynamicResource MutedTextBrush}" /><TextBlock x:Name="CompletedText" FontSize="21" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" /></StackPanel>
             </Border>
             <Border Grid.Column="2" Style="{StaticResource MetricCardStyle}" Margin="0,0,8,0">
-                <StackPanel><TextBlock Text="未完成" Foreground="{StaticResource MutedTextBrush}" /><TextBlock x:Name="IncompleteText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
+                <StackPanel><TextBlock Text="未完成" Foreground="{DynamicResource MutedTextBrush}" /><TextBlock x:Name="IncompleteText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
             </Border>
             <Border Grid.Column="3" Style="{StaticResource MetricCardStyle}" Margin="0,0,8,0">
-                <StackPanel><TextBlock Text="暂不可获取" Foreground="{StaticResource MutedTextBrush}" /><TextBlock x:Name="UnavailableText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
+                <StackPanel><TextBlock Text="暂不可获取" Foreground="{DynamicResource MutedTextBrush}" /><TextBlock x:Name="UnavailableText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
             </Border>
             <Border Grid.Column="4" Style="{StaticResource MetricCardStyle}" Margin="0,0,8,0">
-                <StackPanel><TextBlock Text="隐藏" Foreground="{StaticResource MutedTextBrush}" /><TextBlock x:Name="HiddenText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
+                <StackPanel><TextBlock Text="隐藏" Foreground="{DynamicResource MutedTextBrush}" /><TextBlock x:Name="HiddenText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
             </Border>
             <Border Grid.Column="5" Style="{StaticResource MetricCardStyle}">
-                <StackPanel><TextBlock Text="完成率" Foreground="{StaticResource MutedTextBrush}" /><TextBlock x:Name="RateText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
+                <StackPanel><TextBlock Text="完成率" Foreground="{DynamicResource MutedTextBrush}" /><TextBlock x:Name="RateText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
             </Border>
         </Grid>
 
-        <Border Grid.Row="3" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="5">
-            <DataGrid x:Name="AchievementGrid"
+        <Border Grid.Row="3" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="5">
+            <DataGrid x:Name="AchievementGrid" AutomationProperties.AutomationId="AchievementGrid"
                       AutoGenerateColumns="False"
                       IsReadOnly="True"
                       SelectionMode="Single"
@@ -94,19 +95,19 @@
                       ScrollViewer.IsDeferredScrollingEnabled="True"
                       GridLinesVisibility="None"
                       HeadersVisibility="Column"
-                      Background="{StaticResource PanelBrush}"
+                      Background="{DynamicResource PanelBrush}"
                       BorderThickness="0"
                       MouseDoubleClick="AchievementGrid_OnMouseDoubleClick"
                       PreviewMouseRightButtonUp="AchievementGrid_OnPreviewMouseRightButtonUp">
                 <DataGrid.RowStyle>
                     <Style TargetType="DataGridRow">
-                        <Setter Property="Background" Value="{StaticResource PanelBrush}" />
-                        <Setter Property="BorderBrush" Value="#304247" />
+                        <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource RowBorderBrush}" />
                         <Setter Property="BorderThickness" Value="0,0,0,1" />
                         <Setter Property="MinHeight" Value="34" />
                         <Style.Triggers>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Background" Value="#285A5A" />
+                                <Setter Property="Background" Value="{DynamicResource SelectionBrush}" />
                             </Trigger>
                         </Style.Triggers>
                     </Style>
@@ -127,8 +128,8 @@
         </Border>
 
         <DockPanel Grid.Row="4" Margin="0,10,0,0">
-            <TextBlock x:Name="HintText" Text="双击一行可切换完成状态 · 右键菜单可标记暂不可获取" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
-            <TextBlock x:Name="ErrorText" DockPanel.Dock="Right" Foreground="#FF9A8D" VerticalAlignment="Center" />
+            <TextBlock x:Name="HintText" Text="双击一行可切换完成状态 · 右键菜单可标记暂不可获取" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+            <TextBlock x:Name="ErrorText" DockPanel.Dock="Right" Foreground="{DynamicResource ErrorBrush}" VerticalAlignment="Center" />
         </DockPanel>
     </Grid>
 </Window>

@@ -1,8 +1,24 @@
 # 鸣潮成就管理器
 
-基于 PySide6 开发的鸣潮游戏成就管理工具，支持成就数据获取、进度管理与 OCR 自动扫描。
+本仓库同时保留两个可并行运行的 Windows 桌面实现：
 
-## 功能特性
+- **Legacy Python/PySide6 版**：入口 `python main.py`，保留完整的自动 Tab 导航和全量 OCR 流程。
+- **Native WPF/.NET 8 版**：位于 [`native/`](native/README.md)，提供成就管理、事务化本地存储、只读旧版进度导入、匿名 Wiki 同步、JSON/TSV/XLSX 交换、明暗主题、更新检查和单页原生 OCR。
+
+两个版本不会自动双向同步。Native 版只把 legacy 文件当作只读导入源，可变数据存放在 `%LocalAppData%\WutheringWavesAchievement`；覆盖升级或删除便携程序目录不会主动删除该数据目录。Python 版会一直保留到后续 native parity/cutover change 完成。
+
+## Native 版快速开始
+
+```powershell
+dotnet restore native/WutheringWavesAchievement.sln
+dotnet test native/WutheringWavesAchievement.sln -c Release
+dotnet build native/WutheringWavesAchievement.sln -c Release
+powershell -ExecutionPolicy Bypass -File native/scripts/publish-native.ps1 -Configuration Release
+```
+
+发布目录为 `native/publish/win-x64/`。详见 [`native/README.md`](native/README.md)。
+
+## Legacy Python 版功能特性
 
 ### 🎯 成就管理
 - **成就数据爬取**：无需登录，直接从在线 Wiki 获取最新成就数据

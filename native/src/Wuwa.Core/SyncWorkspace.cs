@@ -63,6 +63,7 @@ public sealed partial class AchievementWorkspace
             var bySource = active.Values.Where(item => !string.IsNullOrWhiteSpace(item.WikiSourceRef)).ToLookup(item => item.WikiSourceRef!, StringComparer.Ordinal);
             var byFullSignature = active.Values.ToLookup(Signature, StringComparer.Ordinal);
             var byNameDescription = active.Values.ToLookup(NameDescriptionSignature, StringComparer.Ordinal);
+            var allowLegacyFallback = options.AllowLegacyNameDescriptionFallback && active.Values.All(item => string.IsNullOrWhiteSpace(item.WikiSourceRef));
             var matched = new HashSet<AchievementId>();
             var quarantined = new List<string>();
             var nextRows = new List<Achievement>();
@@ -72,17 +73,24 @@ public sealed partial class AchievementWorkspace
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 Achievement? existing = null;
+                var ambiguous = false;
                 if (!string.IsNullOrWhiteSpace(remoteRow.WikiSourceRef))
                 {
-                    existing = bySource[remoteRow.WikiSourceRef!].SingleOrDefault();
+                    var sourceMatch = Match(bySource[remoteRow.WikiSourceRef!]);
+                    existing = sourceMatch.Achievement;
+                    ambiguous = sourceMatch.IsAmbiguous;
                 }
-                if (existing is null)
+                if (existing is null && !ambiguous)
                 {
-                    existing = UniqueMatch(byFullSignature[Signature(remoteRow)]);
+                    var signatureMatch = Match(byFullSignature[Signature(remoteRow)]);
+                    existing = signatureMatch.Achievement;
+                    ambiguous = signatureMatch.IsAmbiguous;
                 }
-                if (existing is null && options.AllowLegacyNameDescriptionFallback)
+                if (existing is null && !ambiguous && allowLegacyFallback)
                 {
-                    existing = UniqueMatch(byNameDescription[NameDescriptionSignature(remoteRow)]);
+                    var fallbackMatch = Match(byNameDescription[NameDescriptionSignature(remoteRow)]);
+                    existing = fallbackMatch.Achievement;
+                    ambiguous = fallbackMatch.IsAmbiguous;
                 }
 
                 if (existing is not null)
@@ -96,7 +104,7 @@ public sealed partial class AchievementWorkspace
                         IsTombstone = false
                     });
                 }
-                else if (string.IsNullOrWhiteSpace(remoteRow.WikiSourceRef))
+                else if (ambiguous || string.IsNullOrWhiteSpace(remoteRow.WikiSourceRef))
                 {
                     quarantined.Add(remoteRow.Name);
                 }
@@ -111,7 +119,7 @@ public sealed partial class AchievementWorkspace
 
             if (quarantined.Count > 0)
             {
-                return new WorkspaceSyncResult(false, CreateSnapshot(_state), matched.Count, added, 0, quarantined, new WorkspaceError(WorkspaceErrorCode.LoadFailed, "One or more Wiki rows were ambiguous and were quarantined."));
+                return new WorkspaceSyncResult(false, CreateSnapshot(_state), matched.Count, added, 0, quarantined, new WorkspaceError(WorkspaceErrorCode.WikiRejected, "One or more Wiki rows were ambiguous and were quarantined."));
             }
 
             var tombstoned = 0;
@@ -126,6 +134,11 @@ public sealed partial class AchievementWorkspace
             {
                 statuses.TryAdd(row.Id, ProgressStatus.Incomplete);
             }
+            if (EquivalentContent(_state, nextRows, statuses))
+            {
+                return new WorkspaceSyncResult(true, CreateSnapshot(_state), matched.Count, 0, 0, Array.Empty<string>());
+            }
+
             var candidate = new WorkspaceState(_state.Revision + 1, nextRows, statuses, _state.Categories, _state.Metadata);
             try
             {
@@ -156,16 +169,43 @@ public sealed partial class AchievementWorkspace
     private WorkspaceSyncResult SyncFailure(WorkspaceErrorCode code, string message) =>
         new(false, _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state), Error: new WorkspaceError(code, message));
 
-    private static Achievement? UniqueMatch(IEnumerable<Achievement> candidates)
+    private static MatchResult Match(IEnumerable<Achievement> candidates)
     {
         using var enumerator = candidates.GetEnumerator();
-        if (!enumerator.MoveNext()) return null;
+        if (!enumerator.MoveNext()) return new MatchResult(null, false);
         var first = enumerator.Current;
-        return enumerator.MoveNext() ? null : first;
+        return enumerator.MoveNext() ? new MatchResult(null, true) : new MatchResult(first, false);
     }
 
-    private static string Signature(Achievement item) => string.Join("\u001f", item.Name.Trim(), item.Description.Trim(), item.FirstCategory.Trim(), item.SecondCategory.Trim());
-    private static string NameDescriptionSignature(Achievement item) => string.Join("\u001f", item.Name.Trim(), item.Description.Trim());
+    private static string Signature(Achievement item) => string.Join("\u001f", Normalize(item.Name), Normalize(item.Description), Normalize(item.FirstCategory), Normalize(item.SecondCategory));
+    private static string NameDescriptionSignature(Achievement item) => string.Join("\u001f", Normalize(item.Name), Normalize(item.Description));
+    private static string Normalize(string value)
+    {
+        var normalized = value.Normalize(System.Text.NormalizationForm.FormKC)
+            .Replace('・', '·')
+            .Replace('•', '·')
+            .Trim();
+        return string.Join(' ', normalized.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private sealed record MatchResult(Achievement? Achievement, bool IsAmbiguous);
+
+    private static bool EquivalentContent(WorkspaceState current, IReadOnlyList<Achievement> rows, IReadOnlyDictionary<AchievementId, ProgressStatus> statuses)
+    {
+        var ordered = rows.OrderBy(item => item.AbsoluteOrder).ToArray();
+        if (ordered.Length != current.Achievements.Count || statuses.Count != current.Statuses.Count) return false;
+        for (var index = 0; index < ordered.Length; index++)
+        {
+            var left = current.Achievements[index];
+            var right = ordered[index];
+            if (left.Id != right.Id || left.LegacyCode != right.LegacyCode || left.AbsoluteOrder != right.AbsoluteOrder || left.Version != right.Version ||
+                left.FirstCategory != right.FirstCategory || left.SecondCategory != right.SecondCategory || left.Name != right.Name ||
+                left.Description != right.Description || left.Reward != right.Reward || left.IsHidden != right.IsHidden || left.GroupId != right.GroupId ||
+                left.WikiSourceRef != right.WikiSourceRef || left.IsTombstone != right.IsTombstone ||
+                !left.EffectiveMutualExclusionCodes.SequenceEqual(right.EffectiveMutualExclusionCodes, StringComparer.Ordinal)) return false;
+        }
+        return statuses.All(pair => current.Statuses.TryGetValue(pair.Key, out var currentStatus) && currentStatus == pair.Value);
+    }
 
     private static string NextLegacyCode(IEnumerable<Achievement> rows)
     {

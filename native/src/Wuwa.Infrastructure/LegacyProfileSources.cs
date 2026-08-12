@@ -24,6 +24,8 @@ public sealed class JsonLegacyProfileSource : ILegacyProfileSource
 
             var candidates = new List<LegacyProfileCandidate>();
             var nicknames = new HashSet<string>(StringComparer.Ordinal);
+            var uids = new HashSet<string>(StringComparer.Ordinal);
+            var progressPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var user in users.EnumerateObject())
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -35,9 +37,17 @@ public sealed class JsonLegacyProfileSource : ILegacyProfileSource
                 {
                     return Invalid("Legacy config contains a blank or duplicate nickname.");
                 }
+                if (!uids.Add(uid))
+                {
+                    return Invalid("Legacy config contains a duplicate UID.");
+                }
 
                 var directory = Path.GetDirectoryName(Path.GetFullPath(configPath)) ?? Directory.GetCurrentDirectory();
                 var progressPath = Path.Combine(directory, $"user_progress_{uid}.json");
+                if (!progressPaths.Add(Path.GetFullPath(progressPath)))
+                {
+                    return Invalid("Legacy config contains an ambiguous progress path.");
+                }
                 if (!File.Exists(progressPath))
                 {
                     continue;
@@ -53,9 +63,9 @@ public sealed class JsonLegacyProfileSource : ILegacyProfileSource
                         progress.EnumerateObject().Count(property => property.Value.ValueKind == JsonValueKind.Object),
                         username));
                 }
-                catch (JsonException)
+                catch (Exception exception) when (exception is JsonException or InvalidDataException or IOException)
                 {
-                    return Invalid($"Legacy progress file is corrupt: {progressPath}");
+                    return Invalid($"Legacy progress file is invalid: {progressPath}: {exception.Message}");
                 }
             }
 
@@ -65,8 +75,7 @@ public sealed class JsonLegacyProfileSource : ILegacyProfileSource
             }
 
             var currentCandidate = candidates.FirstOrDefault(item =>
-                string.Equals(item.Nickname, currentUser, StringComparison.Ordinal) ||
-                string.Equals(item.Uid, currentUser, StringComparison.Ordinal));
+                string.Equals(item.Username, currentUser, StringComparison.Ordinal));
             if (string.IsNullOrWhiteSpace(currentUser) || currentCandidate is null)
             {
                 return new LegacyDiscoveryResult(LegacyDiscoveryStatus.InvalidCurrentUser, candidates, currentUser);
@@ -80,9 +89,9 @@ public sealed class JsonLegacyProfileSource : ILegacyProfileSource
         {
             throw;
         }
-        catch (JsonException exception)
+        catch (Exception exception) when (exception is JsonException or InvalidDataException)
         {
-            return Invalid($"Legacy config is corrupt: {exception.Message}");
+            return Invalid($"Legacy config is corrupt or structurally invalid: {exception.Message}");
         }
         catch (IOException exception)
         {

@@ -11,20 +11,24 @@
         <SolidColorBrush x:Key="TextBrush" Color="#E8F2F0" />
         <SolidColorBrush x:Key="MutedTextBrush" Color="#9BB3AF" />
         <SolidColorBrush x:Key="InputBrush" Color="#172225" />
+        <SolidColorBrush x:Key="RowBorderBrush" Color="#304247" />
+        <SolidColorBrush x:Key="SelectionBrush" Color="#285A5A" />
+        <SolidColorBrush x:Key="ErrorBrush" Color="#FF9A8D" />
         <Style x:Key="MetricCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource PanelBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="5" />
             <Setter Property="Padding" Value="12,9" />
         </Style>
-        <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource TextBrush}" /></Style>
-        <Style TargetType="Label"><Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
-        <Style TargetType="Button"><Setter Property="Foreground" Value="{StaticResource TextBrush}" /><Setter Property="Background" Value="{StaticResource PanelAltBrush}" /><Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" /><Setter Property="BorderThickness" Value="1" /><Setter Property="Padding" Value="14,7" /><Setter Property="Margin" Value="0,0,8,0" /></Style>
-        <Style TargetType="TextBox"><Setter Property="Foreground" Value="{StaticResource TextBrush}" /><Setter Property="Background" Value="{StaticResource InputBrush}" /><Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" /><Setter Property="Padding" Value="8,5" /><Setter Property="Margin" Value="0,0,8,0" /></Style>
-        <Style TargetType="ComboBox"><Setter Property="Foreground" Value="{StaticResource TextBrush}" /><Setter Property="Background" Value="{StaticResource InputBrush}" /><Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" /><Setter Property="Padding" Value="6,3" /><Setter Property="Margin" Value="0,0,8,0" /></Style>
-        <Style TargetType="DataGridColumnHeader"><Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" /><Setter Property="Background" Value="{StaticResource PanelAltBrush}" /><Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" /><Setter Property="Padding" Value="8,8" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
-        <Style TargetType="DataGridCell"><Setter Property="Foreground" Value="{StaticResource TextBrush}" /><Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="8,5" /></Style>
-        <Style TargetType="DataGridRow"><Setter Property="Background" Value="{StaticResource PanelBrush}" /><Setter Property="BorderBrush" Value="#304247" /><Setter Property="BorderThickness" Value="0,0,0,1" /><Setter Property="MinHeight" Value="34" /></Style>
+        <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /></Style>
+        <Style TargetType="Label"><Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
+        <Style TargetType="Button"><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /><Setter Property="Background" Value="{DynamicResource PanelAltBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" /><Setter Property="BorderThickness" Value="1" /><Setter Property="Padding" Value="14,7" /><Setter Property="Margin" Value="0,0,8,0" /></Style>
+        <Style TargetType="TextBox"><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /><Setter Property="Background" Value="{DynamicResource InputBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" /><Setter Property="Padding" Value="8,5" /><Setter Property="Margin" Value="0,0,8,0" /></Style>
+        <Style TargetType="ComboBox"><Setter Property="Foreground" Value="#19302D" /><Setter Property="Background" Value="#FFFFFF" /><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" /><Setter Property="IsEditable" Value="True" /><Setter Property="IsReadOnly" Value="True" /><Setter Property="Padding" Value="6,3" /><Setter Property="Margin" Value="0,0,8,0" /></Style>
+        <Style TargetType="ComboBoxItem"><Setter Property="Foreground" Value="#19302D" /><Setter Property="Background" Value="#FFFFFF" /></Style>
+        <Style TargetType="DataGridColumnHeader"><Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" /><Setter Property="Background" Value="{DynamicResource PanelAltBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" /><Setter Property="Padding" Value="8,8" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+        <Style TargetType="DataGridCell"><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /><Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="8,5" /></Style>
+        <Style TargetType="DataGridRow"><Setter Property="Background" Value="{DynamicResource PanelBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource RowBorderBrush}" /><Setter Property="BorderThickness" Value="0,0,0,1" /><Setter Property="MinHeight" Value="34" /></Style>
     </Application.Resources>
 </Application>
