@@ -136,7 +136,9 @@ public enum WorkspaceErrorCode
     LegacyImportFailed,
     ExchangeInvalid,
     WikiRejected,
-    UpdateCheckFailed
+    UpdateCheckFailed,
+    OcrApplyRequiresConfirmation,
+    OcrPreviewInvalid
 }
 
 public sealed record WorkspaceError(WorkspaceErrorCode Code, string Message);

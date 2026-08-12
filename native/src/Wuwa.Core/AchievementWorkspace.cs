@@ -401,6 +401,88 @@ public sealed partial class AchievementWorkspace
         }
     }
 
+    public async Task<OcrApplyResult> ApplyOcrPreviewAsync(
+        OcrScanPreview preview,
+        bool confirm,
+        bool preventCompletedDowngrade = true,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(preview);
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return OcrApplyFailure(WorkspaceErrorCode.Cancelled, "Applying the OCR preview was cancelled.");
+        }
+
+        try
+        {
+            if (_state is null) return OcrApplyFailure(WorkspaceErrorCode.NotOpen, "The achievement workspace is not open.");
+            var snapshot = CreateSnapshot(_state);
+            if (!confirm) return new OcrApplyResult(false, snapshot, 0, 0, 0, new WorkspaceError(WorkspaceErrorCode.OcrApplyRequiresConfirmation, "OCR progress changes require explicit confirmation."));
+            var duplicates = preview.Candidates.GroupBy(candidate => candidate.AchievementId).FirstOrDefault(group => group.Count() > 1);
+            if (duplicates is not null) return new OcrApplyResult(false, snapshot, 0, 0, 0, new WorkspaceError(WorkspaceErrorCode.OcrPreviewInvalid, "OCR preview contains duplicate achievement candidates."));
+
+            var achievements = _state.Achievements.ToDictionary(item => item.Id);
+            var statuses = new Dictionary<AchievementId, ProgressStatus>(_state.Statuses);
+            var updated = 0;
+            var unchanged = 0;
+            var prevented = 0;
+            foreach (var candidate in preview.Candidates.OrderBy(candidate => candidate.ProposedStatus == ProgressStatus.Completed ? 1 : 0))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (candidate.IsAmbiguous || candidate.ProposedStatus is null || !achievements.TryGetValue(candidate.AchievementId, out var achievement))
+                {
+                    unchanged++;
+                    continue;
+                }
+                var current = statuses[candidate.AchievementId];
+                if (preventCompletedDowngrade && current == ProgressStatus.Completed && candidate.ProposedStatus != ProgressStatus.Completed)
+                {
+                    prevented++;
+                    continue;
+                }
+                if (current == candidate.ProposedStatus)
+                {
+                    unchanged++;
+                    continue;
+                }
+                ApplyStatusTransition(_state.Achievements, statuses, achievement, candidate.ProposedStatus.Value);
+                updated++;
+            }
+
+            if (updated == 0) return new OcrApplyResult(true, snapshot, 0, unchanged, prevented);
+            var settings = new Dictionary<string, string>(_state.Metadata.EffectiveSettings, StringComparer.Ordinal)
+            {
+                ["ocr.lastAppliedAtUtc"] = DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                ["ocr.lastCandidateCount"] = preview.Candidates.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            };
+            var candidateState = new WorkspaceState(
+                _state.Revision + 1,
+                _state.Achievements,
+                statuses,
+                _state.Categories,
+                _state.Metadata with { Settings = settings });
+            await _store.SaveAsync(candidateState, cancellationToken).ConfigureAwait(false);
+            _state = candidateState;
+            return new OcrApplyResult(true, CreateSnapshot(candidateState), updated, unchanged, prevented);
+        }
+        catch (OperationCanceledException)
+        {
+            return OcrApplyFailure(WorkspaceErrorCode.Cancelled, "Applying the OCR preview was cancelled.");
+        }
+        catch (Exception exception)
+        {
+            return OcrApplyFailure(WorkspaceErrorCode.SaveFailed, exception.Message);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<WorkspaceCommandResult> ChangeStatusAsync(
         AchievementId achievementId,
         ProgressStatus status,
@@ -443,7 +525,8 @@ public sealed partial class AchievementWorkspace
                 _state.Revision + 1,
                 _state.Achievements,
                 statuses,
-                _state.Categories);
+                _state.Categories,
+                _state.Metadata);
 
             try
             {
@@ -638,6 +721,9 @@ public sealed partial class AchievementWorkspace
             }
         }
     }
+
+    private OcrApplyResult OcrApplyFailure(WorkspaceErrorCode code, string message) =>
+        new(false, _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state), 0, 0, 0, new WorkspaceError(code, message));
 
     private ExchangeImportResult ExchangeFailure(WorkspaceErrorCode code, string message) =>
         new(false, _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state), Error: new WorkspaceError(code, message));

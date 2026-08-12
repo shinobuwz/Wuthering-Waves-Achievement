@@ -11,10 +11,12 @@
   - Added process-name game-window discovery, client-area GDI capture to top-down BGR, current-page scan orchestration, cancellation/failure isolation, serialized native inference, and typed scan contracts independent of WPF.
 
 - [ ] **04 — Global navigation and matching**
-  - Port primary/secondary tab discovery, scrolling/navigation safeguards, achievement-name normalization/fuzzy matching, duplicate review, and full-scan progress reporting.
+  - [x] Port achievement-name normalization, Levenshtein matching threshold, duplicate ambiguity quarantine, date/in-progress status parsing, and same-row status association.
+  - [ ] Port primary/secondary tab discovery, scrolling/navigation safeguards, and full-scan progress reporting.
 
 - [ ] **05 — Preview and transactional merge UI**
-  - Add WPF scan surface, preview/selection/conflict UI, and accepted progress merge through `AchievementWorkspace`; failure/cancellation must preserve the active revision.
+  - [x] Add immutable preview candidates and confirmed one-revision merge through `AchievementWorkspace`, including completed-status downgrade prevention.
+  - [ ] Add WPF scan surface and preview/selection/conflict UI.
 
 - [ ] **06 — Native OCR release verification**
   - Package DLLs and models, run C++/managed tests, captured-image differential checks, leak/cancellation stress, self-contained publish, and side-by-side launch verification before considering Python OCR removal.

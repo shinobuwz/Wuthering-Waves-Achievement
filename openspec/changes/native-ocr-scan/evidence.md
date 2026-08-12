@@ -20,13 +20,18 @@
 事件：Added `IGameWindowCapture`, `IOcrTextReader`, immutable BGR frames/results, and `SinglePageOcrScanService`; Win32 GDI and the C++ OCR handle are infrastructure adapters.
 结论：WPF can cancel and preview one-page scans without owning HWND/GDI resources or mutating workspace progress during capture/inference.
 
+### OCR only mutates progress after preview confirmation | implementation
+背景：Raw OCR can be ambiguous or omit status text, and the legacy workflow intentionally prevents completed achievements from being downgraded.
+事件：Added name normalization/edit-distance matching, ambiguity quarantine, date/in-progress parsing, nearest-line status association, and `AchievementWorkspace.ApplyOcrPreviewAsync`.
+结论：Scanning produces immutable review candidates; explicit confirmation applies accepted statuses in one generation and preserves completed-status downgrade protection.
+
 ## Verification
 
 - `powershell -ExecutionPolicy Bypass -File native/scripts/build-native-ocr.ps1 -Configuration Release -Clean`: passed; CMake/MSVC x64 build succeeded.
 - CTest: 2/2 passed, including real shipped `det.onnx` + `rec.onnx` initialization/inference and DB postprocess smoke.
 - Managed integration with `WUWA_NATIVE_OCR_ROOT` and `WUWA_NATIVE_OCR_MODEL_ROOT`: C# → C ABI → C++ → OpenCV/Clipper2/ONNX Runtime passed for line recognition and blank-page full OCR.
-- `dotnet test native/WutheringWavesAchievement.sln -c Release --no-restore`: scan-service contract tests pass; full suite currently has 20 ordinary passes plus opt-in native/capture smokes.
+- `dotnet test native/WutheringWavesAchievement.sln -c Release --no-restore`: scan/matching/apply contract tests pass; full suite currently has 23 ordinary passes plus 2 opt-in native/capture smokes.
 - Real Win32 smoke launched the WPF app, found it by process name, captured its visible client area, and validated a non-black top-down BGR frame.
 - `dotnet build native/WutheringWavesAchievement.sln -c Release --no-restore`: 0 warnings, 0 errors.
 
-Remaining risk: optional classifier, multi-crop batching, captured game-image differential fixtures, DirectX exclusive-fullscreen capture, global navigation, preview/merge UI, and packaged native assets are not implemented in this checkpoint.
+Remaining risk: optional classifier, multi-crop batching, captured game-image differential fixtures, DirectX exclusive-fullscreen capture, global navigation, WPF preview UI, and packaged native assets are not implemented in this checkpoint.
