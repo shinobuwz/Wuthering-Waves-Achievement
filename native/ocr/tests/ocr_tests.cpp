@@ -45,7 +45,7 @@ void TestCtcDecode() {
     Require(std::fabs(result.score - 0.825F) < 0.0001F, "CTC confidence must average selected token probabilities.");
 }
 
-void TestModelSmoke(const wchar_t* model, const wchar_t* dictionary) {
+void TestModelSmoke(const wchar_t* model, const wchar_t* dictionary, const wchar_t* detection_model) {
     WuwaOcrConfig config{};
     config.abi_version = wuwa::ocr::kAbiVersion;
     config.recognition_model_path = model;
@@ -61,6 +61,11 @@ void TestModelSmoke(const wchar_t* model, const wchar_t* dictionary) {
     std::vector<std::uint8_t> pixels(48U * 160U * 3U, 255U);
     const auto result = engine.RecognizeBgr(pixels.data(), 160, 48, 160 * 3);
     Require(std::isfinite(result.score), "Model smoke must return a finite confidence score.");
+    if (detection_model != nullptr && *detection_model != L'\0') {
+        engine.EnableDetection(detection_model, 0.3F, 0.6F, 1.5F, 64);
+        const auto& page = engine.DetectAndRecognizeBgr(pixels.data(), 160, 48, 160 * 3);
+        Require(page.empty(), "A blank image should not produce accepted text lines.");
+    }
 }
 
 } // namespace
@@ -69,8 +74,8 @@ int wmain(int argc, wchar_t** argv) {
     try {
         TestDictionary();
         TestCtcDecode();
-        if (argc == 3) {
-            TestModelSmoke(argv[1], argv[2]);
+        if (argc >= 3) {
+            TestModelSmoke(argv[1], argv[2], argc >= 4 ? argv[3] : L"");
         }
         std::cout << "Wuwa.Ocr.Native tests passed.\n";
         return 0;

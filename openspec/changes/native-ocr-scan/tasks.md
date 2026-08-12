@@ -4,7 +4,8 @@
   - Add CMake/MSVC x64 C++20 DLL, stable C ABI, structured errors, model/dictionary validation, dynamic-width recognition preprocessing, ONNX Runtime inference, CTC decode, C# safe handle, and real-model smoke.
 
 - [ ] **02 — Detector and classifier**
-  - Add OpenCV-based DB detector preprocessing/contours/rotated boxes, Clipper2 expansion, crop ordering, perspective transform, optional angle classifier, and golden Python differential fixtures.
+  - [x] Add OpenCV-based DB detector preprocessing/contours/rotated boxes, Clipper2 expansion, crop ordering, perspective transform, full-page C ABI, and real-model smoke.
+  - [ ] Add optional angle classifier, multi-crop batching, and golden Python differential fixtures.
 
 - [ ] **03 — Native scan service**
   - Add game-window discovery/capture, current-page scan, cancellation, bounded worker scheduling, and typed scan result contracts independent of WPF.

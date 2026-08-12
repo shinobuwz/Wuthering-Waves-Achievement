@@ -25,8 +25,11 @@ public sealed class NativeOcrIntegrationTests
             RecognitionMaxWidth: 320));
         var image = Enumerable.Repeat((byte)255, 48 * 160 * 3).ToArray();
         var result = client.RecognizeBgr(image, 160, 48, 160 * 3);
+        client.EnableDetection(Path.Combine(modelRoot!, "det", "det.onnx"));
+        var page = client.DetectAndRecognizeBgr(image, 160, 48, 160 * 3);
 
         Assert.IsTrue(float.IsFinite(result.Score));
         Assert.IsNotNull(result.Text);
+        Assert.AreEqual(0, page.Count);
     }
 }

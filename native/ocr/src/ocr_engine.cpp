@@ -21,7 +21,9 @@ std::string StripLineEnding(std::string value) {
     return value;
 }
 
-std::vector<std::string> ReadNodeNames(Ort::Session& session, bool inputs) {
+} // namespace
+
+std::vector<std::string> OcrEngine::ReadNodeNames(Ort::Session& session, bool inputs) {
     Ort::AllocatorWithDefaultOptions allocator;
     const auto count = inputs ? session.GetInputCount() : session.GetOutputCount();
     std::vector<std::string> names;
@@ -35,7 +37,7 @@ std::vector<std::string> ReadNodeNames(Ort::Session& session, bool inputs) {
     return names;
 }
 
-std::vector<const char*> NamePointers(const std::vector<std::string>& storage) {
+std::vector<const char*> OcrEngine::NamePointers(const std::vector<std::string>& storage) {
     std::vector<const char*> pointers;
     pointers.reserve(storage.size());
     for (const auto& name : storage) {
@@ -43,8 +45,6 @@ std::vector<const char*> NamePointers(const std::vector<std::string>& storage) {
     }
     return pointers;
 }
-
-} // namespace
 
 OcrEngine::OcrEngine(const WuwaOcrConfig& config)
     : environment_(ORT_LOGGING_LEVEL_WARNING, "Wuwa.Ocr.Native"),

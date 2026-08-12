@@ -48,6 +48,17 @@ typedef struct WuwaOcrResult {
     float score;
 } WuwaOcrResult;
 
+typedef struct WuwaOcrTextLine {
+    float points[8];
+    const char* text_utf8;
+    float score;
+} WuwaOcrTextLine;
+
+typedef struct WuwaOcrTextPage {
+    const WuwaOcrTextLine* lines;
+    int32_t count;
+} WuwaOcrTextPage;
+
 WUWA_OCR_API uint32_t WUWA_OCR_CALL wuwa_ocr_abi_version(void);
 WUWA_OCR_API const char* WUWA_OCR_CALL wuwa_ocr_version(void);
 
@@ -64,6 +75,22 @@ WUWA_OCR_API WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_recognize_bgr(
     int32_t height,
     int32_t stride,
     WuwaOcrResult* result);
+
+WUWA_OCR_API WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_enable_detection(
+    WuwaOcrHandle handle,
+    const wchar_t* detection_model_path,
+    float bitmap_threshold,
+    float box_threshold,
+    float unclip_ratio,
+    int32_t limit_side_length);
+
+WUWA_OCR_API WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_detect_and_recognize_bgr(
+    WuwaOcrHandle handle,
+    const uint8_t* pixels,
+    int32_t width,
+    int32_t height,
+    int32_t stride,
+    WuwaOcrTextPage* result);
 
 WUWA_OCR_API WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_last_error(
     WuwaOcrHandle handle,

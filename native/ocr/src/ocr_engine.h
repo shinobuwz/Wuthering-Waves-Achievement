@@ -3,6 +3,7 @@
 #include "wuwa_ocr.h"
 
 #include <onnxruntime_cxx_api.h>
+#include <opencv2/core.hpp>
 
 #include <array>
 #include <cstdint>
@@ -28,6 +29,12 @@ struct RecognitionResult {
     float score = 0.0F;
 };
 
+struct TextLineResult {
+    std::array<float, 8> points{};
+    std::string text;
+    float score = 0.0F;
+};
+
 class OcrEngine final {
 public:
     explicit OcrEngine(const WuwaOcrConfig& config);
@@ -38,7 +45,21 @@ public:
         std::int32_t height,
         std::int32_t stride);
 
+    void EnableDetection(
+        const std::filesystem::path& model_path,
+        float bitmap_threshold,
+        float box_threshold,
+        float unclip_ratio,
+        std::int32_t limit_side_length);
+
+    const std::vector<TextLineResult>& DetectAndRecognizeBgr(
+        const std::uint8_t* pixels,
+        std::int32_t width,
+        std::int32_t height,
+        std::int32_t stride);
+
     const std::string& LastResultText() const noexcept { return last_result_text_; }
+    const std::vector<TextLineResult>& LastPage() const noexcept { return last_page_; }
     const std::string& LastError() const noexcept { return last_error_; }
     void SetLastError(std::string message) { last_error_ = std::move(message); }
 
@@ -60,20 +81,35 @@ private:
         std::int32_t width,
         std::int32_t height,
         std::int32_t stride) const;
+    static std::vector<std::string> ReadNodeNames(Ort::Session& session, bool inputs);
+    static std::vector<const char*> NamePointers(const std::vector<std::string>& storage);
+    RecognitionResult RecognizeMat(const cv::Mat& image);
+    std::vector<std::array<cv::Point2f, 4>> Detect(const cv::Mat& image);
+    static cv::Mat CropTextLine(const cv::Mat& image, const std::array<cv::Point2f, 4>& box);
 
     Ort::Env environment_;
     Ort::SessionOptions session_options_;
     std::unique_ptr<Ort::Session> recognition_session_;
+    std::unique_ptr<Ort::Session> detection_session_;
     std::vector<std::string> input_names_storage_;
     std::vector<const char*> input_names_;
     std::vector<std::string> output_names_storage_;
     std::vector<const char*> output_names_;
+    std::vector<std::string> detection_input_names_storage_;
+    std::vector<const char*> detection_input_names_;
+    std::vector<std::string> detection_output_names_storage_;
+    std::vector<const char*> detection_output_names_;
     std::vector<std::string> characters_;
     std::int32_t recognition_height_;
     std::int32_t recognition_min_width_;
     std::int32_t recognition_max_width_;
     float minimum_score_;
+    float detection_bitmap_threshold_ = 0.3F;
+    float detection_box_threshold_ = 0.6F;
+    float detection_unclip_ratio_ = 1.5F;
+    std::int32_t detection_limit_side_length_ = 64;
     std::string last_result_text_;
+    std::vector<TextLineResult> last_page_;
     std::string last_error_;
 };
 
