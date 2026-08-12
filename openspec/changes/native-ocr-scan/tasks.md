@@ -7,8 +7,8 @@
   - [x] Add OpenCV-based DB detector preprocessing/contours/rotated boxes, Clipper2 expansion, crop ordering, perspective transform, full-page C ABI, and real-model smoke.
   - [ ] Add optional angle classifier, multi-crop batching, and golden Python differential fixtures.
 
-- [ ] **03 — Native scan service**
-  - Add game-window discovery/capture, current-page scan, cancellation, bounded worker scheduling, and typed scan result contracts independent of WPF.
+- [x] **03 — Native scan service**
+  - Added process-name game-window discovery, client-area GDI capture to top-down BGR, current-page scan orchestration, cancellation/failure isolation, serialized native inference, and typed scan contracts independent of WPF.
 
 - [ ] **04 — Global navigation and matching**
   - Port primary/secondary tab discovery, scrolling/navigation safeguards, achievement-name normalization/fuzzy matching, duplicate review, and full-scan progress reporting.
