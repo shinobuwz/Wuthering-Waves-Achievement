@@ -31,6 +31,9 @@ public sealed class WikiLiveProbe
         var second = await workspace.SyncWikiAsync(new KuroWikiAchievementSource(), cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!second.IsSuccess) throw new InvalidDataException(second.Error?.Message);
         if (second.Snapshot.Revision != first.Snapshot.Revision) throw new InvalidDataException("Equivalent second Wiki sync advanced the workspace revision.");
+        var groupedRows = second.Snapshot.Rows.Where(row => !string.IsNullOrWhiteSpace(row.GroupId)).ToArray();
+        if (groupedRows.Length < 2 || groupedRows.GroupBy(row => row.GroupId, StringComparer.Ordinal).Any(group => group.Count() < 2))
+            throw new InvalidDataException("Live Wiki choice rows were not parsed into stable achievement groups.");
         return second.Snapshot.Rows.Count;
     }
 

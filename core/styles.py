@@ -233,11 +233,13 @@ def get_icon(icon_name):
 
 def get_main_window_style(theme="light"):
     c = _colors(theme)
+    sidebar_overlay = "rgba(20, 26, 23, 218)" if theme == "dark" else "rgba(229, 235, 232, 218)"
+    content_overlay = "rgba(16, 20, 18, 150)" if theme == "dark" else "rgba(238, 242, 240, 150)"
     return f"""
     QMainWindow {{ background: transparent; font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; }}
-    QWidget#appRoot {{ background: {c.APP_BG}; border: 1px solid {c.BORDER_STRONG}; border-radius: 8px; }}
-    QFrame#appSidebar {{ background: {c.SIDEBAR_BG}; border: none; border-right: 1px solid {c.BORDER}; }}
-    QFrame#contentArea {{ background: {c.APP_BG}; border: none; }}
+    QWidget#appRoot {{ background: transparent; border: 1px solid {c.BORDER_STRONG}; border-radius: 8px; }}
+    QFrame#appSidebar {{ background: {sidebar_overlay}; border: none; border-right: 1px solid {c.BORDER}; }}
+    QFrame#contentArea {{ background: {content_overlay}; border: none; }}
     QLabel#brandTitle {{ color: {c.TEXT_PRIMARY}; font-size: 15px; font-weight: 700; }}
     QLabel#brandSubtitle {{ color: {c.TEXT_GRAY}; font-size: 10px; }}
     QLabel#sidebarSection {{ color: {c.TEXT_GRAY}; font-size: 10px; font-weight: 600; }}

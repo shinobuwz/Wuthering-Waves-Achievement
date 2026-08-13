@@ -20,6 +20,9 @@ Global
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{897A51F8-39EF-4E29-9F0C-34CA668AC6EF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{897A51F8-39EF-4E29-9F0C-34CA668AC6EF}.Debug|Any CPU.Build.0 = Debug|Any CPU
@@ -38,16 +41,10 @@ Global
 		{B8F510CA-435E-4C39-A280-12FBA3C39E54}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B8F510CA-435E-4C39-A280-12FBA3C39E54}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
-	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{897A51F8-39EF-4E29-9F0C-34CA668AC6EF} = {CA8BFABC-EFB6-4ABC-9A30-C6D7B8BEB868}
 		{2B13D109-D5B6-4205-9DC2-8021E9080980} = {CA8BFABC-EFB6-4ABC-9A30-C6D7B8BEB868}
 		{C8CB9BEF-29D7-45A3-AA0A-16A4B861761E} = {CA8BFABC-EFB6-4ABC-9A30-C6D7B8BEB868}
 		{B8F510CA-435E-4C39-A280-12FBA3C39E54} = {896AA03D-5171-42C4-AF71-8DF08C059043}
-	EndGlobalSection
-	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {07C7191B-B633-4DFF-B487-DEEC62440D32}
 	EndGlobalSection
 EndGlobal

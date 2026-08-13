@@ -28,6 +28,48 @@ public sealed class WikiExchangeUpdateTests
     }
 
     [TestMethod]
+    public async Task WikiFetch_SplitsChoiceRowsIntoStableGroupedAchievements()
+    {
+        const string html = "<details class='kr-collapse-details'><summary class='kr-collapse-summary'>长路留迹</summary><table class='kr-table-filter' data-uid='choice-table'><tr data-freeze='row'><td>名称</td><td>版本</td><td>合集</td><td>描述</td><td>奖励</td></tr><tr data-index='18502' data-filter-tag='版本-3.0,合集-世间百态&amp;middot;二,特殊-隐藏成就,特殊-二选一'><td><p>「隐藏成就」独自凝望的星海</p><p>或</p><p>「隐藏成就」恒定不变的星海</p></td><td>3.0</td><td>fallback</td><td><p>选择告知真相。</p><p>或</p><p>选择隐瞒真相。</p></td><td>星声*5</td></tr></table></details>";
+        using var client = new HttpClient(new FixtureHandler(HttpStatusCode.OK, Envelope(html)));
+
+        var result = await new KuroWikiAchievementSource(client).FetchAsync();
+
+        Assert.IsTrue(result.IsSuccess, result.Error);
+        Assert.AreEqual(2, result.Achievements.Count);
+        CollectionAssert.AreEqual(
+            new[] { "独自凝望的星海", "恒定不变的星海" },
+            result.Achievements.Select(item => item.Name).ToArray());
+        CollectionAssert.AreEqual(
+            new[] { "选择告知真相。", "选择隐瞒真相。" },
+            result.Achievements.Select(item => item.Description).ToArray());
+        Assert.IsTrue(result.Achievements.All(item => item.IsHidden));
+        Assert.AreEqual("世间百态·二", result.Achievements[0].SecondCategory);
+        Assert.AreEqual(result.Achievements[0].GroupId, result.Achievements[1].GroupId);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(result.Achievements[0].GroupId));
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                $"{KuroWikiAchievementSource.EntryId}/choice-table/18502/choice-1",
+                $"{KuroWikiAchievementSource.EntryId}/choice-table/18502/choice-2"
+            },
+            result.Achievements.Select(item => item.WikiSourceRef).ToArray());
+        Assert.AreNotEqual(result.Achievements[0].Id, result.Achievements[1].Id);
+    }
+
+    [TestMethod]
+    public async Task WikiFetch_RejectsMalformedChoiceRows()
+    {
+        const string html = "<details><summary>长路留迹</summary><table data-uid='choice-table'><tr data-index='1' data-filter-tag='版本-3.0,合集-世间百态&amp;middot;二,特殊-二选一'><td><p>成就甲</p><p>或</p><p>成就乙</p></td><td>3.0</td><td>fallback</td><td><p>只有一段描述</p></td><td>星声*5</td></tr></table></details>";
+        using var client = new HttpClient(new FixtureHandler(HttpStatusCode.OK, Envelope(html)));
+
+        var result = await new KuroWikiAchievementSource(client).FetchAsync();
+
+        Assert.IsFalse(result.IsSuccess);
+        StringAssert.Contains(result.Error, "matching achievement names and descriptions");
+    }
+
+    [TestMethod]
     public async Task WikiFetch_HttpSuccessBusinessFailureIsRejected()
     {
         using var client = new HttpClient(new FixtureHandler(HttpStatusCode.OK, "{\"code\":500,\"success\":false,\"msg\":\"denied\",\"data\":{}}"));

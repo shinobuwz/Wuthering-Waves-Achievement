@@ -108,36 +108,139 @@ public sealed class KuroWikiAchievementSource : IWikiAchievementSource
         {
             var attrs = rowMatch.Groups["attrs"].Value;
             if (attrs.Contains("data-freeze", StringComparison.OrdinalIgnoreCase)) continue;
-            var cells = Regex.Matches(rowMatch.Groups["body"].Value, "<td\\b[^>]*>(?<cell>.*?)</td>", RegexOptions.IgnoreCase | RegexOptions.Singleline)
-                .Select(match => StripHtml(match.Groups["cell"].Value)).ToArray();
-            if (cells.Length == 0) continue;
-            if (cells.Length < 5) throw new InvalidDataException("Wiki achievement row does not contain the required columns.");
+            var rawCells = Regex.Matches(rowMatch.Groups["body"].Value, "<td\\b[^>]*>(?<cell>.*?)</td>", RegexOptions.IgnoreCase | RegexOptions.Singleline)
+                .Select(match => match.Groups["cell"].Value).ToArray();
+            if (rawCells.Length == 0) continue;
+            if (rawCells.Length < 5) throw new InvalidDataException("Wiki achievement row does not contain the required columns.");
+            var cells = rawCells.Select(StripHtml).ToArray();
 
             var rowDataIndex = Attribute(attrs, "data-index");
             if (string.IsNullOrWhiteSpace(rowDataIndex)) throw new InvalidDataException("Wiki achievement row has no stable data-index.");
             var sourceRef = $"{EntryId}/{tableUid}/{rowDataIndex}";
-            var name = cells[0].Replace("「隐藏成就」", string.Empty, StringComparison.Ordinal).Trim();
-            var hidden = cells[0].Contains("隐藏成就", StringComparison.Ordinal);
             var secondCategory = FilterTag(attrs, "合集") ?? cells[2].Trim();
-            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(cells[1]) || string.IsNullOrWhiteSpace(secondCategory) || string.IsNullOrWhiteSpace(cells[3]))
+            if (string.IsNullOrWhiteSpace(cells[1]) || string.IsNullOrWhiteSpace(secondCategory))
             {
                 throw new InvalidDataException($"Wiki achievement row '{sourceRef}' has missing required fields.");
             }
 
-            result.Add(new Achievement(
-                AchievementId.FromWikiSource(sourceRef),
-                $"wiki-{result.Count + 1:000000}",
-                result.Count + 1,
+            if (HasFilterTag(attrs, "特殊", "二选一"))
+            {
+                AddChoiceAchievements(rawCells, cells, sourceRef, firstCategory, secondCategory, result);
+                continue;
+            }
+
+            var name = cells[0].Replace("「隐藏成就」", string.Empty, StringComparison.Ordinal).Trim();
+            var hidden = cells[0].Contains("隐藏成就", StringComparison.Ordinal);
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(cells[3]))
+            {
+                throw new InvalidDataException($"Wiki achievement row '{sourceRef}' has missing required fields.");
+            }
+
+            AddAchievement(
+                result,
+                sourceRef,
                 cells[1].Trim(),
                 firstCategory,
                 secondCategory,
                 name,
                 cells[3].Trim(),
                 cells[4].Trim(),
-                hidden,
-                WikiSourceRef: sourceRef,
-                MutualExclusionCodes: Array.Empty<string>()));
+                hidden);
         }
+    }
+
+    private static void AddChoiceAchievements(
+        IReadOnlyList<string> rawCells,
+        IReadOnlyList<string> cells,
+        string sourceRef,
+        string firstCategory,
+        string secondCategory,
+        ICollection<Achievement> result)
+    {
+        var names = CellParagraphs(rawCells[0])
+            .Where(value => !string.Equals(value, "或", StringComparison.Ordinal))
+            .Select(value => value.Replace("「隐藏成就」", string.Empty, StringComparison.Ordinal).Trim())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+        var descriptions = CellParagraphs(rawCells[3])
+            .Where(value => !string.Equals(value, "或", StringComparison.Ordinal))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+        if (names.Length < 2 || descriptions.Length != names.Length)
+        {
+            throw new InvalidDataException($"Wiki choice row '{sourceRef}' must contain matching achievement names and descriptions.");
+        }
+
+        var groupId = $"wiki-choice:{sourceRef}";
+        var hidden = cells[0].Contains("隐藏成就", StringComparison.Ordinal);
+        for (var index = 0; index < names.Length; index++)
+        {
+            AddAchievement(
+                result,
+                $"{sourceRef}/choice-{index + 1}",
+                cells[1].Trim(),
+                firstCategory,
+                secondCategory,
+                names[index],
+                descriptions[index],
+                cells[4].Trim(),
+                hidden,
+                groupId);
+        }
+    }
+
+    private static void AddAchievement(
+        ICollection<Achievement> result,
+        string sourceRef,
+        string version,
+        string firstCategory,
+        string secondCategory,
+        string name,
+        string description,
+        string reward,
+        bool hidden,
+        string? groupId = null)
+    {
+        result.Add(new Achievement(
+            AchievementId.FromWikiSource(sourceRef),
+            $"wiki-{result.Count + 1:000000}",
+            result.Count + 1,
+            version,
+            firstCategory,
+            secondCategory,
+            name,
+            description,
+            reward,
+            hidden,
+            groupId,
+            WikiSourceRef: sourceRef,
+            MutualExclusionCodes: Array.Empty<string>()));
+    }
+
+    private static IReadOnlyList<string> CellParagraphs(string value)
+    {
+        var paragraphs = Regex.Matches(value, "<p\\b[^>]*>(?<body>.*?)</p>", RegexOptions.IgnoreCase | RegexOptions.Singleline)
+            .Select(match => StripHtml(match.Groups["body"].Value))
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .ToArray();
+        return paragraphs.Length > 0 ? paragraphs : [StripHtml(value)];
+    }
+
+    private static bool HasFilterTag(string attributes, string prefix, string value)
+    {
+        var tags = Attribute(attributes, "data-filter-tag");
+        if (string.IsNullOrWhiteSpace(tags)) return false;
+        foreach (var tag in System.Net.WebUtility.HtmlDecode(tags).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = tag.IndexOf('-');
+            if (separator > 0 &&
+                string.Equals(tag[..separator].Trim(), prefix, StringComparison.Ordinal) &&
+                string.Equals(tag[(separator + 1)..].Trim(), value, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static string? FilterTag(string attributes, string prefix)

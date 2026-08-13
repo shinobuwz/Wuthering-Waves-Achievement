@@ -82,16 +82,16 @@ class BackgroundWidget(QWidget):
         painter.setClipPath(path)
         
         if self.background_pixmap:
-            # 缩放背景图片以适应widget大小
+            # 缩放背景图片并完整保留透明角色立绘
             scaled_pixmap = self.background_pixmap.scaled(
                 widget_rect.size(),
-                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
             
-            # 计算居中位置
-            x = (widget_rect.width() - scaled_pixmap.width()) // 2
-            y = (widget_rect.height() - scaled_pixmap.height()) // 2
+            # 右下对齐，避免把角色裁切到窗口外
+            x = widget_rect.width() - scaled_pixmap.width()
+            y = widget_rect.height() - scaled_pixmap.height()
             
             # 绘制背景图片
             painter.drawPixmap(x, y, scaled_pixmap)

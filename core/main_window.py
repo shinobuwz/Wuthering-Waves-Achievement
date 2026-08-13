@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QPushButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPainter, QPainterPath
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,52 @@ from core.config import config
 from core.signal_bus import signal_bus
 
 from core.styles import get_main_window_style
+
+
+class MainBackgroundWidget(QWidget):
+    """Main shell that paints the configured image behind translucent UI panels."""
+
+    def __init__(self, theme="light", parent=None):
+        super().__init__(parent)
+        self.theme = theme
+        self.background_pixmap = None
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.reload_background()
+
+    def reload_background(self):
+        from core.widgets import load_background_image
+        self.background_pixmap = load_background_image(self.theme)
+        self.update()
+
+    def set_theme(self, theme):
+        self.theme = theme
+        self.reload_background()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        widget_rect = self.rect()
+
+        clip_path = QPainterPath()
+        clip_path.addRoundedRect(
+            widget_rect.x(), widget_rect.y(),
+            widget_rect.width(), widget_rect.height(),
+            8, 8,
+        )
+        painter.setClipPath(clip_path)
+
+        if self.background_pixmap and not self.background_pixmap.isNull():
+            scaled = self.background_pixmap.scaled(
+                widget_rect.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            x = widget_rect.width() - scaled.width()
+            y = widget_rect.height() - scaled.height()
+            painter.drawPixmap(x, y, scaled)
+        else:
+            fallback = QColor("#101412" if self.theme == "dark" else "#eef2f0")
+            painter.fillRect(widget_rect, fallback)
 
 
 class TemplateMainWindow(QMainWindow):
@@ -52,7 +99,7 @@ class TemplateMainWindow(QMainWindow):
         self.resize(1320, 840)
         self.setMinimumSize(1080, 700)
 
-        root = QWidget()
+        root = MainBackgroundWidget(config.theme)
         root.setObjectName("appRoot")
         self.setCentralWidget(root)
 
@@ -176,6 +223,10 @@ class TemplateMainWindow(QMainWindow):
     def apply_theme(self, *_args):
         """Apply the selected theme without rebuilding the page hierarchy."""
         self.setStyleSheet(get_main_window_style(config.theme))
+
+        root = self.centralWidget()
+        if isinstance(root, MainBackgroundWidget):
+            root.set_theme(config.theme)
 
         if hasattr(self, "title_bar"):
             self.title_bar.update_theme()
