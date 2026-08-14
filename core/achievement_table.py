@@ -712,7 +712,7 @@ class AchievementTable(QTableWidget):
             return 0
 
     def _handle_achievement_group_completion(self, completed_row, completed_achievement):
-        """处理多选一和多合一成就组完成逻辑。"""
+        """处理二选一和多合一成就组完成逻辑。"""
         group_id = completed_achievement.get('成就组ID')
         if not group_id:
             return

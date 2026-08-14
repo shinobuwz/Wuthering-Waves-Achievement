@@ -130,7 +130,7 @@ public sealed record AchievementRow(
     // The raw group ID is an internal Wiki/source identifier and is not useful in the table.
     public string GroupText => string.IsNullOrWhiteSpace(GroupId)
         ? string.Empty
-        : GroupId.StartsWith("progression-", StringComparison.Ordinal) ? "多合一" : "多选一";
+        : GroupId.StartsWith("progression-", StringComparison.Ordinal) ? "多合一" : "二选一";
 }
 
 public enum HiddenFilter

@@ -122,7 +122,7 @@ class AchievementManager:
                 continue
             elif obtainable == "暂不可获取" and achievement.get('获取状态', '') != "暂不可获取":
                 continue
-            elif obtainable in ("多选一", "成就组"):
+            elif obtainable in ("二选一", "成就组"):
                 # 只显示成就组，显示所有组成员
                 group_id = achievement.get('成就组ID')
                 if not group_id:
@@ -483,8 +483,8 @@ class ManageTab(QWidget):
             hidden_type, priority, obtainable, hide_completed
         )
 
-        # 在多选一模式下，为每个成就添加组标识
-        if obtainable == "多选一":
+        # 在二选一模式下，为每个成就添加组标识
+        if obtainable == "二选一":
             # 为筛选后的成就添加组标识（保存原始名称）
             for achievement in filtered:
                 group_id = achievement.get('成就组ID')
@@ -1057,7 +1057,7 @@ class ManageTab(QWidget):
             user_data = users.get(current_user, {})
             uid = user_data.get('uid', current_user) if isinstance(user_data, dict) else current_user
             statistics = self.calculate_statistics(merged_data)
-            info_text = f"导出时间: {self.get_current_time()} | 用户: {current_user} | UID: {uid} | 成就总数: {statistics['total']} | 已完成: {statistics['completed']} | 未完成: {statistics['incomplete']} | 隐藏成就: {statistics['hidden']} | 暂不可获取: {statistics['unavailable']} | 多选一成就: {statistics['multi_choice']}"
+            info_text = f"导出时间: {self.get_current_time()} | 用户: {current_user} | UID: {uid} | 成就总数: {statistics['total']} | 已完成: {statistics['completed']} | 未完成: {statistics['incomplete']} | 隐藏成就: {statistics['hidden']} | 暂不可获取: {statistics['unavailable']} | 成就组: {statistics['multi_choice']}"
             info_cell = sheet.cell(row=1, column=1, value=info_text)
             info_cell.font = Font(size=10, color="666666")
             info_cell.alignment = Alignment(horizontal="left", vertical="center")
@@ -1332,7 +1332,7 @@ class ManageTab(QWidget):
                     # 普通成就
                     unavailable += 1
 
-        # 统计多选一数量（每个组只计算一次）
+        # 统计成就组数量（每个组只计算一次）
         multi_choice_groups = set()
         for achievement in data:
             group_id = achievement.get('成就组ID')

@@ -802,7 +802,7 @@ class TemplateSettingsDialog(QDialog):
         layout = QVBoxLayout(widget)
         
         # 说明文字
-        info_label = QLabel("管理成就组关系：多选一默认互斥；多合一按进阶顺序完成，不会互相占用。")
+        info_label = QLabel("管理成就组关系：二选一默认互斥；多合一按进阶顺序完成，不会互相占用。")
         info_label.setStyleSheet(get_settings_desc_style(config.theme))
         layout.addWidget(info_label)
         
@@ -847,8 +847,8 @@ class TemplateSettingsDialog(QDialog):
 
         groups_btn_layout.addWidget(QLabel("组类型"))
         self.group_type_combo = QComboBox()
-        self.group_type_combo.addItems(["多选一", "多合一"])
-        self.group_type_combo.setToolTip("多选一：完成一个后同组其他项互斥；多合一：同组成员可以按进阶顺序全部完成。")
+        self.group_type_combo.addItems(["二选一", "多合一"])
+        self.group_type_combo.setToolTip("二选一：完成一个后同组其他项互斥；多合一：同组成员可以按进阶顺序全部完成。")
         groups_btn_layout.addWidget(self.group_type_combo)
         
         add_group_btn = QPushButton("添加组")
@@ -1004,7 +1004,7 @@ class TemplateSettingsDialog(QDialog):
         if group_id.startswith('progression-'):
             label = '多合一组'
         else:
-            label = '多选一组'
+            label = '二选一组'
 
         if display_number is not None:
             return f"{label} {display_number}"
@@ -1099,7 +1099,7 @@ class TemplateSettingsDialog(QDialog):
     def _add_achievement_group(self):
         """添加成就组"""
         
-        # 生成组ID和名称。多选一使用默认 group_ 前缀，多合一使用 progression- 前缀。
+        # 生成组ID和名称。二选一使用默认 group_ 前缀，多合一使用 progression- 前缀。
         existing_ids = set()
         existing_numbers = set()
         for row in range(self.groups_table.rowCount()):
@@ -1123,7 +1123,7 @@ class TemplateSettingsDialog(QDialog):
         while group_id in existing_ids:
             next_num += 1
             group_id = f"progression-manual-{next_num:03d}" if is_progression else f"group_{next_num:03d}"
-        group_name = f"{'多合一组' if is_progression else '多选一组'} {next_num}"
+        group_name = f"{'多合一组' if is_progression else '二选一组'} {next_num}"
         
         logger.debug("创建新组: ID=%s, 名称=%s, 现有组编号: %s", group_id, group_name, sorted(existing_numbers))
         
