@@ -127,6 +127,10 @@ public sealed record AchievementRow(
 {
     public string StatusText => Status.ToChinese();
     public string HiddenText => IsHidden ? "隐藏" : string.Empty;
+    // The raw group ID is an internal Wiki/source identifier and is not useful in the table.
+    public string GroupText => string.IsNullOrWhiteSpace(GroupId)
+        ? string.Empty
+        : GroupId.StartsWith("progression-", StringComparison.Ordinal) ? "多合一" : "多选一";
 }
 
 public enum HiddenFilter

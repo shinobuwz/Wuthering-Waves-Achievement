@@ -1,4 +1,6 @@
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Wuwa.Core;
@@ -81,6 +83,7 @@ public sealed class KuroWikiAchievementSource : IWikiAchievementSource
 
         var duplicate = result.GroupBy(item => item.WikiSourceRef, StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1);
         if (duplicate is not null) throw new InvalidDataException($"Wiki content contains duplicate source reference '{duplicate.Key}'.");
+        ApplyProgressionMetadata(result);
         return result;
     }
 
@@ -188,6 +191,61 @@ public sealed class KuroWikiAchievementSource : IWikiAchievementSource
                 groupId);
         }
     }
+
+    private static void ApplyProgressionMetadata(IList<Achievement> rows)
+    {
+        var candidates = rows
+            .Select(row => (Row: row, Tier: ParseTier(row.Name)))
+            .Where(item => item.Tier is not null)
+            .GroupBy(item => (item.Row.FirstCategory, item.Row.SecondCategory, item.Tier!.Value.BaseName))
+            .ToArray();
+
+        foreach (var candidate in candidates)
+        {
+            var members = candidate
+                .Select(item => (item.Row, Tier: item.Tier!.Value.Level))
+                .ToArray();
+            if (members.Length < 2 || members.Select(item => item.Tier).Distinct().Count() != members.Length)
+            {
+                continue;
+            }
+
+            var groupId = $"progression-{Sha1Hex(string.Join("\\u001f", candidate.Key.FirstCategory, candidate.Key.SecondCategory, candidate.Key.BaseName)).Substring(0, 12)}";
+            foreach (var member in members)
+            {
+                var index = rows.IndexOf(member.Row);
+                if (string.IsNullOrWhiteSpace(member.Row.GroupId))
+                {
+                    rows[index] = member.Row with { GroupId = groupId };
+                }
+            }
+        }
+    }
+
+    private static (string BaseName, int Level)? ParseTier(string name)
+    {
+        var match = Regex.Match(name.Trim(), @"^(?<base>.+?)(?:[·•・\\s]+)(?<tier>[一二三四五六七八九十ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]|[0-9]+)$");
+        if (!match.Success) return null;
+        var suffix = match.Groups["tier"].Value;
+        var level = suffix switch
+        {
+            "一" or "Ⅰ" => 1,
+            "二" or "Ⅱ" => 2,
+            "三" or "Ⅲ" => 3,
+            "四" or "Ⅳ" => 4,
+            "五" or "Ⅴ" => 5,
+            "六" or "Ⅵ" => 6,
+            "七" or "Ⅶ" => 7,
+            "八" or "Ⅷ" => 8,
+            "九" or "Ⅸ" => 9,
+            "十" or "Ⅹ" => 10,
+            _ when int.TryParse(suffix, out var parsed) => parsed,
+            _ => 0
+        };
+        return level > 0 ? (match.Groups["base"].Value.TrimEnd('·', '•', '・', ' '), level) : null;
+    }
+
+    private static string Sha1Hex(string value) => Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
     private static void AddAchievement(
         ICollection<Achievement> result,

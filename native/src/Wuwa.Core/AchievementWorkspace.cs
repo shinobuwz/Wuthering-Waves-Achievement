@@ -583,7 +583,43 @@ public sealed partial class AchievementWorkspace
 
         var group = achievements
             .Where(item => string.Equals(item.GroupId, selected.GroupId, StringComparison.Ordinal))
+            .OrderBy(item => item.AbsoluteOrder)
             .ToArray();
+
+        if (IsProgressionGroup(selected.GroupId))
+        {
+            var selectedIndex = Array.FindIndex(group, item => item.Id == selected.Id);
+            if (selectedIndex < 0)
+            {
+                statuses[selected.Id] = requestedStatus;
+                return;
+            }
+
+            if (requestedStatus == ProgressStatus.Completed)
+            {
+                // A higher tier implies that all lower tiers have crossed their thresholds.
+                for (var index = 0; index < group.Length; index++)
+                {
+                    statuses[group[index].Id] = index <= selectedIndex
+                        ? ProgressStatus.Completed
+                        : ProgressStatus.Incomplete;
+                }
+                return;
+            }
+
+            if (requestedStatus == ProgressStatus.Incomplete)
+            {
+                // Reset this tier and all higher tiers; lower milestones remain earned.
+                for (var index = selectedIndex; index < group.Length; index++)
+                {
+                    statuses[group[index].Id] = ProgressStatus.Incomplete;
+                }
+                return;
+            }
+
+            statuses[selected.Id] = requestedStatus;
+            return;
+        }
 
         if (requestedStatus == ProgressStatus.Completed)
         {
@@ -610,6 +646,9 @@ public sealed partial class AchievementWorkspace
 
         statuses[selected.Id] = requestedStatus;
     }
+
+    private static bool IsProgressionGroup(string? groupId) =>
+        !string.IsNullOrWhiteSpace(groupId) && groupId.StartsWith("progression-", StringComparison.Ordinal);
 
     private static WorkspaceSnapshot CreateSnapshot(WorkspaceState state)
     {

@@ -58,6 +58,20 @@ public sealed class WikiExchangeUpdateTests
     }
 
     [TestMethod]
+    public async Task WikiFetch_InfersProgressionGroupFromTieredRows()
+    {
+        const string html = "<details><summary>探索</summary><table data-uid='progression-table'><tr data-freeze='row'><td>名称</td><td>版本</td><td>合集</td><td>描述</td><td>奖励</td></tr><tr data-index='1'><td>累计采集·一</td><td>1.0</td><td>区域</td><td>采集20次。</td><td>星声*5</td></tr><tr data-index='2'><td>累计采集·二</td><td>1.0</td><td>区域</td><td>采集50次。</td><td>星声*10</td></tr><tr data-index='3'><td>累计采集·三</td><td>1.0</td><td>区域</td><td>采集100次。</td><td>星声*20</td></tr></table></details>";
+        using var client = new HttpClient(new FixtureHandler(HttpStatusCode.OK, Envelope(html)));
+
+        var result = await new KuroWikiAchievementSource(client).FetchAsync();
+
+        Assert.IsTrue(result.IsSuccess, result.Error);
+        Assert.AreEqual(3, result.Achievements.Count);
+        Assert.IsTrue(result.Achievements.All(item => item.GroupId?.StartsWith("progression-", StringComparison.Ordinal) == true));
+        Assert.AreEqual(1, result.Achievements.Select(item => item.GroupId).Distinct().Count());
+    }
+
+    [TestMethod]
     public async Task WikiFetch_RejectsMalformedChoiceRows()
     {
         const string html = "<details><summary>长路留迹</summary><table data-uid='choice-table'><tr data-index='1' data-filter-tag='版本-3.0,合集-世间百态&amp;middot;二,特殊-二选一'><td><p>成就甲</p><p>或</p><p>成就乙</p></td><td>3.0</td><td>fallback</td><td><p>只有一段描述</p></td><td>星声*5</td></tr></table></details>";

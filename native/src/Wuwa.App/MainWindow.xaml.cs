@@ -89,7 +89,7 @@ public partial class MainWindow : Window
         UnavailableText.Text = _view.Statistics.Unavailable.ToString();
         HiddenText.Text = _view.Statistics.Hidden.ToString();
         RateText.Text = $"{_view.Statistics.CompletionRatePercent:0.0}%";
-        HintText.Text = $"显示 {_view.Rows.Count} 条 · 双击一行可切换完成状态 · 右键菜单可标记暂不可获取";
+        HintText.Text = $"显示 {_view.Rows.Count} 条 · 双击切换完成状态 · 右键设置状态";
         ErrorText.Text = string.Empty;
     }
 

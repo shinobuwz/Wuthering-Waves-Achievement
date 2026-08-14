@@ -5,6 +5,7 @@
 from PySide6.QtGui import QColor
 from PySide6.QtCore import Qt
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ class TemplateSettingsDialog(QDialog):
             ("👤 用户管理", self._create_user_tab),
             ("🎨 外观设置", self._create_appearance_tab),
             ("📂 分类管理", self._create_category_tab),
-            ("🎯 多选一管理", self._create_achievement_group_tab),
+            ("🎯 成就组管理", self._create_achievement_group_tab),
             ("🗂️ 版本管理", self._create_version_tab)
         ]
 
@@ -801,7 +802,7 @@ class TemplateSettingsDialog(QDialog):
         layout = QVBoxLayout(widget)
         
         # 说明文字
-        info_label = QLabel("管理多选一配置，设置多选一成就关系")
+        info_label = QLabel("管理成就组关系：多选一默认互斥；多合一按进阶顺序完成，不会互相占用。")
         info_label.setStyleSheet(get_settings_desc_style(config.theme))
         layout.addWidget(info_label)
         
@@ -843,6 +844,12 @@ class TemplateSettingsDialog(QDialog):
         # 成就组按钮
         groups_btn_layout = QHBoxLayout()
         groups_btn_layout.addStretch()  # 左侧弹性空间
+
+        groups_btn_layout.addWidget(QLabel("组类型"))
+        self.group_type_combo = QComboBox()
+        self.group_type_combo.addItems(["多选一", "多合一"])
+        self.group_type_combo.setToolTip("多选一：完成一个后同组其他项互斥；多合一：同组成员可以按进阶顺序全部完成。")
+        groups_btn_layout.addWidget(self.group_type_combo)
         
         add_group_btn = QPushButton("添加组")
         add_group_btn.setStyleSheet(get_button_style(config.theme))
@@ -933,7 +940,7 @@ class TemplateSettingsDialog(QDialog):
             if current_row >= 0:
                 group_id_item = self.groups_table.item(current_row, 0)
                 if group_id_item:
-                    selected_group_id = group_id_item.text()
+                    selected_group_id = group_id_item.data(Qt.ItemDataRole.UserRole) or group_id_item.text()
         
         # 获取所有成就数据
         achievements = config.load_base_achievements()
@@ -950,14 +957,13 @@ class TemplateSettingsDialog(QDialog):
                 if group_id not in groups:
                     groups[group_id] = {
                         'id': group_id,
-                        'name': self._generate_group_name(group_id),  # 自动生成友好的组名
                         'members': []
                     }
                 groups[group_id]['members'].append(achievement)
         
         logger.debug("共找到 %s 个有组ID的成就，%s 个不同的组", group_count, len(groups))
         for group_id, group_info in groups.items():
-            logger.debug("组 %s: 名称=%s, 成员数=%s", group_id, group_info['name'], len(group_info['members']))
+            logger.debug("组 %s: 成员数=%s", group_id, len(group_info['members']))
         
         # 按组ID排序（按数字顺序）
         sorted_groups = sorted(groups.items(), key=lambda x: int(x[0].split('_')[1]) if x[0].startswith('group_') else 0)
@@ -965,18 +971,19 @@ class TemplateSettingsDialog(QDialog):
         # 填充表格
         self.groups_table.setRowCount(len(sorted_groups))
         selected_row = -1
-        for i, (group_id, group_info) in enumerate(sorted_groups):
+        for row_index, (group_id, group_info) in enumerate(sorted_groups):
             # 组名称（只读）
-            name_item = QTableWidgetItem(group_info['name'])
+            group_name = self._generate_group_name(group_id, row_index + 1)
+            name_item = QTableWidgetItem(group_name)
             name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # 移除可编辑标志
             # 存储组ID作为用户数据，用于后续操作
             name_item.setData(Qt.ItemDataRole.UserRole, group_id)
-            logger.debug("设置表格项: 行=%s, 组ID=%s, 组名称=%s", i, group_id, group_info['name'])
-            self.groups_table.setItem(i, 0, name_item)
+            logger.debug("设置表格项: 行=%s, 组ID=%s, 组名称=%s", row_index, group_id, group_name)
+            self.groups_table.setItem(row_index, 0, name_item)
             
             # 如果这个组之前被选中，记录新的行号
             if group_id == selected_group_id:
-                selected_row = i
+                selected_row = row_index
         
         # 恢复选中状态
         if selected_row >= 0:
@@ -991,17 +998,23 @@ class TemplateSettingsDialog(QDialog):
             from PySide6.QtCore import QTimer
             QTimer.singleShot(50, lambda: self._on_group_cell_clicked(0, 0) if self.groups_table.rowCount() > 0 else None)
     
-    def _generate_group_name(self, group_id):
-        """根据组ID生成友好的组名"""
+    def _generate_group_name(self, group_id, display_number=None):
+        """根据组ID生成友好的组名，不把内部 Wiki ID直接显示给用户。"""
+        group_id = str(group_id or '')
+        if group_id.startswith('progression-'):
+            label = '多合一组'
+        else:
+            label = '多选一组'
+
+        if display_number is not None:
+            return f"{label} {display_number}"
+
         if group_id.startswith('group_'):
             try:
-                # 提取数字部分
-                number = int(group_id.split('_')[1])
-                return f"成就组 {number}"
+                return f"{label} {int(group_id.split('_', 1)[1])}"
             except (IndexError, ValueError):
                 pass
-        # 如果不是标准格式，返回原ID
-        return group_id
+        return label
     
     
     
@@ -1086,29 +1099,33 @@ class TemplateSettingsDialog(QDialog):
     def _add_achievement_group(self):
         """添加成就组"""
         
-        # 生成组ID和名称
-        existing_groups = set()
+        # 生成组ID和名称。多选一使用默认 group_ 前缀，多合一使用 progression- 前缀。
+        existing_ids = set()
+        existing_numbers = set()
         for row in range(self.groups_table.rowCount()):
             name_item = self.groups_table.item(row, 0)
-            if name_item:
-                group_id = name_item.data(Qt.ItemDataRole.UserRole)
-                if group_id and group_id.startswith('group_'):
-                    try:
-                        num = int(group_id.split('_')[1])
-                        existing_groups.add(num)
-                        logger.debug("找到现有组: ID=%s, 编号=%s", group_id, num)
-                    except:
-                        pass
-        
-        # 找到下一个可用的编号
+            if not name_item:
+                continue
+            group_id = name_item.data(Qt.ItemDataRole.UserRole)
+            if not group_id:
+                continue
+            existing_ids.add(group_id)
+            match = re.search(r"(?:group_|progression-manual-)(\d+)$", group_id)
+            if match:
+                existing_numbers.add(int(match.group(1)))
+
         next_num = 1
-        while next_num in existing_groups:
+        while next_num in existing_numbers:
             next_num += 1
+
+        is_progression = self.group_type_combo.currentText() == "多合一"
+        group_id = f"progression-manual-{next_num:03d}" if is_progression else f"group_{next_num:03d}"
+        while group_id in existing_ids:
+            next_num += 1
+            group_id = f"progression-manual-{next_num:03d}" if is_progression else f"group_{next_num:03d}"
+        group_name = f"{'多合一组' if is_progression else '多选一组'} {next_num}"
         
-        group_id = f"group_{next_num:03d}"
-        group_name = f"成就组 {next_num}"
-        
-        logger.debug("创建新组: ID=%s, 名称=%s, 现有组编号: %s", group_id, group_name, sorted(existing_groups))
+        logger.debug("创建新组: ID=%s, 名称=%s, 现有组编号: %s", group_id, group_name, sorted(existing_numbers))
         
         # 添加新行
         row = self.groups_table.rowCount()

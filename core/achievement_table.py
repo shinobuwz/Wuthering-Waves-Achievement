@@ -700,10 +700,37 @@ class AchievementTable(QTableWidget):
         # 确保编辑完成后立即保存
         self.clearSelection()
         
+    @staticmethod
+    def _is_progression_group(group_id):
+        return bool(group_id and str(group_id).startswith('progression-'))
+
+    @staticmethod
+    def _absolute_order(achievement):
+        try:
+            return int(achievement.get('绝对编号', 0))
+        except (TypeError, ValueError):
+            return 0
+
     def _handle_achievement_group_completion(self, completed_row, completed_achievement):
-        """处理成就组完成逻辑"""
+        """处理多选一和多合一成就组完成逻辑。"""
         group_id = completed_achievement.get('成就组ID')
         if not group_id:
+            return
+
+        if self._is_progression_group(group_id):
+            selected_order = self._absolute_order(completed_achievement)
+            for i, achievement in enumerate(self.achievements):
+                if achievement.get('成就组ID') != group_id:
+                    continue
+                if self._absolute_order(achievement) <= selected_order:
+                    achievement['获取状态'] = '已完成'
+                    status_item = self.item(i, 0)
+                    if status_item:
+                        status_item.setText('已完成')
+                        status_item.setForeground(QColor(255, 140, 0))
+            self.viewport().update()
+            self.update()
+            self._refresh_statistics()
             return
         
         mutex_achievements = completed_achievement.get('互斥成就', [])
@@ -740,6 +767,21 @@ class AchievementTable(QTableWidget):
         """解锁同组其他成就 - 将同组所有成就都设为未完成"""
         group_id = unlocked_achievement.get('成就组ID')
         if not group_id:
+            return
+
+        if self._is_progression_group(group_id):
+            selected_order = self._absolute_order(unlocked_achievement)
+            for i, achievement in enumerate(self.achievements):
+                if (achievement.get('成就组ID') == group_id and
+                        self._absolute_order(achievement) >= selected_order):
+                    achievement['获取状态'] = '未完成'
+                    status_item = self.item(i, 0)
+                    if status_item:
+                        status_item.setText('未完成')
+                        status_item.setForeground(QColor(128, 128, 128))
+            self.viewport().update()
+            self.update()
+            self._refresh_statistics()
             return
         
         unlocked_code = unlocked_achievement.get('编号', '')

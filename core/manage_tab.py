@@ -122,7 +122,7 @@ class AchievementManager:
                 continue
             elif obtainable == "暂不可获取" and achievement.get('获取状态', '') != "暂不可获取":
                 continue
-            elif obtainable == "多选一":
+            elif obtainable in ("多选一", "成就组"):
                 # 只显示成就组，显示所有组成员
                 group_id = achievement.get('成就组ID')
                 if not group_id:
@@ -266,7 +266,7 @@ class ManageTab(QWidget):
         secondary_filters.setSpacing(8)
 
         self.obtainable_filter = QComboBox()
-        self.obtainable_filter.addItems(["全部", "可获取", "暂不可获取", "多选一"])
+        self.obtainable_filter.addItems(["全部", "可获取", "暂不可获取", "成就组"])
         self.obtainable_filter.setMinimumWidth(112)
         self.obtainable_filter.currentTextChanged.connect(self.filter_data)
         secondary_filters.addWidget(self.obtainable_filter)
@@ -326,7 +326,7 @@ class ManageTab(QWidget):
         self.incomplete_label = QLabel("未完成  0")
         self.hidden_label = QLabel("隐藏  0")
         self.unavailable_label = QLabel("暂不可获取  0")
-        self.multi_choice_label = QLabel("多选一  0")
+        self.multi_choice_label = QLabel("成就组  0")
         for stat_label in (
             self.total_label, self.completed_label, self.incomplete_label,
             self.hidden_label, self.unavailable_label, self.multi_choice_label,
@@ -521,7 +521,7 @@ class ManageTab(QWidget):
         self.incomplete_label.setText(f"未完成  {statistics['incomplete']}")
         self.hidden_label.setText(f"隐藏  {statistics['hidden']}")
         self.unavailable_label.setText(f"暂不可获取  {statistics['unavailable']}")
-        self.multi_choice_label.setText(f"多选一  {statistics['multi_choice']}")
+        self.multi_choice_label.setText(f"成就组  {statistics['multi_choice']}")
 
     def open_settings(self):
         """打开设置对话框"""
