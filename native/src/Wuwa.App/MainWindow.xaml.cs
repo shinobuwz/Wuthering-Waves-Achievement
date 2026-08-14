@@ -213,17 +213,18 @@ public partial class MainWindow : Window
             return;
         }
 
-        var ocrRoot = Environment.GetEnvironmentVariable("WUWA_NATIVE_OCR_ROOT") ?? Path.Combine(AppContext.BaseDirectory, "ocr");
-        var modelRoot = Environment.GetEnvironmentVariable("WUWA_NATIVE_OCR_MODEL_ROOT") ?? Path.Combine(ocrRoot, "models", "ppocrv5");
+        var ocrAssets = FindOcrAssets();
+        if (ocrAssets is null)
+        {
+            ShowError("原生 OCR 组件尚未部署。开发环境请先运行 native/scripts/build-native-ocr.ps1；发布环境请安装包含 ocr/ 资产的发布包。");
+            return;
+        }
+
+        var modelRoot = ocrAssets.ModelRoot;
         var recognitionModel = Path.Combine(modelRoot, "rec", "rec.onnx");
         var detectionModel = Path.Combine(modelRoot, "det", "det.onnx");
         var classifierModel = Path.Combine(modelRoot, "cls", "cls.onnx");
         var dictionary = Path.Combine(modelRoot, "ppocrv5_dict.txt");
-        if (!File.Exists(Path.Combine(ocrRoot, "Wuwa.Ocr.Native.dll")) || !File.Exists(recognitionModel) || !File.Exists(detectionModel) || !File.Exists(classifierModel) || !File.Exists(dictionary))
-        {
-            ShowError("原生 OCR 组件尚未部署。请先运行 native/scripts/build-native-ocr.ps1，或安装包含 ocr/ 资产的发布包。");
-            return;
-        }
 
         _ocrCancellation = new CancellationTokenSource();
         OcrScanButton.Content = "取消 OCR";
@@ -482,10 +483,63 @@ public partial class MainWindow : Window
         }
     }
 
+    private static OcrAssets? FindOcrAssets()
+    {
+        var configuredRoot = Environment.GetEnvironmentVariable("WUWA_NATIVE_OCR_ROOT");
+        var configuredModelRoot = Environment.GetEnvironmentVariable("WUWA_NATIVE_OCR_MODEL_ROOT");
+        var repositoryRoot = FindRepositoryRoot();
+        var roots = new List<string>();
+        if (!string.IsNullOrWhiteSpace(configuredRoot)) roots.Add(Path.GetFullPath(configuredRoot));
+        roots.Add(Path.Combine(AppContext.BaseDirectory, "ocr"));
+        if (repositoryRoot is not null)
+        {
+            roots.Add(Path.Combine(repositoryRoot, "native", "ocr", "build", "Debug"));
+            roots.Add(Path.Combine(repositoryRoot, "native", "ocr", "build", "Release"));
+        }
+
+        foreach (var root in roots.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var modelRoots = new List<string>();
+            if (!string.IsNullOrWhiteSpace(configuredModelRoot)) modelRoots.Add(Path.GetFullPath(configuredModelRoot));
+            modelRoots.Add(Path.Combine(root, "models", "ppocrv5"));
+            if (repositoryRoot is not null) modelRoots.Add(Path.Combine(repositoryRoot, "onnxocr", "models", "ppocrv5"));
+
+            foreach (var modelRoot in modelRoots.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (File.Exists(Path.Combine(root, "Wuwa.Ocr.Native.dll")) &&
+                    File.Exists(Path.Combine(modelRoot, "rec", "rec.onnx")) &&
+                    File.Exists(Path.Combine(modelRoot, "det", "det.onnx")) &&
+                    File.Exists(Path.Combine(modelRoot, "cls", "cls.onnx")) &&
+                    File.Exists(Path.Combine(modelRoot, "ppocrv5_dict.txt")))
+                {
+                    return new OcrAssets(root, modelRoot);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static string? FindRepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, "native", "ocr")) &&
+                Directory.Exists(Path.Combine(directory.FullName, "onnxocr", "models", "ppocrv5")))
+            {
+                return directory.FullName;
+            }
+        }
+
+        return null;
+    }
+
+    private sealed record OcrAssets(string Root, string ModelRoot);
+
     private void ShowError(string message)
     {
         ErrorText.Text = message;
-        HintText.Text = "工作区加载失败；请检查 shipped 资源文件。";
+        HintText.Text = _view is null ? "工作区加载失败；请检查 shipped 资源文件。" : "操作失败；请查看上方错误信息。";
     }
 
     private static void SetItems(ComboBox comboBox, IEnumerable<string> values)
