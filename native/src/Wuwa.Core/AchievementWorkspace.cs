@@ -34,16 +34,30 @@ public sealed partial class AchievementWorkspace
         {
             try
             {
+                var library = await _librarySource.LoadAsync(cancellationToken).ConfigureAwait(false);
                 var state = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
                 if (state is null)
                 {
-                    var library = await _librarySource.LoadAsync(cancellationToken).ConfigureAwait(false);
                     var statuses = library.Achievements.ToDictionary(
                         achievement => achievement.Id,
                         _ => ProgressStatus.Incomplete);
                     state = new WorkspaceState(1, library.Achievements, statuses, library.Categories);
                     if (createEmptyIfMissing)
                     {
+                        await _store.SaveAsync(state, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+                else
+                {
+                    var mergedAchievements = MergeShippedMetadata(state.Achievements, library.Achievements, out var metadataChanged);
+                    if (metadataChanged)
+                    {
+                        state = new WorkspaceState(
+                            state.Revision + 1,
+                            mergedAchievements,
+                            state.Statuses,
+                            state.Categories,
+                            state.Metadata);
                         await _store.SaveAsync(state, cancellationToken).ConfigureAwait(false);
                     }
                 }
@@ -841,6 +855,36 @@ public sealed partial class AchievementWorkspace
             }
         }
         return diagnostics;
+    }
+
+    private static IReadOnlyList<Achievement> MergeShippedMetadata(
+        IReadOnlyList<Achievement> stateAchievements,
+        IReadOnlyList<Achievement> shippedAchievements,
+        out bool changed)
+    {
+        var shippedById = shippedAchievements.ToDictionary(item => item.Id);
+        var shippedByLegacyCode = shippedAchievements.ToDictionary(item => item.LegacyCode, StringComparer.Ordinal);
+        changed = false;
+        var merged = new List<Achievement>(stateAchievements.Count);
+
+        foreach (var existing in stateAchievements)
+        {
+            var shipped = shippedById.GetValueOrDefault(existing.Id) ??
+                shippedByLegacyCode.GetValueOrDefault(existing.LegacyCode);
+            if (shipped is not null &&
+                string.IsNullOrWhiteSpace(existing.GroupId) &&
+                !string.IsNullOrWhiteSpace(shipped.GroupId))
+            {
+                merged.Add(existing with { GroupId = shipped.GroupId });
+                changed = true;
+            }
+            else
+            {
+                merged.Add(existing);
+            }
+        }
+
+        return merged;
     }
 
     private OcrApplyResult OcrApplyFailure(WorkspaceErrorCode code, string message) =>

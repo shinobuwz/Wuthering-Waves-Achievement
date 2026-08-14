@@ -259,6 +259,37 @@ public sealed class AchievementWorkspaceTests
     }
 
     [TestMethod]
+    public async Task Open_MergesMissingGroupMetadataFromShippedLibraryIntoExistingState()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "wuwa-native-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var stale = Achievement("501", 1);
+            var shipped = Achievement("501", 1, groupId: "progression-test");
+            var store = new JsonAppDataStore(root);
+            var oldState = new WorkspaceState(
+                4,
+                [stale],
+                new Dictionary<AchievementId, ProgressStatus> { [stale.Id] = ProgressStatus.Completed },
+                CategoryCatalog.Empty);
+            await store.SaveAsync(oldState);
+
+            var source = new FixedAchievementLibrarySource(new AchievementLibrary([shipped], CategoryCatalog.Empty));
+            var workspace = new AchievementWorkspace(new JsonAppDataStore(root), source);
+            var opened = await workspace.OpenAsync();
+
+            Assert.IsTrue(opened.IsSuccess, opened.Error?.Message);
+            Assert.AreEqual("progression-test", opened.Snapshot.Rows.Single().GroupId);
+            Assert.AreEqual(ProgressStatus.Completed, opened.Snapshot.Rows.Single().Status);
+            Assert.AreEqual(5, opened.Snapshot.Revision);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
     public async Task StatusChange_IsSavedAndVisibleWhenAWorkspaceReopensTheStore()
     {
         var achievement = Achievement("100", 1);
