@@ -281,6 +281,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
     private struct NativeInput
     {
         public uint Type;
+        public uint Padding;
         public NativeMouseInput Mouse;
     }
 
