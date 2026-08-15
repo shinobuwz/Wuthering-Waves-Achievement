@@ -23,6 +23,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         if (minimumWidth <= 0 || minimumHeight <= 0) throw new ArgumentOutOfRangeException(nameof(minimumWidth));
         var normalized = processNames.Select(NormalizeProcessName).Where(name => name.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (normalized.Count == 0) throw new ArgumentException("At least one game process name is required.", nameof(processNames));
+        NativeOcrDiagnostics.Write($"FindGameWindow requested=[{string.Join(",", normalized)}] minimum={minimumWidth}x{minimumHeight}");
         return Task.Run(() => FindGameWindow(normalized, minimumWidth, minimumHeight, cancellationToken), cancellationToken);
     }
 
@@ -45,6 +46,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Game-window input currently supports Windows only.");
         if (window.Handle == 0) throw new ArgumentException("A valid window handle is required.", nameof(window));
         if (wheelNotches == 0) throw new ArgumentOutOfRangeException(nameof(wheelNotches));
+        NativeOcrDiagnostics.Write($"Scroll requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} title={window.Title} notches={wheelNotches}");
         return Task.Run(() => ScrollWindow(window, wheelNotches, cancellationToken), cancellationToken);
     }
 
@@ -76,7 +78,12 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
                 }
             }
         }
-        if (processMap.Count == 0) throw new GameWindowNotFoundException($"No running game process was found for: {string.Join(", ", processNames)}.");
+        if (processMap.Count == 0)
+        {
+            NativeOcrDiagnostics.Write($"FindGameWindow no matching process for=[{string.Join(",", processNames)}]");
+            throw new GameWindowNotFoundException($"No running game process was found for: {string.Join(", ", processNames)}.");
+        }
+        NativeOcrDiagnostics.Write($"FindGameWindow processIds=[{string.Join(",", processMap.Keys)}]");
 
         var candidates = new List<GameWindowCandidate>();
         NativeMethods.EnumWindows((handle, _) =>
@@ -93,8 +100,14 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
             return true;
         }, IntPtr.Zero);
         cancellationToken.ThrowIfCancellationRequested();
-        return candidates.OrderByDescending(candidate => (long)candidate.ClientWidth * candidate.ClientHeight).FirstOrDefault()
-            ?? throw new GameWindowNotFoundException($"No visible game window was found for: {string.Join(", ", processNames)}.");
+        var selected = candidates.OrderByDescending(candidate => (long)candidate.ClientWidth * candidate.ClientHeight).FirstOrDefault();
+        if (selected is null)
+        {
+            NativeOcrDiagnostics.Write("FindGameWindow no visible candidate met the size requirement");
+            throw new GameWindowNotFoundException($"No visible game window was found for: {string.Join(", ", processNames)}.");
+        }
+        NativeOcrDiagnostics.Write($"FindGameWindow selected handle=0x{selected.Handle.ToInt64():X} pid={selected.ProcessId} name={selected.ProcessName} title={selected.Title} client={selected.ClientWidth}x{selected.ClientHeight}");
+        return selected;
     }
 
     private static bool ScrollWindow(
@@ -103,25 +116,37 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!NativeMethods.IsWindow(window.Handle)) return false;
+        if (!NativeMethods.IsWindow(window.Handle))
+        {
+            NativeOcrDiagnostics.Write("Scroll aborted: target window is no longer valid");
+            return false;
+        }
 
         // Prefer SendInput: it moves the real cursor and emits real wheel input,
         // without requiring administrator privileges when both processes have the
         // same integrity level. If Windows blocks it, use the older fallbacks.
         NativeMethods.ShowWindow(window.Handle, NativeMethods.ShowWindowRestore);
-        NativeMethods.BringWindowToTop(window.Handle);
-        NativeMethods.SetForegroundWindow(window.Handle);
+        var broughtToTop = NativeMethods.BringWindowToTop(window.Handle);
+        var foreground = NativeMethods.SetForegroundWindow(window.Handle);
         var hasClient = NativeMethods.GetClientRect(window.Handle, out var client);
+        NativeOcrDiagnostics.Write($"Scroll focus bringToTop={broughtToTop} foreground={foreground} getClient={hasClient} client={(hasClient ? $"{client.Right - client.Left}x{client.Bottom - client.Top}" : "unknown")}");
         var clientCenter = new NativePoint
         {
             X = hasClient ? (client.Right - client.Left) / 2 : window.ClientWidth / 2,
             Y = hasClient ? (client.Bottom - client.Top) / 2 : window.ClientHeight / 2
         };
         var screenCenter = clientCenter;
-        var canUseScreenInput = hasClient && NativeMethods.ClientToScreen(window.Handle, ref screenCenter);
-        if (canUseScreenInput && TrySendInputScroll(screenCenter, wheelNotches, cancellationToken)) return true;
+        var clientToScreen = hasClient && NativeMethods.ClientToScreen(window.Handle, ref screenCenter);
+        var canUseScreenInput = clientToScreen;
+        NativeOcrDiagnostics.Write($"Scroll position clientToScreen={clientToScreen} screenCenter={screenCenter.X},{screenCenter.Y}");
+        if (canUseScreenInput && TrySendInputScroll(screenCenter, wheelNotches, cancellationToken))
+        {
+            NativeOcrDiagnostics.Write("Scroll method=SendInput result=success");
+            return true;
+        }
 
         var canUseMouseInput = canUseScreenInput && NativeMethods.SetCursorPos(screenCenter.X, screenCenter.Y);
+        NativeOcrDiagnostics.Write($"Scroll SendInput failed; SetCursorPos={canUseMouseInput}");
         var direction = Math.Sign(wheelNotches);
         var fallbackSucceeded = true;
         for (var index = 0; index < Math.Abs(wheelNotches); index++)
@@ -140,7 +165,9 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
             Thread.Sleep(12);
         }
 
-        return canUseMouseInput || fallbackSucceeded;
+        var result = canUseMouseInput || fallbackSucceeded;
+        NativeOcrDiagnostics.Write($"Scroll method={(canUseMouseInput ? "mouse_event" : "PostMessage")} result={result} fallbackSucceeded={fallbackSucceeded}");
+        return result;
     }
 
     private static bool TrySendInputScroll(NativePoint screenCenter, int wheelNotches, CancellationToken cancellationToken)
@@ -179,10 +206,12 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
             };
         }
 
-        return NativeMethods.SendInput(
+        var sent = NativeMethods.SendInput(
             (uint)inputs.Length,
             inputs,
-            Marshal.SizeOf<NativeInput>()) == (uint)inputs.Length;
+            Marshal.SizeOf<NativeInput>());
+        NativeOcrDiagnostics.Write($"SendInput requested={inputs.Length} sent={sent} size={Marshal.SizeOf<NativeInput>()} absolute={absoluteX},{absoluteY}");
+        return sent == (uint)inputs.Length;
     }
 
     private static OcrImageFrame CaptureClient(
@@ -203,7 +232,8 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         }
         var screenOrigin = new NativePoint();
         if (!NativeMethods.ClientToScreen(window.Handle, ref screenOrigin)) throw LastCaptureError("Unable to locate the game client on screen.");
-        NativeMethods.SetForegroundWindow(window.Handle);
+        var foreground = NativeMethods.SetForegroundWindow(window.Handle);
+        NativeOcrDiagnostics.Write($"Capture handle=0x{window.Handle.ToInt64():X} origin={screenOrigin.X},{screenOrigin.Y} size={width}x{height} foreground={foreground}");
         var screenDc = NativeMethods.GetDC(IntPtr.Zero);
         if (screenDc == IntPtr.Zero) throw LastCaptureError("Unable to acquire the desktop device context.");
         var memoryDc = IntPtr.Zero;

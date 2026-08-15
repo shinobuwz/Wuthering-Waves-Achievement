@@ -216,11 +216,13 @@ public partial class MainWindow : Window
         var ocrAssets = FindOcrAssets();
         if (ocrAssets is null)
         {
+            NativeOcrDiagnostics.Write("OCR start failed: assets not found");
             ShowOcrError("原生 OCR 组件尚未部署。开发环境请先运行 native/scripts/build-native-ocr.ps1；发布环境请安装包含 ocr/ 资产的发布包。", "OCR 组件缺失");
             return;
         }
 
         var modelRoot = ocrAssets.ModelRoot;
+        NativeOcrDiagnostics.Write($"OCR start root={ocrAssets.Root} modelRoot={modelRoot}");
         var recognitionModel = Path.Combine(modelRoot, "rec", "rec.onnx");
         var detectionModel = Path.Combine(modelRoot, "det", "det.onnx");
         var classifierModel = Path.Combine(modelRoot, "cls", "cls.onnx");
@@ -228,6 +230,7 @@ public partial class MainWindow : Window
         var gameProcessNames = new[] { "Client-Win64-Shipping.exe", "Wuthering Waves.exe" };
         if (!IsAnyProcessRunning(gameProcessNames))
         {
+            NativeOcrDiagnostics.Write($"OCR start failed: no process among [{string.Join(",", gameProcessNames)}]");
             ShowOcrError("未检测到《鸣潮》游戏进程，请先启动游戏后再进行 OCR 扫描。", "未检测到游戏");
             return;
         }
@@ -257,6 +260,7 @@ public partial class MainWindow : Window
             await Task.Delay(350, _ocrCancellation.Token);
             for (var page = 1; page <= 80; page++)
             {
+                NativeOcrDiagnostics.Write($"OCR page={page} mergedCandidates={mergedCandidates.Count} seenIds={seenIds.Count}");
                 HintText.Text = $"正在扫描当前分类第 {page} 页，已识别 {mergedCandidates.Count} 条…请勿操作游戏窗口。";
                 var scan = await service.ScanAsync(
                     gameProcessNames,
@@ -274,7 +278,12 @@ public partial class MainWindow : Window
                 detectedLineCount += scan.Lines.Count;
                 preview = AchievementOcrMatcher.CreatePreview(scan.Lines, rows);
                 var pageIds = preview.Candidates.Select(candidate => candidate.AchievementId).ToHashSet();
-                if (page > 1 && (pageIds.Count == 0 || pageIds.IsSubsetOf(seenIds))) break;
+                NativeOcrDiagnostics.Write($"OCR page={page} lines={scan.Lines.Count} candidates={preview.Candidates.Count} unmatched={preview.Unmatched.Count} ids=[{string.Join(",", preview.Candidates.Select(candidate => candidate.LegacyCode))}]");
+                if (page > 1 && (pageIds.Count == 0 || pageIds.IsSubsetOf(seenIds)))
+                {
+                    NativeOcrDiagnostics.Write($"OCR stop page={page} reason={(pageIds.Count == 0 ? "empty-page" : "repeated-page")}");
+                    break;
+                }
 
                 foreach (var candidate in preview.Candidates)
                 {
@@ -292,6 +301,7 @@ public partial class MainWindow : Window
 
                 if (scan.Window is null || page == 80) break;
                 var scrollAccepted = await capture.ScrollAsync(scan.Window, wheelNotches: -8, cancellationToken: _ocrCancellation.Token);
+                NativeOcrDiagnostics.Write($"OCR page={page} scrollAccepted={scrollAccepted}");
                 if (!scrollAccepted)
                 {
                     ShowOcrError("Windows 拒绝了模拟鼠标输入。请确保游戏和工具使用相同权限运行，且当前桌面未被锁定。", "无法控制游戏");
@@ -303,6 +313,7 @@ public partial class MainWindow : Window
             WindowState = previousState;
             Activate();
             var mergedPreview = MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows);
+            NativeOcrDiagnostics.Write($"OCR finished pages={scannedPages} lines={detectedLineCount} candidates={mergedPreview.Candidates.Count} unmatched={mergedPreview.Unmatched.Count}");
             if (mergedPreview.Candidates.Count == 0)
             {
                 ShowOcrError($"OCR 扫描完成，但没有匹配到成就。扫描 {scannedPages} 页，检测到 {detectedLineCount} 条文字，未匹配 {mergedPreview.Unmatched.Count} 条。请确认游戏当前打开的是成就列表。", "OCR 扫描结果");
@@ -329,14 +340,17 @@ public partial class MainWindow : Window
         }
         catch (GameWindowNotFoundException exception)
         {
+            NativeOcrDiagnostics.Write($"OCR exception GameWindowNotFound: {exception}");
             ShowOcrError($"未找到可捕获的游戏窗口：{exception.Message}", "未找到游戏窗口");
         }
         catch (GameWindowCaptureException exception)
         {
+            NativeOcrDiagnostics.Write($"OCR exception GameWindowCapture: {exception}");
             ShowOcrError($"无法捕获游戏画面：{exception.Message}", "游戏画面捕获失败");
         }
         catch (Exception exception)
         {
+            NativeOcrDiagnostics.Write($"OCR exception: {exception}");
             ShowOcrError($"OCR 扫描失败：{exception.Message}", "OCR 扫描失败");
         }
         finally

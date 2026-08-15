@@ -205,8 +205,15 @@ public sealed partial class NativeOcrClient : IDisposable
         };
         foreach (var candidate in candidates)
         {
-            if (candidate is not null && File.Exists(candidate) && NativeLibrary.TryLoad(candidate, out var handle)) return handle;
+            if (candidate is null || !File.Exists(candidate)) continue;
+            if (NativeLibrary.TryLoad(candidate, out var handle))
+            {
+                NativeOcrDiagnostics.Write($"NativeOcrClient loaded library={candidate}");
+                return handle;
+            }
+            NativeOcrDiagnostics.Write($"NativeOcrClient failed to load library={candidate}");
         }
+        NativeOcrDiagnostics.Write("NativeOcrClient could not resolve Wuwa.Ocr.Native.dll");
         return IntPtr.Zero;
     }
 
