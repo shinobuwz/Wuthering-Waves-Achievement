@@ -211,21 +211,42 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         var absoluteX = Math.Clamp((screenCenter.X - virtualLeft) * 65535 / (virtualWidth - 1), 0, 65535);
         var absoluteY = Math.Clamp((screenCenter.Y - virtualTop) * 65535 / (virtualHeight - 1), 0, 65535);
         var direction = Math.Sign(wheelNotches);
-        var inputs = new NativeInput[Math.Abs(wheelNotches) + 1];
-        inputs[0] = new NativeInput
+        // Match the Python implementation: move to the center, click once to give
+        // the game UI pointer focus, wait for the click to be processed, then wheel.
+        var focusInputs = new[]
         {
-            Type = NativeMethods.InputMouse,
-            Mouse = new NativeMouseInput
+            new NativeInput
             {
-                Dx = absoluteX,
-                Dy = absoluteY,
-                Flags = NativeMethods.MouseEventMove | NativeMethods.MouseEventAbsolute | NativeMethods.MouseEventVirtualDesk
+                Type = NativeMethods.InputMouse,
+                Mouse = new NativeMouseInput
+                {
+                    Dx = absoluteX,
+                    Dy = absoluteY,
+                    Flags = NativeMethods.MouseEventMove | NativeMethods.MouseEventAbsolute | NativeMethods.MouseEventVirtualDesk
+                }
+            },
+            new NativeInput
+            {
+                Type = NativeMethods.InputMouse,
+                Mouse = new NativeMouseInput { Flags = NativeMethods.MouseEventLeftDown }
+            },
+            new NativeInput
+            {
+                Type = NativeMethods.InputMouse,
+                Mouse = new NativeMouseInput { Flags = NativeMethods.MouseEventLeftUp }
             }
         };
-        for (var index = 1; index < inputs.Length; index++)
+        var focusSent = NativeMethods.SendInput((uint)focusInputs.Length, focusInputs, Marshal.SizeOf<NativeInput>());
+        NativeOcrDiagnostics.Write($"SendInput focus requested={focusInputs.Length} sent={focusSent} size={Marshal.SizeOf<NativeInput>()} absolute={absoluteX},{absoluteY}");
+        if (focusSent != (uint)focusInputs.Length) return false;
+
+        Thread.Sleep(250);
+        cancellationToken.ThrowIfCancellationRequested();
+        var wheelInputs = new NativeInput[Math.Abs(wheelNotches)];
+        for (var index = 0; index < wheelInputs.Length; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            inputs[index] = new NativeInput
+            wheelInputs[index] = new NativeInput
             {
                 Type = NativeMethods.InputMouse,
                 Mouse = new NativeMouseInput
@@ -236,12 +257,9 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
             };
         }
 
-        var sent = NativeMethods.SendInput(
-            (uint)inputs.Length,
-            inputs,
-            Marshal.SizeOf<NativeInput>());
-        NativeOcrDiagnostics.Write($"SendInput requested={inputs.Length} sent={sent} size={Marshal.SizeOf<NativeInput>()} absolute={absoluteX},{absoluteY}");
-        return sent == (uint)inputs.Length;
+        var wheelSent = NativeMethods.SendInput((uint)wheelInputs.Length, wheelInputs, Marshal.SizeOf<NativeInput>());
+        NativeOcrDiagnostics.Write($"SendInput wheel requested={wheelInputs.Length} sent={wheelSent}");
+        return wheelSent == (uint)wheelInputs.Length;
     }
 
     private static OcrImageFrame CaptureClient(
@@ -390,6 +408,8 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         [LibraryImport("user32.dll", SetLastError = true)] internal static partial uint GetWindowThreadProcessId(IntPtr handle, out uint processId);
         internal const uint InputMouse = 0;
         internal const uint MouseEventMove = 0x0001;
+        internal const uint MouseEventLeftDown = 0x0002;
+        internal const uint MouseEventLeftUp = 0x0004;
         internal const uint MouseEventAbsolute = 0x8000;
         internal const uint MouseEventVirtualDesk = 0x4000;
         internal const uint MouseEventWheel = 0x0800;
