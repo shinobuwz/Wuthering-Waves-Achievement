@@ -85,7 +85,7 @@
                     <TextBlock DockPanel.Dock="Left" Text="工作区操作" Width="72" Foreground="{DynamicResource MutedTextBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
                     <WrapPanel VerticalAlignment="Center">
                         <Button x:Name="ThemeButton" AutomationProperties.AutomationId="ThemeButton" Content="浅色主题" Click="Theme_OnClick" />
-                        <Button x:Name="OcrScanButton" AutomationProperties.AutomationId="OcrScanButton" Content="OCR 单页扫描" Click="OcrScan_OnClick" />
+                        <Button x:Name="OcrScanButton" AutomationProperties.AutomationId="OcrScanButton" Content="OCR 自动扫描当前分类" Click="OcrScan_OnClick" />
                         <Button AutomationProperties.AutomationId="LegacyImportButton" Content="导入旧版进度" Click="ImportLegacy_OnClick" />
                         <Button AutomationProperties.AutomationId="ExchangeImportButton" Content="导入 JSON/Excel" Click="Import_OnClick" />
                         <Button AutomationProperties.AutomationId="ExchangeExportButton" Content="导出 JSON/Excel" Click="Export_OnClick" />

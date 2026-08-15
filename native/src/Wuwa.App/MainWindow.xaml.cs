@@ -243,29 +243,63 @@ public partial class MainWindow : Window
             client.EnableDetection(detectionModel);
             client.EnableClassifier(classifierModel);
             using var reader = new NativeOcrTextReader(client);
-            var service = new SinglePageOcrScanService(new WindowsGameWindowCapture(), reader);
+            var capture = new WindowsGameWindowCapture();
+            var service = new SinglePageOcrScanService(capture, reader);
+            var rows = _workspace.Query().Rows;
+            var mergedCandidates = new Dictionary<AchievementId, OcrAchievementCandidate>();
+            var mergedUnmatched = new Dictionary<string, OcrUnmatchedText>(StringComparer.Ordinal);
+            var seenIds = new HashSet<AchievementId>();
+            OcrScanPreview? preview = null;
+
             WindowState = WindowState.Minimized;
             await Task.Delay(350, _ocrCancellation.Token);
-            var scan = await service.ScanAsync(
-                gameProcessNames,
-                expectedWidth: 1920,
-                expectedHeight: 1080,
-                cancellationToken: _ocrCancellation.Token);
+            for (var page = 1; page <= 80; page++)
+            {
+                HintText.Text = $"正在扫描当前分类第 {page} 页，已识别 {mergedCandidates.Count} 条…请勿操作游戏窗口。";
+                var scan = await service.ScanAsync(
+                    gameProcessNames,
+                    expectedWidth: 1920,
+                    expectedHeight: 1080,
+                    cancellationToken: _ocrCancellation.Token);
+                if (!scan.IsSuccess)
+                {
+                    if (scan.Error?.Code == OcrScanErrorCode.Cancelled) HintText.Text = "OCR 扫描已取消。";
+                    else ShowOcrError(scan.Error?.Message ?? "OCR 扫描失败。", "OCR 扫描失败");
+                    return;
+                }
+
+                preview = AchievementOcrMatcher.CreatePreview(scan.Lines, rows);
+                var pageIds = preview.Candidates.Select(candidate => candidate.AchievementId).ToHashSet();
+                if (page > 1 && (pageIds.Count == 0 || pageIds.IsSubsetOf(seenIds))) break;
+
+                foreach (var candidate in preview.Candidates)
+                {
+                    if (!mergedCandidates.TryGetValue(candidate.AchievementId, out var existing) || PreferOcrCandidate(candidate, existing))
+                    {
+                        mergedCandidates[candidate.AchievementId] = candidate;
+                    }
+                }
+                foreach (var unmatched in preview.Unmatched)
+                {
+                    var key = $"{unmatched.Text}\u001f{unmatched.Reason}";
+                    mergedUnmatched.TryAdd(key, unmatched);
+                }
+                seenIds.UnionWith(pageIds);
+
+                if (scan.Window is null || page == 80) break;
+                await capture.ScrollAsync(scan.Window, wheelNotches: -8, cancellationToken: _ocrCancellation.Token);
+                await Task.Delay(800, _ocrCancellation.Token);
+            }
+
             WindowState = previousState;
             Activate();
-            if (!scan.IsSuccess)
+            var mergedPreview = MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows);
+            if (mergedPreview.Candidates.Count == 0)
             {
-                if (scan.Error?.Code == OcrScanErrorCode.Cancelled) HintText.Text = "OCR 扫描已取消。";
-                else ShowOcrError(scan.Error?.Message ?? "OCR 扫描失败。", "OCR 扫描失败");
+                ShowOcrError($"OCR 扫描完成，但没有匹配到成就。未匹配 {mergedPreview.Unmatched.Count} 条文字。", "OCR 扫描结果");
                 return;
             }
-            var preview = AchievementOcrMatcher.CreatePreview(scan.Lines, _workspace.Query().Rows);
-            if (preview.Candidates.Count == 0)
-            {
-                ShowOcrError($"OCR 扫描完成，但没有匹配到成就。检测到 {scan.Lines.Count} 条文字，未匹配 {preview.Unmatched.Count} 条。", "OCR 扫描结果");
-                return;
-            }
-            var previewWindow = new OcrPreviewWindow(preview) { Owner = this };
+            var previewWindow = new OcrPreviewWindow(mergedPreview) { Owner = this };
             if (previewWindow.ShowDialog() != true || previewWindow.AcceptedPreview is null)
             {
                 HintText.Text = "OCR 结果未应用，当前进度保持不变。";
@@ -301,7 +335,7 @@ public partial class MainWindow : Window
             WindowState = previousState;
             _ocrCancellation.Dispose();
             _ocrCancellation = null;
-            OcrScanButton.Content = "OCR 单页扫描";
+            OcrScanButton.Content = "OCR 自动扫描当前分类";
             OcrScanButton.IsEnabled = true;
         }
     }
@@ -495,6 +529,30 @@ public partial class MainWindow : Window
             File.WriteAllText(Path.Combine(outputDirectory, "error.txt"), exception.ToString());
             Application.Current.Shutdown(2);
         }
+    }
+
+    private static bool PreferOcrCandidate(OcrAchievementCandidate candidate, OcrAchievementCandidate existing)
+    {
+        if (candidate.ProposedStatus == ProgressStatus.Completed && existing.ProposedStatus != ProgressStatus.Completed) return true;
+        if (existing.ProposedStatus == ProgressStatus.Completed && candidate.ProposedStatus != ProgressStatus.Completed) return false;
+        return candidate.MatchConfidence > existing.MatchConfidence;
+    }
+
+    private static OcrScanPreview MergeOcrPreviews(
+        IReadOnlyDictionary<AchievementId, OcrAchievementCandidate> candidates,
+        IReadOnlyDictionary<string, OcrUnmatchedText> unmatched,
+        IReadOnlyList<AchievementRow> rows)
+    {
+        var order = rows.ToDictionary(row => row.Id, row => row.AbsoluteOrder);
+        var orderedCandidates = candidates.Values
+            .OrderBy(candidate => order.GetValueOrDefault(candidate.AchievementId, int.MaxValue))
+            .ToArray();
+        return new OcrScanPreview(
+            Array.AsReadOnly(orderedCandidates),
+            Array.AsReadOnly(unmatched.Values.ToArray()),
+            orderedCandidates.Count(candidate => candidate.ProposedStatus == ProgressStatus.Completed),
+            orderedCandidates.Count(candidate => candidate.ProposedStatus == ProgressStatus.Incomplete),
+            orderedCandidates.Count(candidate => candidate.ProposedStatus is null));
     }
 
     private static bool IsAnyProcessRunning(IEnumerable<string> processNames)
