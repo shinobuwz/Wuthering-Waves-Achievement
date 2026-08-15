@@ -194,17 +194,34 @@ public sealed partial class NativeOcrClient : IDisposable
     {
         if (!string.Equals(libraryName, NativeLibraryName, StringComparison.Ordinal)) return IntPtr.Zero;
         var configuredRoot = Environment.GetEnvironmentVariable("WUWA_NATIVE_OCR_ROOT");
+        var repositoryRoot = FindRepositoryRoot();
         var candidates = new[]
         {
             string.IsNullOrWhiteSpace(configuredRoot) ? null : Path.Combine(configuredRoot, NativeLibraryName + ".dll"),
             Path.Combine(AppContext.BaseDirectory, "ocr", NativeLibraryName + ".dll"),
-            Path.Combine(AppContext.BaseDirectory, NativeLibraryName + ".dll")
+            Path.Combine(AppContext.BaseDirectory, NativeLibraryName + ".dll"),
+            repositoryRoot is null ? null : Path.Combine(repositoryRoot, "native", "ocr", "build", "Debug", NativeLibraryName + ".dll"),
+            repositoryRoot is null ? null : Path.Combine(repositoryRoot, "native", "ocr", "build", "Release", NativeLibraryName + ".dll")
         };
         foreach (var candidate in candidates)
         {
             if (candidate is not null && File.Exists(candidate) && NativeLibrary.TryLoad(candidate, out var handle)) return handle;
         }
         return IntPtr.Zero;
+    }
+
+    private static string? FindRepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, "native", "ocr")) &&
+                Directory.Exists(Path.Combine(directory.FullName, "onnxocr", "models", "ppocrv5")))
+            {
+                return directory.FullName;
+            }
+        }
+
+        return null;
     }
 
     [StructLayout(LayoutKind.Sequential)]
