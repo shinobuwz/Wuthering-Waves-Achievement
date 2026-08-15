@@ -216,7 +216,7 @@ public partial class MainWindow : Window
         var ocrAssets = FindOcrAssets();
         if (ocrAssets is null)
         {
-            ShowError("原生 OCR 组件尚未部署。开发环境请先运行 native/scripts/build-native-ocr.ps1；发布环境请安装包含 ocr/ 资产的发布包。");
+            ShowOcrError("原生 OCR 组件尚未部署。开发环境请先运行 native/scripts/build-native-ocr.ps1；发布环境请安装包含 ocr/ 资产的发布包。", "OCR 组件缺失");
             return;
         }
 
@@ -225,6 +225,12 @@ public partial class MainWindow : Window
         var detectionModel = Path.Combine(modelRoot, "det", "det.onnx");
         var classifierModel = Path.Combine(modelRoot, "cls", "cls.onnx");
         var dictionary = Path.Combine(modelRoot, "ppocrv5_dict.txt");
+        var gameProcessNames = new[] { "Client-Win64-Shipping.exe", "Wuthering Waves.exe" };
+        if (!IsAnyProcessRunning(gameProcessNames))
+        {
+            ShowOcrError("未检测到《鸣潮》游戏进程，请先启动游戏后再进行 OCR 扫描。", "未检测到游戏");
+            return;
+        }
 
         _ocrCancellation = new CancellationTokenSource();
         OcrScanButton.Content = "取消 OCR";
@@ -241,7 +247,7 @@ public partial class MainWindow : Window
             WindowState = WindowState.Minimized;
             await Task.Delay(350, _ocrCancellation.Token);
             var scan = await service.ScanAsync(
-                ["Client-Win64-Shipping.exe", "Wuthering Waves.exe"],
+                gameProcessNames,
                 expectedWidth: 1920,
                 expectedHeight: 1080,
                 cancellationToken: _ocrCancellation.Token);
@@ -250,13 +256,13 @@ public partial class MainWindow : Window
             if (!scan.IsSuccess)
             {
                 if (scan.Error?.Code == OcrScanErrorCode.Cancelled) HintText.Text = "OCR 扫描已取消。";
-                else ShowError(scan.Error?.Message ?? "OCR 扫描失败。");
+                else ShowOcrError(scan.Error?.Message ?? "OCR 扫描失败。", "OCR 扫描失败");
                 return;
             }
             var preview = AchievementOcrMatcher.CreatePreview(scan.Lines, _workspace.Query().Rows);
             if (preview.Candidates.Count == 0)
             {
-                ShowError($"OCR 扫描完成，但没有匹配到成就。检测到 {scan.Lines.Count} 条文字，未匹配 {preview.Unmatched.Count} 条。");
+                ShowOcrError($"OCR 扫描完成，但没有匹配到成就。检测到 {scan.Lines.Count} 条文字，未匹配 {preview.Unmatched.Count} 条。", "OCR 扫描结果");
                 return;
             }
             var previewWindow = new OcrPreviewWindow(preview) { Owner = this };
@@ -268,7 +274,7 @@ public partial class MainWindow : Window
             var applied = await _workspace.ApplyOcrPreviewAsync(previewWindow.AcceptedPreview, confirm: true, cancellationToken: _ocrCancellation.Token);
             if (!applied.IsSuccess)
             {
-                ShowError(applied.Error?.Message ?? "OCR 结果应用失败。");
+                ShowOcrError(applied.Error?.Message ?? "OCR 结果应用失败。", "OCR 结果应用失败");
                 return;
             }
             RefreshView();
@@ -278,9 +284,17 @@ public partial class MainWindow : Window
         {
             HintText.Text = "OCR 扫描已取消。";
         }
+        catch (GameWindowNotFoundException exception)
+        {
+            ShowOcrError($"未找到可捕获的游戏窗口：{exception.Message}", "未找到游戏窗口");
+        }
+        catch (GameWindowCaptureException exception)
+        {
+            ShowOcrError($"无法捕获游戏画面：{exception.Message}", "游戏画面捕获失败");
+        }
         catch (Exception exception)
         {
-            ShowError($"OCR 扫描失败：{exception.Message}");
+            ShowOcrError($"OCR 扫描失败：{exception.Message}", "OCR 扫描失败");
         }
         finally
         {
@@ -483,6 +497,32 @@ public partial class MainWindow : Window
         }
     }
 
+    private static bool IsAnyProcessRunning(IEnumerable<string> processNames)
+    {
+        foreach (var processName in processNames)
+        {
+            var normalizedName = Path.GetFileNameWithoutExtension(processName);
+            try
+            {
+                var processes = Process.GetProcessesByName(normalizedName);
+                try
+                {
+                    if (processes.Length > 0) return true;
+                }
+                finally
+                {
+                    foreach (var process in processes) process.Dispose();
+                }
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                // Ignore processes that are not accessible to the current user.
+            }
+        }
+
+        return false;
+    }
+
     private static OcrAssets? FindOcrAssets()
     {
         var configuredRoot = Environment.GetEnvironmentVariable("WUWA_NATIVE_OCR_ROOT");
@@ -535,6 +575,12 @@ public partial class MainWindow : Window
     }
 
     private sealed record OcrAssets(string Root, string ModelRoot);
+
+    private void ShowOcrError(string message, string title)
+    {
+        ShowError(message);
+        MessageBox.Show(this, message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
 
     private void ShowError(string message)
     {
