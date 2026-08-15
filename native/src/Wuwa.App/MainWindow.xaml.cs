@@ -287,7 +287,12 @@ public partial class MainWindow : Window
                 seenIds.UnionWith(pageIds);
 
                 if (scan.Window is null || page == 80) break;
-                await capture.ScrollAsync(scan.Window, wheelNotches: -8, cancellationToken: _ocrCancellation.Token);
+                var scrollAccepted = await capture.ScrollAsync(scan.Window, wheelNotches: -8, cancellationToken: _ocrCancellation.Token);
+                if (!scrollAccepted)
+                {
+                    ShowOcrError("Windows 拒绝了模拟鼠标输入。请确保游戏和工具使用相同权限运行，且当前桌面未被锁定。", "无法控制游戏");
+                    return;
+                }
                 await Task.Delay(800, _ocrCancellation.Token);
             }
 

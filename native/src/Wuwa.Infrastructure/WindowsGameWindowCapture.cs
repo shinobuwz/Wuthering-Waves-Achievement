@@ -37,7 +37,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         return Task.Run(() => CaptureClient(window, expectedWidth, expectedHeight, cancellationToken), cancellationToken);
     }
 
-    public Task ScrollAsync(
+    public Task<bool> ScrollAsync(
         GameWindowCandidate window,
         int wheelNotches = -8,
         CancellationToken cancellationToken = default)
@@ -97,17 +97,19 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
             ?? throw new GameWindowNotFoundException($"No visible game window was found for: {string.Join(", ", processNames)}.");
     }
 
-    private static void ScrollWindow(
+    private static bool ScrollWindow(
         GameWindowCandidate window,
         int wheelNotches,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!NativeMethods.IsWindow(window.Handle)) return;
+        if (!NativeMethods.IsWindow(window.Handle)) return false;
 
-        // Prefer real mouse-wheel input so games using raw input receive it. If the
-        // cursor cannot be moved (RDP, elevated game, locked desktop, etc.), fall
-        // back to WM_MOUSEWHEEL instead of allowing OCR to crash the app.
+        // Prefer SendInput: it moves the real cursor and emits real wheel input,
+        // without requiring administrator privileges when both processes have the
+        // same integrity level. If Windows blocks it, use the older fallbacks.
+        NativeMethods.ShowWindow(window.Handle, NativeMethods.ShowWindowRestore);
+        NativeMethods.BringWindowToTop(window.Handle);
         NativeMethods.SetForegroundWindow(window.Handle);
         var hasClient = NativeMethods.GetClientRect(window.Handle, out var client);
         var clientCenter = new NativePoint
@@ -116,11 +118,12 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
             Y = hasClient ? (client.Bottom - client.Top) / 2 : window.ClientHeight / 2
         };
         var screenCenter = clientCenter;
-        var canUseMouseInput = hasClient &&
-            NativeMethods.ClientToScreen(window.Handle, ref screenCenter) &&
-            NativeMethods.SetCursorPos(screenCenter.X, screenCenter.Y);
+        var canUseScreenInput = hasClient && NativeMethods.ClientToScreen(window.Handle, ref screenCenter);
+        if (canUseScreenInput && TrySendInputScroll(screenCenter, wheelNotches, cancellationToken)) return true;
 
+        var canUseMouseInput = canUseScreenInput && NativeMethods.SetCursorPos(screenCenter.X, screenCenter.Y);
         var direction = Math.Sign(wheelNotches);
+        var fallbackSucceeded = true;
         for (var index = 0; index < Math.Abs(wheelNotches); index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -132,10 +135,54 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
             {
                 var wheelData = unchecked((UIntPtr)((uint)(direction * NativeMethods.WheelDelta) << 16));
                 var point = new IntPtr((clientCenter.Y << 16) | (clientCenter.X & 0xffff));
-                NativeMethods.PostMessage(window.Handle, NativeMethods.MouseWheelMessage, wheelData, point);
+                fallbackSucceeded &= NativeMethods.PostMessage(window.Handle, NativeMethods.MouseWheelMessage, wheelData, point);
             }
             Thread.Sleep(12);
         }
+
+        return canUseMouseInput || fallbackSucceeded;
+    }
+
+    private static bool TrySendInputScroll(NativePoint screenCenter, int wheelNotches, CancellationToken cancellationToken)
+    {
+        var virtualLeft = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenLeft);
+        var virtualTop = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenTop);
+        var virtualWidth = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenWidth);
+        var virtualHeight = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenHeight);
+        if (virtualWidth <= 1 || virtualHeight <= 1) return false;
+
+        var absoluteX = Math.Clamp((screenCenter.X - virtualLeft) * 65535 / (virtualWidth - 1), 0, 65535);
+        var absoluteY = Math.Clamp((screenCenter.Y - virtualTop) * 65535 / (virtualHeight - 1), 0, 65535);
+        var direction = Math.Sign(wheelNotches);
+        var inputs = new NativeInput[Math.Abs(wheelNotches) + 1];
+        inputs[0] = new NativeInput
+        {
+            Type = NativeMethods.InputMouse,
+            Mouse = new NativeMouseInput
+            {
+                Dx = absoluteX,
+                Dy = absoluteY,
+                Flags = NativeMethods.MouseEventMove | NativeMethods.MouseEventAbsolute | NativeMethods.MouseEventVirtualDesk
+            }
+        };
+        for (var index = 1; index < inputs.Length; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            inputs[index] = new NativeInput
+            {
+                Type = NativeMethods.InputMouse,
+                Mouse = new NativeMouseInput
+                {
+                    MouseData = unchecked((uint)(direction * NativeMethods.WheelDelta)),
+                    Flags = NativeMethods.MouseEventWheel
+                }
+            };
+        }
+
+        return NativeMethods.SendInput(
+            (uint)inputs.Length,
+            inputs,
+            Marshal.SizeOf<NativeInput>()) == (uint)inputs.Length;
     }
 
     private static OcrImageFrame CaptureClient(
@@ -228,6 +275,24 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
     private struct NativePoint { public int X; public int Y; }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct NativeInput
+    {
+        public uint Type;
+        public NativeMouseInput Mouse;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeMouseInput
+    {
+        public int Dx;
+        public int Dy;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public UIntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct BitmapInfoHeader
     {
         public uint Size;
@@ -259,15 +324,28 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool IsIconic(IntPtr handle);
         [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool IsWindow(IntPtr handle);
         [LibraryImport("user32.dll", SetLastError = true)] internal static partial uint GetWindowThreadProcessId(IntPtr handle, out uint processId);
+        internal const uint InputMouse = 0;
+        internal const uint MouseEventMove = 0x0001;
+        internal const uint MouseEventAbsolute = 0x8000;
+        internal const uint MouseEventVirtualDesk = 0x4000;
         internal const uint MouseEventWheel = 0x0800;
         internal const uint MouseWheelMessage = 0x020A;
         internal const int WheelDelta = 120;
+        internal const int ShowWindowRestore = 9;
+        internal const int VirtualScreenLeft = 76;
+        internal const int VirtualScreenTop = 77;
+        internal const int VirtualScreenWidth = 78;
+        internal const int VirtualScreenHeight = 79;
 
         [LibraryImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool GetClientRect(IntPtr handle, out NativeRect rectangle);
         [LibraryImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool ClientToScreen(IntPtr handle, ref NativePoint point);
         [LibraryImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool SetForegroundWindow(IntPtr handle);
+        [LibraryImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool BringWindowToTop(IntPtr handle);
+        [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool ShowWindow(IntPtr handle, int command);
         [LibraryImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool SetCursorPos(int x, int y);
+        [LibraryImport("user32.dll")] internal static partial int GetSystemMetrics(int index);
         [DllImport("user32.dll", SetLastError = true)] internal static extern void MouseEvent(uint flags, uint dx, uint dy, int data, UIntPtr extraInfo);
+        [DllImport("user32.dll", SetLastError = true)] internal static extern uint SendInput(uint count, [In] NativeInput[] inputs, int size);
         [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool PostMessage(IntPtr handle, uint message, UIntPtr wParam, IntPtr lParam);
         [LibraryImport("user32.dll", EntryPoint = "GetWindowTextLengthW")] internal static partial int GetWindowTextLength(IntPtr handle);
         [DllImport("user32.dll", EntryPoint = "GetWindowTextW", CharSet = CharSet.Unicode)] internal static extern int GetWindowText(IntPtr handle, StringBuilder text, int maximumCount);
