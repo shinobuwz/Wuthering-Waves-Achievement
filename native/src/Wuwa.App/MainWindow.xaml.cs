@@ -247,6 +247,13 @@ public partial class MainWindow : Window
             client.EnableClassifier(classifierModel);
             using var reader = new NativeOcrTextReader(client);
             var capture = new WindowsGameWindowCapture();
+            var initialWindow = await capture.TryFindGameWindowAsync(gameProcessNames, minimumWidth: 800, minimumHeight: 600, cancellationToken: _ocrCancellation.Token);
+            if (initialWindow is null)
+            {
+                NativeOcrDiagnostics.Write("OCR start aborted: no visible game window passed preflight");
+                ShowOcrError("找到了游戏进程，但没有找到可见且分辨率至少为 800×600 的游戏窗口。请退出最小化状态，并确认游戏窗口可见。", "找不到游戏窗口");
+                return;
+            }
             var service = new SinglePageOcrScanService(capture, reader);
             var rows = _workspace.Query().Rows;
             var mergedCandidates = new Dictionary<AchievementId, OcrAchievementCandidate>();

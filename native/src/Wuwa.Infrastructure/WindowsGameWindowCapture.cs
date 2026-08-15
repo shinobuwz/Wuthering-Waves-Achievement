@@ -27,6 +27,21 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         return Task.Run(() => FindGameWindow(normalized, minimumWidth, minimumHeight, cancellationToken), cancellationToken);
     }
 
+    public Task<GameWindowCandidate?> TryFindGameWindowAsync(
+        IReadOnlyCollection<string> processNames,
+        int minimumWidth = 800,
+        int minimumHeight = 600,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(processNames);
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Game-window capture currently supports Windows only.");
+        if (minimumWidth <= 0 || minimumHeight <= 0) throw new ArgumentOutOfRangeException(nameof(minimumWidth));
+        var normalized = processNames.Select(NormalizeProcessName).Where(name => name.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (normalized.Count == 0) throw new ArgumentException("At least one game process name is required.", nameof(processNames));
+        NativeOcrDiagnostics.Write($"TryFindGameWindow requested=[{string.Join(",", normalized)}] minimum={minimumWidth}x{minimumHeight}");
+        return Task.Run(() => TryFindGameWindow(normalized, minimumWidth, minimumHeight, cancellationToken), cancellationToken);
+    }
+
     public Task<OcrImageFrame> CaptureClientAsync(
         GameWindowCandidate window,
         int? expectedWidth = null,
@@ -51,6 +66,14 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
     }
 
     private static GameWindowCandidate FindGameWindow(
+        IReadOnlySet<string> processNames,
+        int minimumWidth,
+        int minimumHeight,
+        CancellationToken cancellationToken) =>
+        TryFindGameWindow(processNames, minimumWidth, minimumHeight, cancellationToken)
+            ?? throw new GameWindowNotFoundException($"No visible game window was found for: {string.Join(", ", processNames)}.");
+
+    private static GameWindowCandidate? TryFindGameWindow(
         IReadOnlySet<string> processNames,
         int minimumWidth,
         int minimumHeight,
@@ -81,7 +104,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         if (processMap.Count == 0)
         {
             NativeOcrDiagnostics.Write($"FindGameWindow no matching process for=[{string.Join(",", processNames)}]");
-            throw new GameWindowNotFoundException($"No running game process was found for: {string.Join(", ", processNames)}.");
+            return null;
         }
         NativeOcrDiagnostics.Write($"FindGameWindow processIds=[{string.Join(",", processMap.Keys)}]");
 
@@ -89,14 +112,21 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         NativeMethods.EnumWindows((handle, _) =>
         {
             if (cancellationToken.IsCancellationRequested) return false;
-            if (!NativeMethods.IsWindowVisible(handle) || NativeMethods.IsIconic(handle)) return true;
             NativeMethods.GetWindowThreadProcessId(handle, out var processId);
             if (processId == 0 || !processMap.TryGetValue(checked((int)processId), out var processName)) return true;
-            if (!NativeMethods.GetClientRect(handle, out var rectangle)) return true;
+            var visible = NativeMethods.IsWindowVisible(handle);
+            var iconic = NativeMethods.IsIconic(handle);
+            var title = GetTitle(handle);
+            if (!NativeMethods.GetClientRect(handle, out var rectangle))
+            {
+                NativeOcrDiagnostics.Write($"FindGameWindow candidate handle=0x{handle.ToInt64():X} pid={processId} visible={visible} iconic={iconic} title={title} rect=unavailable");
+                return true;
+            }
             var width = rectangle.Right - rectangle.Left;
             var height = rectangle.Bottom - rectangle.Top;
-            if (width < minimumWidth || height < minimumHeight) return true;
-            candidates.Add(new GameWindowCandidate(handle, checked((int)processId), processName, GetTitle(handle), width, height));
+            NativeOcrDiagnostics.Write($"FindGameWindow candidate handle=0x{handle.ToInt64():X} pid={processId} visible={visible} iconic={iconic} title={title} client={width}x{height}");
+            if (!visible || iconic || width < minimumWidth || height < minimumHeight) return true;
+            candidates.Add(new GameWindowCandidate(handle, checked((int)processId), processName, title, width, height));
             return true;
         }, IntPtr.Zero);
         cancellationToken.ThrowIfCancellationRequested();
@@ -104,7 +134,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         if (selected is null)
         {
             NativeOcrDiagnostics.Write("FindGameWindow no visible candidate met the size requirement");
-            throw new GameWindowNotFoundException($"No visible game window was found for: {string.Join(", ", processNames)}.");
+            return null;
         }
         NativeOcrDiagnostics.Write($"FindGameWindow selected handle=0x{selected.Handle.ToInt64():X} pid={selected.ProcessId} name={selected.ProcessName} title={selected.Title} client={selected.ClientWidth}x{selected.ClientHeight}");
         return selected;
