@@ -249,6 +249,8 @@ public partial class MainWindow : Window
             var mergedCandidates = new Dictionary<AchievementId, OcrAchievementCandidate>();
             var mergedUnmatched = new Dictionary<string, OcrUnmatchedText>(StringComparer.Ordinal);
             var seenIds = new HashSet<AchievementId>();
+            var scannedPages = 0;
+            var detectedLineCount = 0;
             OcrScanPreview? preview = null;
 
             WindowState = WindowState.Minimized;
@@ -268,6 +270,8 @@ public partial class MainWindow : Window
                     return;
                 }
 
+                scannedPages = page;
+                detectedLineCount += scan.Lines.Count;
                 preview = AchievementOcrMatcher.CreatePreview(scan.Lines, rows);
                 var pageIds = preview.Candidates.Select(candidate => candidate.AchievementId).ToHashSet();
                 if (page > 1 && (pageIds.Count == 0 || pageIds.IsSubsetOf(seenIds))) break;
@@ -301,7 +305,7 @@ public partial class MainWindow : Window
             var mergedPreview = MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows);
             if (mergedPreview.Candidates.Count == 0)
             {
-                ShowOcrError($"OCR 扫描完成，但没有匹配到成就。未匹配 {mergedPreview.Unmatched.Count} 条文字。", "OCR 扫描结果");
+                ShowOcrError($"OCR 扫描完成，但没有匹配到成就。扫描 {scannedPages} 页，检测到 {detectedLineCount} 条文字，未匹配 {mergedPreview.Unmatched.Count} 条。请确认游戏当前打开的是成就列表。", "OCR 扫描结果");
                 return;
             }
             var previewWindow = new OcrPreviewWindow(mergedPreview) { Owner = this };

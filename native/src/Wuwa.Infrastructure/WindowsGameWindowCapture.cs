@@ -201,8 +201,11 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         {
             throw new GameWindowCaptureException($"Game client resolution is {width}x{height}; expected {expectedWidth?.ToString() ?? "any"}x{expectedHeight?.ToString() ?? "any"}.");
         }
-        var screenDc = NativeMethods.GetDC(window.Handle);
-        if (screenDc == IntPtr.Zero) throw LastCaptureError("Unable to acquire the game client device context.");
+        var screenOrigin = new NativePoint();
+        if (!NativeMethods.ClientToScreen(window.Handle, ref screenOrigin)) throw LastCaptureError("Unable to locate the game client on screen.");
+        NativeMethods.SetForegroundWindow(window.Handle);
+        var screenDc = NativeMethods.GetDC(IntPtr.Zero);
+        if (screenDc == IntPtr.Zero) throw LastCaptureError("Unable to acquire the desktop device context.");
         var memoryDc = IntPtr.Zero;
         var bitmap = IntPtr.Zero;
         var previous = IntPtr.Zero;
@@ -214,7 +217,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
             if (bitmap == IntPtr.Zero) throw LastCaptureError("Unable to allocate the capture bitmap.");
             previous = NativeMethods.SelectObject(memoryDc, bitmap);
             if (previous == IntPtr.Zero || previous == new IntPtr(-1)) throw LastCaptureError("Unable to select the capture bitmap.");
-            if (!NativeMethods.BitBlt(memoryDc, 0, 0, width, height, screenDc, 0, 0, Srccopy)) throw LastCaptureError("Unable to capture the game client pixels.");
+            if (!NativeMethods.BitBlt(memoryDc, 0, 0, width, height, screenDc, screenOrigin.X, screenOrigin.Y, Srccopy)) throw LastCaptureError("Unable to capture the game client pixels.");
             cancellationToken.ThrowIfCancellationRequested();
 
             var stride = checked(((width * 3 + 3) / 4) * 4);
@@ -243,7 +246,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
             if (previous != IntPtr.Zero && memoryDc != IntPtr.Zero) NativeMethods.SelectObject(memoryDc, previous);
             if (bitmap != IntPtr.Zero) NativeMethods.DeleteObject(bitmap);
             if (memoryDc != IntPtr.Zero) NativeMethods.DeleteDC(memoryDc);
-            NativeMethods.ReleaseDC(window.Handle, screenDc);
+            NativeMethods.ReleaseDC(IntPtr.Zero, screenDc);
         }
     }
 
