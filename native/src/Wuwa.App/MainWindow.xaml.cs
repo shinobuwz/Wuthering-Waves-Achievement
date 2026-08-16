@@ -661,7 +661,9 @@ public partial class MainWindow : Window
             .Where(line => IsLineInRegion(line, x1, y1, x2, y2))
             .OrderBy(line => LineCenterY(line))
             .Select(line => line.Text.Trim()));
-        return AchievementOcrMatcher.MatchKnownText(text, [expectedName], out _) is not null;
+        var matched = AchievementOcrMatcher.MatchKnownText(text, [expectedName], out var confidence) is not null;
+        NativeOcrDiagnostics.Write($"OCR primary expected={expectedName} text={text} matched={matched} confidence={confidence:F3}");
+        return matched;
     }
 
     private static IReadOnlyList<NavigationTab> FindVisibleSecondaryTabs(
@@ -686,7 +688,9 @@ public partial class MainWindow : Window
                 matches[matched] = tab;
             }
         }
-        return matches.Values.OrderBy(tab => tab.ClientY).ToArray();
+        var result = matches.Values.OrderBy(tab => tab.ClientY).ToArray();
+        NativeOcrDiagnostics.Write($"OCR secondary visible={result.Length} names=[{string.Join(",", result.Select(tab => tab.Name))}]");
+        return result;
     }
 
     private static bool IsLineInRegion(OcrTextLine line, double x1, double y1, double x2, double y2)

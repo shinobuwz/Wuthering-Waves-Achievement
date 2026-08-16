@@ -230,10 +230,10 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
             return false;
         }
 
-        // Prefer SendInput: it moves the real cursor and emits real wheel input,
-        // without requiring administrator privileges when both processes have the
-        // same integrity level. If Windows blocks it, use the older fallbacks.
-        // Match Python's simulate_scroll exactly.  pyautogui uses the desktop
+        // Match Python's simulate_scroll exactly. pyautogui uses the legacy
+        // mouse_event path; SendInput is retained only as a cursor/click fallback
+        // when the game clips SetCursorPos.
+        // pyautogui uses the desktop
         // centre (not the client centre), a real mouse click, and emits each
         // scroll(-160) separately.  Its global PAUSE=0.1 also leaves about
         // 100ms between wheel events; batching them in SendInput makes some
