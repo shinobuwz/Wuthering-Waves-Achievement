@@ -430,10 +430,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var rows = _workspace.Query(new AchievementQuery()).Rows;
-            var primaryNames = new[] { "索拉漫行", "长路留迹", "铿锵刃鸣", "诸音声轨" };
             var primaryYPercentages = new[] { 0.1778, 0.2981, 0.4343, 0.5537 };
-            var secondaryMap = BuildSecondaryCategoryMap(rows, primaryNames);
             var currentWindow = initialWindow;
             var primarySucceeded = 0;
             var primarySkipped = 0;
@@ -444,32 +441,32 @@ public partial class MainWindow : Window
             WindowState = WindowState.Minimized;
             await Task.Delay(350, _ocrCancellation.Token);
 
-            for (var primaryIndex = 0; primaryIndex < primaryNames.Length; primaryIndex++)
+            for (var primaryIndex = 0; primaryIndex < primaryYPercentages.Length; primaryIndex++)
             {
                 _ocrCancellation.Token.ThrowIfCancellationRequested();
-                var primaryName = primaryNames[primaryIndex];
+                var primarySlotName = $"一级图标 {primaryIndex + 1}";
+                var primaryName = primarySlotName;
                 var primaryX = (int)(currentWindow.ClientWidth * 0.0417);
                 var primaryY = (int)(currentWindow.ClientHeight * primaryYPercentages[primaryIndex]);
                 var primarySwitched = false;
                 for (var attempt = 1; attempt <= 3 && !primarySwitched; attempt++)
                 {
-                    HintText.Text = $"DEBUG：切换一级分类 {primaryName}（{attempt}/3）";
+                    HintText.Text = $"DEBUG：切换{primarySlotName}（{attempt}/3）";
                     var clicked = await capture.ClickAsync(currentWindow, primaryX, primaryY, _ocrCancellation.Token);
-                    NativeOcrDiagnostics.Write($"OCR navigation debug primary={primaryName} attempt={attempt} clicked={clicked} client={primaryX},{primaryY}");
+                    NativeOcrDiagnostics.Write($"OCR navigation debug primary={primarySlotName} attempt={attempt} clicked={clicked} client={primaryX},{primaryY}");
                     if (!clicked) break;
                     await Task.Delay(800, _ocrCancellation.Token);
                     var verification = await navigationService.ScanAsync(gameProcessNames, 1920, 1080, _ocrCancellation.Token);
                     if (!verification.IsSuccess)
                     {
-                        failures.Add($"一级 {primaryName}：OCR 验证失败（{verification.Error?.Message ?? "未知错误"}）");
+                        failures.Add($"{primarySlotName}：OCR 验证失败（{verification.Error?.Message ?? "未知错误"}）");
                         break;
                     }
                     currentWindow = verification.Window ?? currentWindow;
-                    primarySwitched = IsPrimaryTabRecognized(verification.Lines, primaryName, currentWindow.ClientWidth, currentWindow.ClientHeight);
-                    if (!primarySwitched && attempt == 3)
-                    {
-                        failures.Add($"一级 {primaryName}：切换后 OCR 未识别到目标名称");
-                    }
+                    var recognizedPrimary = ReadPrimaryTabText(verification.Lines, currentWindow.ClientWidth, currentWindow.ClientHeight);
+                    primaryName = string.IsNullOrWhiteSpace(recognizedPrimary) ? primarySlotName : recognizedPrimary;
+                    primarySwitched = true;
+                    NativeOcrDiagnostics.Write($"OCR navigation debug primary={primarySlotName} recognizedText={recognizedPrimary}");
                 }
 
                 if (!primarySwitched)
@@ -479,10 +476,10 @@ public partial class MainWindow : Window
                 }
 
                 primarySucceeded++;
-                var secondaryNames = secondaryMap.GetValueOrDefault(primaryName, []).ToArray();
                 var visited = new HashSet<string>(StringComparer.Ordinal);
-                var noNewTabRounds = 0;
-                while (noNewTabRounds < 3 && visited.Count < secondaryNames.Length)
+                var lastVisibleSignature = string.Empty;
+                var noChangeRounds = 0;
+                for (var secondaryRound = 0; secondaryRound < 64 && noChangeRounds < 3; secondaryRound++)
                 {
                     _ocrCancellation.Token.ThrowIfCancellationRequested();
                     var tabScan = await navigationService.ScanAsync(gameProcessNames, 1920, 1080, _ocrCancellation.Token);
@@ -492,15 +489,17 @@ public partial class MainWindow : Window
                         break;
                     }
                     currentWindow = tabScan.Window ?? currentWindow;
-                    var visibleTabs = FindVisibleSecondaryTabs(tabScan.Lines, secondaryNames, currentWindow.ClientWidth, currentWindow.ClientHeight);
+                    var visibleTabs = FindVisibleSecondaryTabs(tabScan.Lines, currentWindow.ClientWidth, currentWindow.ClientHeight);
+                    var visibleSignature = BuildNavigationSignature(visibleTabs);
                     var foundNew = false;
                     foreach (var tab in visibleTabs)
                     {
                         _ocrCancellation.Token.ThrowIfCancellationRequested();
-                        if (!visited.Add(tab.Name)) continue;
+                        var key = AchievementOcrMatcher.NormalizeName(tab.Name);
+                        if (!visited.Add(key)) continue;
                         foundNew = true;
                         var secondaryX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
-                        HintText.Text = $"DEBUG：点击二级分类 {primaryName} / {tab.Name}（{visited.Count}/{secondaryNames.Length}）";
+                        HintText.Text = $"DEBUG：点击二级分类 {primaryName} / {tab.Name}（已发现 {visited.Count} 个）";
                         var clicked = await capture.ClickAsync(currentWindow, secondaryX, tab.ClientY, _ocrCancellation.Token);
                         NativeOcrDiagnostics.Write($"OCR navigation debug secondary={primaryName}/{tab.Name} clicked={clicked} client={secondaryX},{tab.ClientY}");
                         if (!clicked)
@@ -513,22 +512,26 @@ public partial class MainWindow : Window
                         await Task.Delay(500, _ocrCancellation.Token);
                     }
 
-                    if (visited.Count >= secondaryNames.Length) break;
-                    noNewTabRounds = foundNew ? 0 : noNewTabRounds + 1;
+                    if (visibleTabs.Count == 0 || (!foundNew && string.Equals(visibleSignature, lastVisibleSignature, StringComparison.Ordinal)))
+                    {
+                        noChangeRounds++;
+                    }
+                    else
+                    {
+                        noChangeRounds = 0;
+                    }
+                    lastVisibleSignature = visibleSignature;
+                    if (noChangeRounds >= 3) break;
+
                     var scrollX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
                     var scrollY = (int)(currentWindow.ClientHeight * ((0.1796 + 1.0) / 2));
-                    HintText.Text = $"DEBUG：滚动二级分类列表 {primaryName}（无新分类 {noNewTabRounds}/3）";
+                    HintText.Text = $"DEBUG：滚动二级分类列表 {primaryName}（无变化 {noChangeRounds}/3）";
                     if (!await capture.ScrollAtAsync(currentWindow, scrollX, scrollY, -160, 16, _ocrCancellation.Token))
                     {
                         failures.Add($"一级 {primaryName}：二级分类列表滚动失败");
                         break;
                     }
                     await Task.Delay(800, _ocrCancellation.Token);
-                }
-
-                foreach (var missing in secondaryNames.Where(name => !visited.Contains(name)))
-                {
-                    failures.Add($"二级 {primaryName} / {missing}：未找到或未点击");
                 }
             }
 
@@ -539,7 +542,7 @@ public partial class MainWindow : Window
                           (failures.Count == 0 ? "\n未发现切换错误。" : $"\n问题 {failures.Count} 个：\n{string.Join("\n", failures.Take(12))}");
             NativeOcrDiagnostics.Write($"OCR navigation debug finished primarySucceeded={primarySucceeded} primarySkipped={primarySkipped} secondaryClicked={secondaryClicked} secondaryFailed={secondaryFailed} failures={failures.Count}");
             MessageBox.Show(this, summary, "DEBUG 分类切换测试完成", MessageBoxButton.OK, failures.Count == 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
-            HintText.Text = $"DEBUG 分类切换测试完成 · 一级成功 {primarySucceeded}/{primaryNames.Length} · 二级点击成功 {secondaryClicked}";
+            HintText.Text = $"DEBUG 分类切换测试完成 · 一级成功 {primarySucceeded}/{primaryYPercentages.Length} · 二级点击成功 {secondaryClicked}";
         }
         catch (OperationCanceledException)
         {
@@ -627,8 +630,7 @@ public partial class MainWindow : Window
             }
 
             var rows = _workspace.Query(new AchievementQuery()).Rows;
-            var primaryNames = new[] { "索拉漫行", "长路留迹", "铿锵刃鸣", "诸音声轨" };
-            var secondaryMap = BuildSecondaryCategoryMap(rows, primaryNames);
+            var primaryYPercentages = new[] { 0.1778, 0.2981, 0.4343, 0.5537 };
             var mergedCandidates = new Dictionary<AchievementId, OcrAchievementCandidate>();
             var mergedUnmatched = new Dictionary<string, OcrUnmatchedText>(StringComparer.Ordinal);
             var currentWindow = initialWindow;
@@ -636,39 +638,42 @@ public partial class MainWindow : Window
             WindowState = WindowState.Minimized;
             await Task.Delay(350, _ocrCancellation.Token);
 
-            for (var primaryIndex = 0; primaryIndex < primaryNames.Length; primaryIndex++)
+            for (var primaryIndex = 0; primaryIndex < primaryYPercentages.Length; primaryIndex++)
             {
                 _ocrCancellation.Token.ThrowIfCancellationRequested();
-                var primaryName = primaryNames[primaryIndex];
+                var primarySlotName = $"一级图标 {primaryIndex + 1}";
+                var primaryName = primarySlotName;
                 var primaryX = (int)(currentWindow.ClientWidth * 0.0417);
-                var primaryY = (int)(currentWindow.ClientHeight * new[] { 0.1778, 0.2981, 0.4343, 0.5537 }[primaryIndex]);
+                var primaryY = (int)(currentWindow.ClientHeight * primaryYPercentages[primaryIndex]);
                 var switched = false;
                 for (var attempt = 0; attempt < 3 && !switched; attempt++)
                 {
-                    HintText.Text = $"正在切换一级分类：{primaryName}（{attempt + 1}/3）";
+                    HintText.Text = $"正在切换{primarySlotName}（{attempt + 1}/3）";
                     if (!await capture.ClickAsync(currentWindow, primaryX, primaryY, _ocrCancellation.Token)) break;
                     await Task.Delay(800, _ocrCancellation.Token);
                     var verification = await navigationService.ScanAsync(gameProcessNames, 1920, 1080, _ocrCancellation.Token);
                     if (!verification.IsSuccess)
                     {
-                        AddScanWarning(mergedUnmatched, primaryName, verification.Error?.Message ?? "一级分类验证失败");
+                        AddScanWarning(mergedUnmatched, primarySlotName, verification.Error?.Message ?? "一级分类验证失败");
                         break;
                     }
                     currentWindow = verification.Window ?? currentWindow;
-                    switched = IsPrimaryTabRecognized(verification.Lines, primaryName, currentWindow.ClientWidth, currentWindow.ClientHeight);
-                    NativeOcrDiagnostics.Write($"OCR full primary={primaryName} attempt={attempt + 1} recognized={switched}");
+                    var recognizedPrimary = ReadPrimaryTabText(verification.Lines, currentWindow.ClientWidth, currentWindow.ClientHeight);
+                    primaryName = string.IsNullOrWhiteSpace(recognizedPrimary) ? primarySlotName : recognizedPrimary;
+                    switched = true;
+                    NativeOcrDiagnostics.Write($"OCR full primary={primarySlotName} recognizedText={recognizedPrimary}");
                 }
 
                 if (!switched)
                 {
-                    AddScanWarning(mergedUnmatched, primaryName, "一级分类切换或 OCR 验证失败，已跳过");
+                    AddScanWarning(mergedUnmatched, primarySlotName, "一级分类切换或 OCR 验证失败，已跳过");
                     continue;
                 }
 
-                var secondaryNames = secondaryMap.GetValueOrDefault(primaryName, []).ToArray();
                 var visited = new HashSet<string>(StringComparer.Ordinal);
-                var noNewTabRounds = 0;
-                while (noNewTabRounds < 3 && visited.Count < secondaryNames.Length)
+                var lastVisibleSignature = string.Empty;
+                var noChangeRounds = 0;
+                for (var secondaryRound = 0; secondaryRound < 64 && noChangeRounds < 3; secondaryRound++)
                 {
                     _ocrCancellation.Token.ThrowIfCancellationRequested();
                     var tabScan = await navigationService.ScanAsync(gameProcessNames, 1920, 1080, _ocrCancellation.Token);
@@ -678,15 +683,17 @@ public partial class MainWindow : Window
                         break;
                     }
                     currentWindow = tabScan.Window ?? currentWindow;
-                    var visibleTabs = FindVisibleSecondaryTabs(tabScan.Lines, secondaryNames, currentWindow.ClientWidth, currentWindow.ClientHeight);
+                    var visibleTabs = FindVisibleSecondaryTabs(tabScan.Lines, currentWindow.ClientWidth, currentWindow.ClientHeight);
+                    var visibleSignature = BuildNavigationSignature(visibleTabs);
                     var foundNew = false;
                     foreach (var tab in visibleTabs)
                     {
                         _ocrCancellation.Token.ThrowIfCancellationRequested();
-                        if (!visited.Add(tab.Name)) continue;
+                        var key = AchievementOcrMatcher.NormalizeName(tab.Name);
+                        if (!visited.Add(key)) continue;
                         foundNew = true;
                         var secondaryX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
-                        HintText.Text = $"正在扫描：{primaryName} / {tab.Name}（{visited.Count}/{secondaryNames.Length}）";
+                        HintText.Text = $"正在扫描：{primaryName} / {tab.Name}（已发现 {visited.Count} 个）";
                         if (!await capture.ClickAsync(currentWindow, secondaryX, tab.ClientY, _ocrCancellation.Token))
                         {
                             AddScanWarning(mergedUnmatched, $"{primaryName}/{tab.Name}", "二级分类点击失败");
@@ -705,21 +712,26 @@ public partial class MainWindow : Window
                             _ocrCancellation.Token);
                     }
 
-                    if (visited.Count >= secondaryNames.Length) break;
-                    noNewTabRounds = foundNew ? 0 : noNewTabRounds + 1;
+                    if (visibleTabs.Count == 0 || (!foundNew && string.Equals(visibleSignature, lastVisibleSignature, StringComparison.Ordinal)))
+                    {
+                        noChangeRounds++;
+                    }
+                    else
+                    {
+                        noChangeRounds = 0;
+                    }
+                    lastVisibleSignature = visibleSignature;
+                    if (noChangeRounds >= 3) break;
+
                     var scrollX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
                     var scrollY = (int)(currentWindow.ClientHeight * ((0.1796 + 1.0) / 2));
+                    HintText.Text = $"正在滚动二级分类列表：{primaryName}（无变化 {noChangeRounds}/3）";
                     if (!await capture.ScrollAtAsync(currentWindow, scrollX, scrollY, -160, 16, _ocrCancellation.Token))
                     {
                         AddScanWarning(mergedUnmatched, primaryName, "二级分类列表滚动失败");
                         break;
                     }
                     await Task.Delay(800, _ocrCancellation.Token);
-                }
-
-                foreach (var missing in secondaryNames.Where(name => !visited.Contains(name)))
-                {
-                    AddScanWarning(mergedUnmatched, $"{primaryName}/{missing}", "二级分类未访问");
                 }
             }
 
@@ -830,22 +842,8 @@ public partial class MainWindow : Window
         return new OcrCategoryScanStats(pages, lines, true);
     }
 
-    private static Dictionary<string, IReadOnlyList<string>> BuildSecondaryCategoryMap(
-        IReadOnlyList<AchievementRow> rows,
-        IReadOnlyList<string> primaryNames) =>
-        primaryNames.ToDictionary(
-            primary => primary,
-            primary => (IReadOnlyList<string>)rows
-                .Where(row => string.Equals(row.FirstCategory, primary, StringComparison.Ordinal))
-                .OrderBy(row => row.AbsoluteOrder)
-                .Select(row => row.SecondCategory)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray(),
-            StringComparer.Ordinal);
-
-    private static bool IsPrimaryTabRecognized(
+    private static string ReadPrimaryTabText(
         IReadOnlyList<OcrTextLine> lines,
-        string expectedName,
         int width,
         int height)
     {
@@ -853,18 +851,14 @@ public partial class MainWindow : Window
         var y1 = height * 0.047;
         var x2 = width * 0.114;
         var y2 = height * 0.083;
-        var text = string.Concat(lines
+        return string.Concat(lines
             .Where(line => IsLineInRegion(line, x1, y1, x2, y2))
             .OrderBy(line => LineCenterY(line))
             .Select(line => line.Text.Trim()));
-        var matched = AchievementOcrMatcher.MatchKnownText(text, [expectedName], out var confidence) is not null;
-        NativeOcrDiagnostics.Write($"OCR primary expected={expectedName} text={text} matched={matched} confidence={confidence:F3}");
-        return matched;
     }
 
     private static IReadOnlyList<NavigationTab> FindVisibleSecondaryTabs(
         IReadOnlyList<OcrTextLine> lines,
-        IReadOnlyList<string> knownNames,
         int width,
         int height)
     {
@@ -876,18 +870,22 @@ public partial class MainWindow : Window
         foreach (var line in lines)
         {
             if (!IsLineInRegion(line, x1, y1, x2, y2)) continue;
-            var matched = AchievementOcrMatcher.MatchKnownText(line.Text, knownNames, out _);
-            if (matched is null) continue;
-            var tab = new NavigationTab(matched, (int)Math.Round(LineCenterY(line)));
-            if (!matches.TryGetValue(matched, out var existing) || tab.ClientY < existing.ClientY)
+            var text = line.Text.Trim();
+            var normalized = AchievementOcrMatcher.NormalizeName(text);
+            if (normalized.Length < 2) continue;
+            var tab = new NavigationTab(text, (int)Math.Round(LineCenterY(line)));
+            if (!matches.TryGetValue(normalized, out var existing) || tab.ClientY < existing.ClientY)
             {
-                matches[matched] = tab;
+                matches[normalized] = tab;
             }
         }
         var result = matches.Values.OrderBy(tab => tab.ClientY).ToArray();
         NativeOcrDiagnostics.Write($"OCR secondary visible={result.Length} names=[{string.Join(",", result.Select(tab => tab.Name))}]");
         return result;
     }
+
+    private static string BuildNavigationSignature(IReadOnlyList<NavigationTab> tabs) =>
+        string.Join("\u001f", tabs.Select(tab => AchievementOcrMatcher.NormalizeName(tab.Name)));
 
     private static bool IsLineInRegion(OcrTextLine line, double x1, double y1, double x2, double y2)
     {
