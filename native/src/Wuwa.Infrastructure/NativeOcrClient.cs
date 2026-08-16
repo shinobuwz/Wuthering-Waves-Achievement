@@ -21,6 +21,8 @@ public sealed record NativeOcrPoint(float X, float Y);
 
 public sealed record NativeOcrTextLine(IReadOnlyList<NativeOcrPoint> Points, string Text, float Score);
 
+public sealed record NativeOcrIcon(int X, int Y, int Label, float Confidence);
+
 /// <summary>Safe managed owner for the project-specific Wuwa.Ocr.Native C ABI.</summary>
 public sealed partial class NativeOcrClient : IDisposable
 {
@@ -74,6 +76,53 @@ public sealed partial class NativeOcrClient : IDisposable
         {
             Marshal.FreeHGlobal(modelPath);
             Marshal.FreeHGlobal(dictionaryPath);
+        }
+    }
+
+    public unsafe IReadOnlyList<NativeOcrIcon> FindAchievementIcons(
+        byte[] pixels,
+        int width,
+        int height,
+        int stride,
+        string templateDirectory,
+        float threshold = 0.75f,
+        float nmsDistance = 40.0f)
+    {
+        ArgumentNullException.ThrowIfNull(pixels);
+        if (string.IsNullOrWhiteSpace(templateDirectory)) throw new ArgumentException("Template directory is required.", nameof(templateDirectory));
+        var path = Marshal.StringToHGlobalUni(Path.GetFullPath(templateDirectory));
+        try
+        {
+            fixed (byte* pointer = pixels)
+            {
+                var status = NativeMethods.FindAchievementIcons(
+                    _handle,
+                    (IntPtr)pointer,
+                    width,
+                    height,
+                    stride,
+                    path,
+                    threshold,
+                    nmsDistance,
+                    out var result);
+                if (status != NativeOcrStatus.Ok)
+                {
+                    throw new NativeOcrException(status, ReadLastError(_handle.DangerousGetHandle()));
+                }
+
+                var icons = new NativeOcrIcon[result.Count];
+                var size = Marshal.SizeOf<NativeIcon>();
+                for (var index = 0; index < result.Count; index++)
+                {
+                    var native = Marshal.PtrToStructure<NativeIcon>(IntPtr.Add(result.Icons, index * size));
+                    icons[index] = new NativeOcrIcon(native.X, native.Y, native.Label, native.Confidence);
+                }
+                return icons;
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(path);
         }
     }
 
@@ -268,6 +317,22 @@ public sealed partial class NativeOcrClient : IDisposable
         public readonly int Count;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct NativeIcon
+    {
+        public readonly int X;
+        public readonly int Y;
+        public readonly int Label;
+        public readonly float Confidence;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct NativeIconPage
+    {
+        public readonly IntPtr Icons;
+        public readonly int Count;
+    }
+
     private sealed class SafeOcrHandle : SafeHandle
     {
         public SafeOcrHandle() : base(IntPtr.Zero, true) { }
@@ -303,6 +368,19 @@ public sealed partial class NativeOcrClient : IDisposable
         [LibraryImport(Library, EntryPoint = "wuwa_ocr_recognize_bgr")]
         [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
         internal static partial NativeOcrStatus RecognizeBgr(SafeOcrHandle handle, IntPtr pixels, int width, int height, int stride, out NativeResult result);
+
+        [LibraryImport(Library, EntryPoint = "wuwa_ocr_find_achievement_icons")]
+        [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+        internal static partial NativeOcrStatus FindAchievementIcons(
+            SafeOcrHandle handle,
+            IntPtr pixels,
+            int width,
+            int height,
+            int stride,
+            IntPtr templateDirectory,
+            float threshold,
+            float nmsDistance,
+            out NativeIconPage result);
 
         [LibraryImport(Library, EntryPoint = "wuwa_ocr_enable_detection")]
         [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]

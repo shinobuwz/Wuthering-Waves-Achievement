@@ -17,6 +17,7 @@
   <ItemGroup>
     <Content Include="..\..\..\resources\base_achievements.json" Link="resources\base_achievements.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\..\resources\category_config.json" Link="resources\category_config.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\..\resources\ocr_templates\*.png" Link="resources\ocr_templates\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

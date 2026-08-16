@@ -59,6 +59,18 @@ typedef struct WuwaOcrTextPage {
     int32_t count;
 } WuwaOcrTextPage;
 
+typedef struct WuwaOcrIcon {
+    int32_t x;
+    int32_t y;
+    int32_t label;
+    float confidence;
+} WuwaOcrIcon;
+
+typedef struct WuwaOcrIconPage {
+    const WuwaOcrIcon* icons;
+    int32_t count;
+} WuwaOcrIconPage;
+
 WUWA_OCR_API uint32_t WUWA_OCR_CALL wuwa_ocr_abi_version(void);
 WUWA_OCR_API const char* WUWA_OCR_CALL wuwa_ocr_version(void);
 
@@ -96,6 +108,17 @@ WUWA_OCR_API WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_detect_and_recognize_bgr(
     int32_t height,
     int32_t stride,
     WuwaOcrTextPage* result);
+
+WUWA_OCR_API WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_find_achievement_icons(
+    WuwaOcrHandle handle,
+    const uint8_t* pixels,
+    int32_t width,
+    int32_t height,
+    int32_t stride,
+    const wchar_t* template_directory,
+    float threshold,
+    float nms_distance,
+    WuwaOcrIconPage* result);
 
 WUWA_OCR_API WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_last_error(
     WuwaOcrHandle handle,

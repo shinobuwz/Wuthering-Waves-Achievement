@@ -35,6 +35,13 @@ struct TextLineResult {
     float score = 0.0F;
 };
 
+struct IconResult {
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t label = 0;
+    float confidence = 0.0F;
+};
+
 class OcrEngine final {
 public:
     explicit OcrEngine(const WuwaOcrConfig& config);
@@ -59,6 +66,15 @@ public:
         std::int32_t width,
         std::int32_t height,
         std::int32_t stride);
+
+    const std::vector<IconResult>& FindAchievementIcons(
+        const std::uint8_t* pixels,
+        std::int32_t width,
+        std::int32_t height,
+        std::int32_t stride,
+        const std::filesystem::path& template_directory,
+        float threshold,
+        float nms_distance);
 
     const std::string& LastResultText() const noexcept { return last_result_text_; }
     const std::vector<TextLineResult>& LastPage() const noexcept { return last_page_; }
@@ -119,6 +135,7 @@ private:
     float classifier_rotation_threshold_ = 0.9F;
     std::string last_result_text_;
     std::vector<TextLineResult> last_page_;
+    std::vector<IconResult> last_icons_;
     std::string last_error_;
 };
 

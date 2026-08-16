@@ -16,7 +16,12 @@ struct ExportPageStorage {
     std::vector<WuwaOcrTextLine> lines;
 };
 
+struct ExportIconStorage {
+    std::vector<WuwaOcrIcon> icons;
+};
+
 thread_local ExportPageStorage g_page_storage;
+thread_local ExportIconStorage g_icon_storage;
 
 WuwaOcrStatus StoreError(WuwaOcrHandle handle, WuwaOcrStatus status, std::string message) noexcept {
     g_last_error = std::move(message);
@@ -204,6 +209,44 @@ WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_detect_and_recognize_bgr(
         return StoreError(handle, WUWA_OCR_INFERENCE_ERROR, exception.what());
     } catch (...) {
         return StoreError(handle, WUWA_OCR_INTERNAL_ERROR, "Unknown native OCR page inference failure.");
+    }
+}
+
+WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_find_achievement_icons(
+    WuwaOcrHandle handle,
+    const std::uint8_t* pixels,
+    std::int32_t width,
+    std::int32_t height,
+    std::int32_t stride,
+    const wchar_t* template_directory,
+    float threshold,
+    float nms_distance,
+    WuwaOcrIconPage* result) {
+    if (handle == nullptr || result == nullptr || template_directory == nullptr) {
+        return StoreError(handle, WUWA_OCR_INVALID_ARGUMENT, "OCR handle, template directory and icon result are required.");
+    }
+    result->icons = nullptr;
+    result->count = 0;
+    try {
+        const auto& icons = static_cast<wuwa::ocr::OcrEngine*>(handle)->FindAchievementIcons(
+            pixels, width, height, stride, std::filesystem::path(template_directory), threshold, nms_distance);
+        g_icon_storage.icons.clear();
+        g_icon_storage.icons.reserve(icons.size());
+        for (const auto& item : icons) {
+            g_icon_storage.icons.push_back({item.x, item.y, item.label, item.confidence});
+        }
+        result->icons = g_icon_storage.icons.data();
+        result->count = static_cast<std::int32_t>(g_icon_storage.icons.size());
+        g_last_error.clear();
+        return WUWA_OCR_OK;
+    } catch (const std::invalid_argument& exception) {
+        return StoreError(handle, WUWA_OCR_INVALID_ARGUMENT, exception.what());
+    } catch (const wuwa::ocr::IoError& exception) {
+        return StoreError(handle, WUWA_OCR_IO_ERROR, exception.what());
+    } catch (const std::exception& exception) {
+        return StoreError(handle, WUWA_OCR_INFERENCE_ERROR, exception.what());
+    } catch (...) {
+        return StoreError(handle, WUWA_OCR_INTERNAL_ERROR, "Unknown native template matching failure.");
     }
 }
 

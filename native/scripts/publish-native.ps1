@@ -70,7 +70,7 @@ try {
     Copy-Item (Join-Path $repoRoot 'onnxocr/models/ppocrv5/ppocrv5_dict.txt') $modelTarget -Force
     Copy-Item (Join-Path $nativeRoot 'ocr/THIRD_PARTY.md') $packageOcrRoot -Force
 
-    foreach ($required in @('Wuwa.App.exe', 'resources/base_achievements.json', 'resources/category_config.json', 'ocr/Wuwa.Ocr.Native.dll')) {
+    foreach ($required in @('Wuwa.App.exe', 'resources/base_achievements.json', 'resources/category_config.json', 'resources/ocr_templates/icon_1star.png', 'resources/ocr_templates/icon_2star.png', 'resources/ocr_templates/icon_3star.png', 'ocr/Wuwa.Ocr.Native.dll')) {
         if (-not (Test-Path (Join-Path $temporaryOutput $required))) { throw "Published package is missing $required." }
     }
     Get-ChildItem $temporaryOutput -Recurse -File -Filter '*.pdb' | Remove-Item -Force

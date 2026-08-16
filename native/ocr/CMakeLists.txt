@@ -52,7 +52,7 @@ endif()
 if(NOT OpenCV_DIR AND DEFINED ENV{OpenCV_DIR})
     file(TO_CMAKE_PATH "$ENV{OpenCV_DIR}" OpenCV_DIR)
 endif()
-find_package(OpenCV 4.8 REQUIRED COMPONENTS core imgproc)
+find_package(OpenCV 4.8 REQUIRED COMPONENTS core imgproc imgcodecs)
 
 add_library(clipper2 STATIC
     third_party/clipper2/src/clipper.engine.cpp

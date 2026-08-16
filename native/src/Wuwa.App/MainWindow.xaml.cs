@@ -222,10 +222,15 @@ public partial class MainWindow : Window
         }
 
         var modelRoot = ocrAssets.ModelRoot;
-        NativeOcrDiagnostics.Write($"OCR start root={ocrAssets.Root} modelRoot={modelRoot}");
+        var templateDirectory = FindOcrTemplateDirectory();
+        if (templateDirectory is null)
+        {
+            NativeOcrDiagnostics.Write("OCR start failed: icon templates not found");
+            ShowOcrError("找不到 OCR 成就图标模板，请检查 resources/ocr_templates 目录。", "OCR 模板缺失");
+            return;
+        }
+        NativeOcrDiagnostics.Write($"OCR start root={ocrAssets.Root} modelRoot={modelRoot} templates={templateDirectory}");
         var recognitionModel = Path.Combine(modelRoot, "rec", "rec.onnx");
-        var detectionModel = Path.Combine(modelRoot, "det", "det.onnx");
-        var classifierModel = Path.Combine(modelRoot, "cls", "cls.onnx");
         var dictionary = Path.Combine(modelRoot, "ppocrv5_dict.txt");
         var gameProcessNames = new[] { "Client-Win64-Shipping.exe", "Wuthering Waves.exe" };
         if (!IsAnyProcessRunning(gameProcessNames))
@@ -243,9 +248,7 @@ public partial class MainWindow : Window
         try
         {
             using var client = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.5f));
-            client.EnableDetection(detectionModel);
-            client.EnableClassifier(classifierModel);
-            using var reader = new NativeOcrTextReader(client);
+            var reader = new NativeOcrTemplateTextReader(client, templateDirectory);
             var capture = new WindowsGameWindowCapture();
             var initialWindow = await capture.TryFindGameWindowAsync(gameProcessNames, minimumWidth: 800, minimumHeight: 600, cancellationToken: _ocrCancellation.Token);
             if (initialWindow is null)
@@ -583,6 +586,29 @@ public partial class MainWindow : Window
             orderedCandidates.Count(candidate => candidate.ProposedStatus == ProgressStatus.Completed),
             orderedCandidates.Count(candidate => candidate.ProposedStatus == ProgressStatus.Incomplete),
             orderedCandidates.Count(candidate => candidate.ProposedStatus is null));
+    }
+
+    private static string? FindOcrTemplateDirectory()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            var candidates = new[]
+            {
+                Path.Combine(directory.FullName, "resources", "ocr_templates"),
+                Path.Combine(directory.FullName, "ocr_templates")
+            };
+            foreach (var candidate in candidates)
+            {
+                if (File.Exists(Path.Combine(candidate, "icon_1star.png")) &&
+                    File.Exists(Path.Combine(candidate, "icon_2star.png")) &&
+                    File.Exists(Path.Combine(candidate, "icon_3star.png")))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static bool IsAnyProcessRunning(IEnumerable<string> processNames)

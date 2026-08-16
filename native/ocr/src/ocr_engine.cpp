@@ -3,7 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <filesystem>
 #include <limits>
+
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 #include <numeric>
 #include <stdexcept>
 
@@ -19,6 +23,17 @@ std::string StripLineEnding(std::string value) {
         value.pop_back();
     }
     return value;
+}
+
+cv::Mat ReadColorImage(const std::filesystem::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) throw IoError("Unable to open icon template: " + path.string());
+    const auto begin = std::istreambuf_iterator<char>(input);
+    const auto end = std::istreambuf_iterator<char>();
+    const std::vector<std::uint8_t> bytes(begin, end);
+    auto image = cv::imdecode(bytes, cv::IMREAD_COLOR);
+    if (image.empty()) throw IoError("Unable to decode icon template: " + path.string());
+    return image;
 }
 
 } // namespace
@@ -145,6 +160,70 @@ RecognitionResult OcrEngine::RecognizeBgr(
     last_result_text_ = result.text;
     last_error_.clear();
     return result;
+}
+
+const std::vector<IconResult>& OcrEngine::FindAchievementIcons(
+    const std::uint8_t* pixels,
+    std::int32_t width,
+    std::int32_t height,
+    std::int32_t stride,
+    const std::filesystem::path& template_directory,
+    float threshold,
+    float nms_distance) {
+    if (pixels == nullptr || width <= 0 || height <= 0 || stride < width * 3) {
+        throw std::invalid_argument("A valid BGR image is required for template matching.");
+    }
+    if (threshold < 0.0F || threshold > 1.0F || nms_distance < 0.0F) {
+        throw std::invalid_argument("Template matching threshold or NMS distance is invalid.");
+    }
+
+    const cv::Mat image(height, width, CV_8UC3, const_cast<std::uint8_t*>(pixels), stride);
+    struct TemplateDefinition {
+        const char* filename;
+        std::int32_t label;
+    };
+    constexpr TemplateDefinition definitions[] = {
+        {"icon_1star.png", 1},
+        {"icon_2star.png", 2},
+        {"icon_3star.png", 3},
+    };
+
+    struct Candidate {
+        std::int32_t x;
+        std::int32_t y;
+        std::int32_t label;
+        float confidence;
+    };
+    std::vector<Candidate> candidates;
+    for (const auto& definition : definitions) {
+        const auto template_image = ReadColorImage(template_directory / definition.filename);
+        if (template_image.cols > image.cols || template_image.rows > image.rows) continue;
+        cv::Mat matches;
+        cv::matchTemplate(image, template_image, matches, cv::TM_CCOEFF_NORMED);
+        for (int y = 0; y < matches.rows; ++y) {
+            for (int x = 0; x < matches.cols; ++x) {
+                const auto confidence = matches.at<float>(y, x);
+                if (confidence >= threshold) candidates.push_back({x, y, definition.label, confidence});
+            }
+        }
+    }
+
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate& left, const Candidate& right) {
+        return left.confidence > right.confidence;
+    });
+    last_icons_.clear();
+    for (const auto& candidate : candidates) {
+        const auto too_close = std::any_of(last_icons_.begin(), last_icons_.end(), [&](const IconResult& existing) {
+            return std::abs(candidate.x - existing.x) < nms_distance &&
+                std::abs(candidate.y - existing.y) < nms_distance;
+        });
+        if (!too_close) last_icons_.push_back({candidate.x, candidate.y, candidate.label, candidate.confidence});
+    }
+    std::sort(last_icons_.begin(), last_icons_.end(), [](const IconResult& left, const IconResult& right) {
+        return left.y < right.y;
+    });
+    last_error_.clear();
+    return last_icons_;
 }
 
 std::vector<std::string> OcrEngine::LoadDictionary(
