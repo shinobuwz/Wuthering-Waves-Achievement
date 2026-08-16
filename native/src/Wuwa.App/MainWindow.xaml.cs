@@ -307,7 +307,7 @@ public partial class MainWindow : Window
                 seenIds.UnionWith(pageIds);
 
                 if (scan.Window is null || page == 80) break;
-                var scrollAccepted = await capture.ScrollAsync(scan.Window, wheelNotches: -8, cancellationToken: _ocrCancellation.Token);
+                var scrollAccepted = await capture.ScrollAsync(scan.Window, scrollLength: -160, scrollTimes: 15, cancellationToken: _ocrCancellation.Token);
                 NativeOcrDiagnostics.Write($"OCR page={page} scrollAccepted={scrollAccepted}");
                 if (!scrollAccepted)
                 {

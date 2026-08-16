@@ -55,14 +55,16 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
 
     public Task<bool> ScrollAsync(
         GameWindowCandidate window,
-        int wheelNotches = -8,
+        int scrollLength = -160,
+        int scrollTimes = 15,
         CancellationToken cancellationToken = default)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Game-window input currently supports Windows only.");
         if (window.Handle == 0) throw new ArgumentException("A valid window handle is required.", nameof(window));
-        if (wheelNotches == 0) throw new ArgumentOutOfRangeException(nameof(wheelNotches));
-        NativeOcrDiagnostics.Write($"Scroll requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} title={window.Title} notches={wheelNotches}");
-        return Task.Run(() => ScrollWindow(window, wheelNotches, cancellationToken), cancellationToken);
+        if (scrollLength == 0) throw new ArgumentOutOfRangeException(nameof(scrollLength));
+        if (scrollTimes <= 0) throw new ArgumentOutOfRangeException(nameof(scrollTimes));
+        NativeOcrDiagnostics.Write($"Scroll requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} title={window.Title} length={scrollLength} times={scrollTimes}");
+        return Task.Run(() => ScrollWindow(window, scrollLength, scrollTimes, cancellationToken), cancellationToken);
     }
 
     private static GameWindowCandidate FindGameWindow(
@@ -142,7 +144,8 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
 
     private static bool ScrollWindow(
         GameWindowCandidate window,
-        int wheelNotches,
+        int scrollLength,
+        int scrollTimes,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -169,7 +172,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         var clientToScreen = hasClient && NativeMethods.ClientToScreen(window.Handle, ref screenCenter);
         var canUseScreenInput = clientToScreen;
         NativeOcrDiagnostics.Write($"Scroll position clientToScreen={clientToScreen} screenCenter={screenCenter.X},{screenCenter.Y}");
-        if (canUseScreenInput && TrySendInputScroll(screenCenter, wheelNotches, cancellationToken))
+        if (canUseScreenInput && TrySendInputScroll(screenCenter, scrollLength, scrollTimes, cancellationToken))
         {
             NativeOcrDiagnostics.Write("Scroll method=SendInput result=success");
             return true;
@@ -177,20 +180,20 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
 
         var canUseMouseInput = canUseScreenInput && NativeMethods.SetCursorPos(screenCenter.X, screenCenter.Y);
         NativeOcrDiagnostics.Write($"Scroll SendInput failed; SetCursorPos={canUseMouseInput}");
-        var direction = Math.Sign(wheelNotches);
+        var wheelData = checked(scrollLength * NativeMethods.WheelDelta);
         var fallbackSucceeded = true;
-        for (var index = 0; index < Math.Abs(wheelNotches); index++)
+        for (var index = 0; index < scrollTimes; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (canUseMouseInput)
             {
-                NativeMethods.MouseEvent(NativeMethods.MouseEventWheel, 0, 0, direction * NativeMethods.WheelDelta, UIntPtr.Zero);
+                NativeMethods.MouseEvent(NativeMethods.MouseEventWheel, 0, 0, wheelData, UIntPtr.Zero);
             }
             else
             {
-                var wheelData = unchecked((UIntPtr)((uint)(direction * NativeMethods.WheelDelta) << 16));
+                var messageData = unchecked((UIntPtr)((uint)wheelData << 16));
                 var point = new IntPtr((clientCenter.Y << 16) | (clientCenter.X & 0xffff));
-                fallbackSucceeded &= NativeMethods.PostMessage(window.Handle, NativeMethods.MouseWheelMessage, wheelData, point);
+                fallbackSucceeded &= NativeMethods.PostMessage(window.Handle, NativeMethods.MouseWheelMessage, messageData, point);
             }
             Thread.Sleep(12);
         }
@@ -200,7 +203,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         return result;
     }
 
-    private static bool TrySendInputScroll(NativePoint screenCenter, int wheelNotches, CancellationToken cancellationToken)
+    private static bool TrySendInputScroll(NativePoint screenCenter, int scrollLength, int scrollTimes, CancellationToken cancellationToken)
     {
         var virtualLeft = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenLeft);
         var virtualTop = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenTop);
@@ -210,7 +213,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
 
         var absoluteX = Math.Clamp((screenCenter.X - virtualLeft) * 65535 / (virtualWidth - 1), 0, 65535);
         var absoluteY = Math.Clamp((screenCenter.Y - virtualTop) * 65535 / (virtualHeight - 1), 0, 65535);
-        var direction = Math.Sign(wheelNotches);
+        var wheelData = checked(scrollLength * NativeMethods.WheelDelta);
         // Match the Python implementation: move to the center, click once to give
         // the game UI pointer focus, wait for the click to be processed, then wheel.
         var focusInputs = new[]
@@ -242,7 +245,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
 
         Thread.Sleep(250);
         cancellationToken.ThrowIfCancellationRequested();
-        var wheelInputs = new NativeInput[Math.Abs(wheelNotches)];
+        var wheelInputs = new NativeInput[scrollTimes];
         for (var index = 0; index < wheelInputs.Length; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -251,7 +254,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
                 Type = NativeMethods.InputMouse,
                 Mouse = new NativeMouseInput
                 {
-                    MouseData = unchecked((uint)(direction * NativeMethods.WheelDelta)),
+                    MouseData = unchecked((uint)wheelData),
                     Flags = NativeMethods.MouseEventWheel
                 }
             };
