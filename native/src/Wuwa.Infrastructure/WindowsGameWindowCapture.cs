@@ -158,49 +158,124 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         // Prefer SendInput: it moves the real cursor and emits real wheel input,
         // without requiring administrator privileges when both processes have the
         // same integrity level. If Windows blocks it, use the older fallbacks.
+        // Match Python's simulate_scroll exactly.  pyautogui uses the desktop
+        // centre (not the client centre), a real mouse click, and emits each
+        // scroll(-160) separately.  Its global PAUSE=0.1 also leaves about
+        // 100ms between wheel events; batching them in SendInput makes some
+        // games silently discard the whole burst.
         NativeMethods.ShowWindow(window.Handle, NativeMethods.ShowWindowRestore);
-        var broughtToTop = NativeMethods.BringWindowToTop(window.Handle);
         var foreground = NativeMethods.SetForegroundWindow(window.Handle);
-        var hasClient = NativeMethods.GetClientRect(window.Handle, out var client);
-        NativeOcrDiagnostics.Write($"Scroll focus bringToTop={broughtToTop} foreground={foreground} getClient={hasClient} client={(hasClient ? $"{client.Right - client.Left}x{client.Bottom - client.Top}" : "unknown")}");
-        var clientCenter = new NativePoint
+        var virtualLeft = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenLeft);
+        var virtualTop = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenTop);
+        var virtualWidth = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenWidth);
+        var virtualHeight = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenHeight);
+        var screenCenter = new NativePoint
         {
-            X = hasClient ? (client.Right - client.Left) / 2 : window.ClientWidth / 2,
-            Y = hasClient ? (client.Bottom - client.Top) / 2 : window.ClientHeight / 2
+            X = virtualLeft + Math.Max(virtualWidth, 1) / 2,
+            Y = virtualTop + Math.Max(virtualHeight, 1) / 2
         };
-        var screenCenter = clientCenter;
-        var clientToScreen = hasClient && NativeMethods.ClientToScreen(window.Handle, ref screenCenter);
-        var canUseScreenInput = clientToScreen;
-        NativeOcrDiagnostics.Write($"Scroll position clientToScreen={clientToScreen} screenCenter={screenCenter.X},{screenCenter.Y}");
-        if (canUseScreenInput && TrySendInputScroll(screenCenter, scrollLength, scrollTimes, cancellationToken))
+        NativeOcrDiagnostics.Write($"Scroll focus foreground={foreground} desktop={virtualWidth}x{virtualHeight} screenCenter={screenCenter.X},{screenCenter.Y}");
+
+        if (TryMouseEventScroll(screenCenter, scrollLength, scrollTimes, cancellationToken))
+        {
+            NativeOcrDiagnostics.Write("Scroll method=mouse_event result=success");
+            return true;
+        }
+
+        if (TrySendInputScroll(screenCenter, scrollLength, scrollTimes, cancellationToken))
         {
             NativeOcrDiagnostics.Write("Scroll method=SendInput result=success");
             return true;
         }
 
-        var canUseMouseInput = canUseScreenInput && NativeMethods.SetCursorPos(screenCenter.X, screenCenter.Y);
-        NativeOcrDiagnostics.Write($"Scroll SendInput failed; SetCursorPos={canUseMouseInput}");
-        var wheelData = checked(scrollLength * NativeMethods.WheelDelta);
+        var wheelData = scrollLength;
         var fallbackSucceeded = true;
         for (var index = 0; index < scrollTimes; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (canUseMouseInput)
-            {
-                NativeMethods.MouseEvent(NativeMethods.MouseEventWheel, 0, 0, wheelData, UIntPtr.Zero);
-            }
-            else
-            {
-                var messageData = unchecked((UIntPtr)((uint)wheelData << 16));
-                var point = new IntPtr((clientCenter.Y << 16) | (clientCenter.X & 0xffff));
-                fallbackSucceeded &= NativeMethods.PostMessage(window.Handle, NativeMethods.MouseWheelMessage, messageData, point);
-            }
-            Thread.Sleep(12);
+            var messageData = unchecked((UIntPtr)((uint)wheelData << 16));
+            var point = new IntPtr((screenCenter.Y << 16) | (screenCenter.X & 0xffff));
+            fallbackSucceeded &= NativeMethods.PostMessage(window.Handle, NativeMethods.MouseWheelMessage, messageData, point);
+            Thread.Sleep(100);
         }
 
-        var result = canUseMouseInput || fallbackSucceeded;
-        NativeOcrDiagnostics.Write($"Scroll method={(canUseMouseInput ? "mouse_event" : "PostMessage")} result={result} fallbackSucceeded={fallbackSucceeded}");
-        return result;
+        NativeOcrDiagnostics.Write($"Scroll method=PostMessage result={fallbackSucceeded}");
+        return fallbackSucceeded;
+    }
+
+    private static bool TryMouseEventScroll(NativePoint screenCenter, int scrollLength, int scrollTimes, CancellationToken cancellationToken)
+    {
+        var positioned = NativeMethods.SetCursorPos(screenCenter.X, screenCenter.Y);
+        if (positioned)
+        {
+            Thread.Sleep(100);
+            NativeMethods.MouseEvent(NativeMethods.MouseEventLeftDown, 0, 0, 0, UIntPtr.Zero);
+            NativeMethods.MouseEvent(NativeMethods.MouseEventLeftUp, 0, 0, 0, UIntPtr.Zero);
+            Thread.Sleep(300);
+        }
+        else
+        {
+            // Some fullscreen renderers clip/reject SetCursorPos.  Python's
+            // pyautogui still succeeds because its move/click path falls back
+            // to a native input move.  Use the same fallback, then emit the
+            // wheel events through mouse_event (not a batched SendInput array).
+            NativeOcrDiagnostics.Write("Scroll mouse_event SetCursorPos=false; using SendInput focus fallback");
+            if (!TrySendInputFocus(screenCenter, cancellationToken)) return false;
+        }
+
+        // PyAutoGUI passes the configured clicks directly as mouse_event.dwData;
+        // it does not multiply by WHEEL_DELTA.  Keep -160 as -160.
+        var wheelData = scrollLength;
+        for (var index = 0; index < scrollTimes; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            NativeMethods.MouseEvent(NativeMethods.MouseEventWheel, 0, 0, wheelData, UIntPtr.Zero);
+            Thread.Sleep(100);
+        }
+
+        NativeOcrDiagnostics.Write($"Scroll mouse_event positioned={positioned} wheel={wheelData} count={scrollTimes} interval=100ms");
+        return true;
+    }
+
+    private static bool TrySendInputFocus(NativePoint screenCenter, CancellationToken cancellationToken)
+    {
+        var virtualLeft = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenLeft);
+        var virtualTop = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenTop);
+        var virtualWidth = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenWidth);
+        var virtualHeight = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenHeight);
+        if (virtualWidth <= 1 || virtualHeight <= 1) return false;
+
+        var absoluteX = Math.Clamp((screenCenter.X - virtualLeft) * 65535 / (virtualWidth - 1), 0, 65535);
+        var absoluteY = Math.Clamp((screenCenter.Y - virtualTop) * 65535 / (virtualHeight - 1), 0, 65535);
+        var focusInputs = new[]
+        {
+            new NativeInput
+            {
+                Type = NativeMethods.InputMouse,
+                Mouse = new NativeMouseInput
+                {
+                    Dx = absoluteX,
+                    Dy = absoluteY,
+                    Flags = NativeMethods.MouseEventMove | NativeMethods.MouseEventAbsolute | NativeMethods.MouseEventVirtualDesk
+                }
+            },
+            new NativeInput
+            {
+                Type = NativeMethods.InputMouse,
+                Mouse = new NativeMouseInput { Flags = NativeMethods.MouseEventLeftDown }
+            },
+            new NativeInput
+            {
+                Type = NativeMethods.InputMouse,
+                Mouse = new NativeMouseInput { Flags = NativeMethods.MouseEventLeftUp }
+            }
+        };
+        var sent = NativeMethods.SendInput((uint)focusInputs.Length, focusInputs, Marshal.SizeOf<NativeInput>());
+        NativeOcrDiagnostics.Write($"SendInput focus requested={focusInputs.Length} sent={sent} size={Marshal.SizeOf<NativeInput>()} absolute={absoluteX},{absoluteY}");
+        if (sent != (uint)focusInputs.Length) return false;
+        Thread.Sleep(250);
+        cancellationToken.ThrowIfCancellationRequested();
+        return true;
     }
 
     private static bool TrySendInputScroll(NativePoint screenCenter, int scrollLength, int scrollTimes, CancellationToken cancellationToken)
@@ -213,7 +288,8 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
 
         var absoluteX = Math.Clamp((screenCenter.X - virtualLeft) * 65535 / (virtualWidth - 1), 0, 65535);
         var absoluteY = Math.Clamp((screenCenter.Y - virtualTop) * 65535 / (virtualHeight - 1), 0, 65535);
-        var wheelData = checked(scrollLength * NativeMethods.WheelDelta);
+        // Match Python's raw dwData value rather than multiplying by WHEEL_DELTA.
+        var wheelData = scrollLength;
         // Match the Python implementation: move to the center, click once to give
         // the game UI pointer focus, wait for the click to be processed, then wheel.
         var focusInputs = new[]
@@ -431,7 +507,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool ShowWindow(IntPtr handle, int command);
         [LibraryImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool SetCursorPos(int x, int y);
         [LibraryImport("user32.dll")] internal static partial int GetSystemMetrics(int index);
-        [DllImport("user32.dll", SetLastError = true)] internal static extern void MouseEvent(uint flags, uint dx, uint dy, int data, UIntPtr extraInfo);
+        [DllImport("user32.dll", EntryPoint = "mouse_event", SetLastError = true)] internal static extern void MouseEvent(uint flags, uint dx, uint dy, int data, UIntPtr extraInfo);
         [DllImport("user32.dll", SetLastError = true)] internal static extern uint SendInput(uint count, [In] NativeInput[] inputs, int size);
         [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool PostMessage(IntPtr handle, uint message, UIntPtr wParam, IntPtr lParam);
         [LibraryImport("user32.dll", EntryPoint = "GetWindowTextLengthW")] internal static partial int GetWindowTextLength(IntPtr handle);
