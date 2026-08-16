@@ -88,6 +88,14 @@ WUWA_OCR_API WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_recognize_bgr(
     int32_t stride,
     WuwaOcrResult* result);
 
+WUWA_OCR_API WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_recognize_bgr_clahe(
+    WuwaOcrHandle handle,
+    const uint8_t* pixels,
+    int32_t width,
+    int32_t height,
+    int32_t stride,
+    WuwaOcrResult* result);
+
 WUWA_OCR_API WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_enable_detection(
     WuwaOcrHandle handle,
     const wchar_t* detection_model_path,

@@ -122,6 +122,37 @@ WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_recognize_bgr(
     }
 }
 
+WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_recognize_bgr_clahe(
+    WuwaOcrHandle handle,
+    const std::uint8_t* pixels,
+    std::int32_t width,
+    std::int32_t height,
+    std::int32_t stride,
+    WuwaOcrResult* result) {
+    if (handle == nullptr || result == nullptr) {
+        return StoreError(handle, WUWA_OCR_INVALID_ARGUMENT, "OCR handle and result are required.");
+    }
+    result->text_utf8 = nullptr;
+    result->score = 0.0F;
+
+    try {
+        auto* engine = static_cast<wuwa::ocr::OcrEngine*>(handle);
+        const auto recognition = engine->RecognizeBgrClahe(pixels, width, height, stride);
+        result->text_utf8 = engine->LastResultText().c_str();
+        result->score = recognition.score;
+        g_last_error.clear();
+        return WUWA_OCR_OK;
+    } catch (const std::invalid_argument& exception) {
+        return StoreError(handle, WUWA_OCR_INVALID_ARGUMENT, exception.what());
+    } catch (const Ort::Exception& exception) {
+        return StoreError(handle, WUWA_OCR_INFERENCE_ERROR, exception.what());
+    } catch (const std::exception& exception) {
+        return StoreError(handle, WUWA_OCR_INFERENCE_ERROR, exception.what());
+    } catch (...) {
+        return StoreError(handle, WUWA_OCR_INTERNAL_ERROR, "Unknown native CLAHE OCR inference failure.");
+    }
+}
+
 WuwaOcrStatus WUWA_OCR_CALL wuwa_ocr_enable_detection(
     WuwaOcrHandle handle,
     const wchar_t* detection_model_path,

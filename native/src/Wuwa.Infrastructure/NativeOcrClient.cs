@@ -213,6 +213,21 @@ public sealed partial class NativeOcrClient : IDisposable
         }
     }
 
+    public unsafe NativeOcrRecognition RecognizeBgrClahe(ReadOnlySpan<byte> pixels, int width, int height, int stride)
+    {
+        ValidateImage(pixels, width, height, stride);
+        lock (_syncRoot)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            fixed (byte* pointer = pixels)
+            {
+                var status = NativeMethods.RecognizeBgrClahe(_handle, (IntPtr)pointer, width, height, stride, out var result);
+                if (status != NativeOcrStatus.Ok) throw new NativeOcrException(status, ReadLastError(_handle.DangerousGetHandle()));
+                return new NativeOcrRecognition(Marshal.PtrToStringUTF8(result.TextUtf8) ?? string.Empty, result.Score);
+            }
+        }
+    }
+
     public void Dispose()
     {
         lock (_syncRoot)
@@ -381,6 +396,16 @@ public sealed partial class NativeOcrClient : IDisposable
             float threshold,
             float nmsDistance,
             out NativeIconPage result);
+
+        [LibraryImport(Library, EntryPoint = "wuwa_ocr_recognize_bgr_clahe")]
+        [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+        internal static partial NativeOcrStatus RecognizeBgrClahe(
+            SafeOcrHandle handle,
+            IntPtr pixels,
+            int width,
+            int height,
+            int stride,
+            out NativeResult result);
 
         [LibraryImport(Library, EntryPoint = "wuwa_ocr_enable_detection")]
         [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]

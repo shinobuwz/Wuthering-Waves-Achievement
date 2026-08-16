@@ -51,8 +51,9 @@ public sealed class NativeOcrTemplateTextReader : IOcrTextReader
         foreach (var icon in icons)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            AddRecognizedCrop(lines, frame, icon.X, icon.Y, NameDx, NameDy, NameWidth, NameHeight);
-            AddRecognizedCrop(lines, frame, icon.X, icon.Y, StatusDx, StatusDy, StatusWidth, StatusHeight);
+            NativeOcrDiagnostics.Write($"TemplateReader icon x={icon.X} y={icon.Y} label={icon.Label} confidence={icon.Confidence:F3}");
+            AddRecognizedCrop(lines, frame, icon.X, icon.Y, NameDx, NameDy, NameWidth, NameHeight, "name");
+            AddRecognizedCrop(lines, frame, icon.X, icon.Y, StatusDx, StatusDy, StatusWidth, StatusHeight, "status");
         }
 
         NativeOcrDiagnostics.Write($"TemplateReader lines={lines.Count}");
@@ -67,12 +68,14 @@ public sealed class NativeOcrTemplateTextReader : IOcrTextReader
         int offsetX,
         int offsetY,
         int cropWidth,
-        int cropHeight)
+        int cropHeight,
+        string cropKind)
     {
         var crop = Crop(frame, iconX + offsetX, iconY + offsetY, cropWidth, cropHeight, out var x, out var y, out var actualWidth, out var actualHeight);
         if (crop is null) return;
 
-        var result = _client.RecognizeBgr(crop, actualWidth, actualHeight, actualWidth * 3);
+        var result = _client.RecognizeBgrClahe(crop, actualWidth, actualHeight, actualWidth * 3);
+        NativeOcrDiagnostics.Write($"TemplateReader crop={cropKind} x={x} y={y} size={actualWidth}x{actualHeight} text={result.Text} score={result.Score:F3}");
         if (string.IsNullOrWhiteSpace(result.Text)) return;
         lines.Add(new OcrTextLine(
             [

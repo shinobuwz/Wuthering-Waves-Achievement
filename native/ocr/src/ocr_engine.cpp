@@ -162,6 +162,25 @@ RecognitionResult OcrEngine::RecognizeBgr(
     return result;
 }
 
+RecognitionResult OcrEngine::RecognizeBgrClahe(
+    const std::uint8_t* pixels,
+    std::int32_t width,
+    std::int32_t height,
+    std::int32_t stride) {
+    if (pixels == nullptr || width <= 0 || height <= 0 || stride < width * 3) {
+        throw std::invalid_argument("A valid packed BGR image is required.");
+    }
+
+    const cv::Mat image(height, width, CV_8UC3, const_cast<std::uint8_t*>(pixels), stride);
+    cv::Mat gray;
+    cv::Mat enhanced;
+    cv::Mat result;
+    cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+    cv::createCLAHE(2.0, cv::Size(8, 8))->apply(gray, enhanced);
+    cv::cvtColor(enhanced, result, cv::COLOR_GRAY2BGR);
+    return RecognizeBgr(result.data, result.cols, result.rows, static_cast<std::int32_t>(result.step));
+}
+
 const std::vector<IconResult>& OcrEngine::FindAchievementIcons(
     const std::uint8_t* pixels,
     std::int32_t width,

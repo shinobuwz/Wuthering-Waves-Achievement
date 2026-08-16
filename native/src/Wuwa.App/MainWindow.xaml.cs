@@ -247,7 +247,7 @@ public partial class MainWindow : Window
         var previousState = WindowState;
         try
         {
-            using var client = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.5f));
+            using var client = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.0f));
             var reader = new NativeOcrTemplateTextReader(client, templateDirectory);
             var capture = new WindowsGameWindowCapture();
             var initialWindow = await capture.TryFindGameWindowAsync(gameProcessNames, minimumWidth: 800, minimumHeight: 600, cancellationToken: _ocrCancellation.Token);

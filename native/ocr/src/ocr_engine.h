@@ -52,6 +52,12 @@ public:
         std::int32_t height,
         std::int32_t stride);
 
+    RecognitionResult RecognizeBgrClahe(
+        const std::uint8_t* pixels,
+        std::int32_t width,
+        std::int32_t height,
+        std::int32_t stride);
+
     void EnableDetection(
         const std::filesystem::path& model_path,
         float bitmap_threshold,
