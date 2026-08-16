@@ -98,6 +98,31 @@ public static partial class AchievementOcrMatcher
             _ => character
         }).Where(character => !char.IsWhiteSpace(character)).ToArray());
 
+    public static string? MatchKnownText(
+        string text,
+        IReadOnlyCollection<string> knownNames,
+        out double confidence)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(knownNames);
+        confidence = 0;
+        var normalized = NormalizeName(text);
+        if (normalized.Length == 0 || knownNames.Count == 0) return null;
+        var scored = knownNames.Select(name =>
+        {
+            var target = NormalizeName(name);
+            var distance = EditDistance(normalized, target);
+            var length = Math.Max(normalized.Length, target.Length);
+            var score = length == 0 ? 1d : 1d - distance / (double)length;
+            return (Name: name, Distance: distance, Length: length, Confidence: score);
+        }).OrderBy(item => item.Distance).ThenByDescending(item => item.Confidence).ToArray();
+        var best = scored[0];
+        confidence = best.Confidence;
+        return best.Distance <= Math.Max(best.Length * MaximumDistanceRatio, 0)
+            ? best.Name
+            : null;
+    }
+
     private static (AchievementRow? Row, double Confidence, bool IsAmbiguous) Match(
         string text,
         IReadOnlyList<AchievementRow> achievements)

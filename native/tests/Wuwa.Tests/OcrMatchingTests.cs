@@ -31,6 +31,16 @@ public sealed class OcrMatchingTests
     }
 
     [TestMethod]
+    public void MatchKnownText_UsesNameNormalizationAndDistanceThreshold()
+    {
+        var matched = AchievementOcrMatcher.MatchKnownText("猫咪・寻宝]", ["猫咪·寻宝", "昨日今州"], out var confidence);
+
+        Assert.AreEqual("猫咪·寻宝", matched);
+        Assert.IsTrue(confidence > 0.7);
+        Assert.IsNull(AchievementOcrMatcher.MatchKnownText("完全不存在", ["猫咪·寻宝"], out _));
+    }
+
+    [TestMethod]
     public async Task ApplyOcrPreview_RequiresConfirmationAndCommitsOneRevisionWithoutDowngrade()
     {
         var first = Achievement("100", 1, "昨日今州");

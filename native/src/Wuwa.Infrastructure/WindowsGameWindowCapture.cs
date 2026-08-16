@@ -59,12 +59,42 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         int scrollTimes = 15,
         CancellationToken cancellationToken = default)
     {
+        ValidateScrollArguments(window, scrollLength, scrollTimes);
+        NativeOcrDiagnostics.Write($"Scroll requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} desktop-center length={scrollLength} times={scrollTimes}");
+        return Task.Run(() => ScrollWindow(window, 0, 0, scrollLength, scrollTimes, cancellationToken, useDesktopCenter: true), cancellationToken);
+    }
+
+    public Task<bool> ScrollAtAsync(
+        GameWindowCandidate window,
+        int clientX,
+        int clientY,
+        int scrollLength = -160,
+        int scrollTimes = 15,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateScrollArguments(window, scrollLength, scrollTimes);
+        NativeOcrDiagnostics.Write($"Scroll requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} client={clientX},{clientY} length={scrollLength} times={scrollTimes}");
+        return Task.Run(() => ScrollWindow(window, clientX, clientY, scrollLength, scrollTimes, cancellationToken, useDesktopCenter: false), cancellationToken);
+    }
+
+    public Task<bool> ClickAsync(
+        GameWindowCandidate window,
+        int clientX,
+        int clientY,
+        CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Game-window input currently supports Windows only.");
+        if (window.Handle == 0) throw new ArgumentException("A valid window handle is required.", nameof(window));
+        NativeOcrDiagnostics.Write($"Click requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} client={clientX},{clientY}");
+        return Task.Run(() => ClickWindow(window, clientX, clientY, cancellationToken), cancellationToken);
+    }
+
+    private static void ValidateScrollArguments(GameWindowCandidate window, int scrollLength, int scrollTimes)
+    {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Game-window input currently supports Windows only.");
         if (window.Handle == 0) throw new ArgumentException("A valid window handle is required.", nameof(window));
         if (scrollLength == 0) throw new ArgumentOutOfRangeException(nameof(scrollLength));
         if (scrollTimes <= 0) throw new ArgumentOutOfRangeException(nameof(scrollTimes));
-        NativeOcrDiagnostics.Write($"Scroll requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} title={window.Title} length={scrollLength} times={scrollTimes}");
-        return Task.Run(() => ScrollWindow(window, scrollLength, scrollTimes, cancellationToken), cancellationToken);
     }
 
     private static GameWindowCandidate FindGameWindow(
@@ -142,11 +172,56 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         return selected;
     }
 
+    private static bool ClickWindow(
+        GameWindowCandidate window,
+        int clientX,
+        int clientY,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!NativeMethods.IsWindow(window.Handle))
+        {
+            NativeOcrDiagnostics.Write("Click aborted: target window is no longer valid");
+            return false;
+        }
+
+        NativeMethods.ShowWindow(window.Handle, NativeMethods.ShowWindowRestore);
+        var foreground = NativeMethods.SetForegroundWindow(window.Handle);
+        Thread.Sleep(300);
+        var point = new NativePoint
+        {
+            X = Math.Clamp(clientX, 0, Math.Max(0, window.ClientWidth - 1)),
+            Y = Math.Clamp(clientY, 0, Math.Max(0, window.ClientHeight - 1))
+        };
+        if (!NativeMethods.ClientToScreen(window.Handle, ref point))
+        {
+            NativeOcrDiagnostics.Write("Click failed: ClientToScreen returned false");
+            return false;
+        }
+
+        var positioned = NativeMethods.SetCursorPos(point.X, point.Y);
+        if (positioned)
+        {
+            Thread.Sleep(100);
+            NativeMethods.MouseEvent(NativeMethods.MouseEventLeftDown, 0, 0, 0, UIntPtr.Zero);
+            NativeMethods.MouseEvent(NativeMethods.MouseEventLeftUp, 0, 0, 0, UIntPtr.Zero);
+            NativeOcrDiagnostics.Write($"Click method=mouse_event foreground={foreground} positioned=true screen={point.X},{point.Y}");
+            return true;
+        }
+
+        var focused = TrySendInputFocus(point, cancellationToken);
+        NativeOcrDiagnostics.Write($"Click method=SendInput foreground={foreground} positioned=false screen={point.X},{point.Y} result={focused}");
+        return focused;
+    }
+
     private static bool ScrollWindow(
         GameWindowCandidate window,
+        int clientX,
+        int clientY,
         int scrollLength,
         int scrollTimes,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool useDesktopCenter)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!NativeMethods.IsWindow(window.Handle))
@@ -165,24 +240,35 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         // games silently discard the whole burst.
         NativeMethods.ShowWindow(window.Handle, NativeMethods.ShowWindowRestore);
         var foreground = NativeMethods.SetForegroundWindow(window.Handle);
-        var virtualLeft = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenLeft);
-        var virtualTop = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenTop);
-        var virtualWidth = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenWidth);
-        var virtualHeight = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenHeight);
-        var screenCenter = new NativePoint
+        Thread.Sleep(300);
+        var screenPoint = new NativePoint();
+        var clientToScreen = false;
+        if (useDesktopCenter)
         {
-            X = virtualLeft + Math.Max(virtualWidth, 1) / 2,
-            Y = virtualTop + Math.Max(virtualHeight, 1) / 2
-        };
-        NativeOcrDiagnostics.Write($"Scroll focus foreground={foreground} desktop={virtualWidth}x{virtualHeight} screenCenter={screenCenter.X},{screenCenter.Y}");
+            var virtualLeft = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenLeft);
+            var virtualTop = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenTop);
+            var virtualWidth = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenWidth);
+            var virtualHeight = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenHeight);
+            screenPoint.X = virtualLeft + Math.Max(virtualWidth, 1) / 2;
+            screenPoint.Y = virtualTop + Math.Max(virtualHeight, 1) / 2;
+            clientToScreen = virtualWidth > 1 && virtualHeight > 1;
+        }
+        else
+        {
+            screenPoint.X = Math.Clamp(clientX, 0, Math.Max(0, window.ClientWidth - 1));
+            screenPoint.Y = Math.Clamp(clientY, 0, Math.Max(0, window.ClientHeight - 1));
+            clientToScreen = NativeMethods.ClientToScreen(window.Handle, ref screenPoint);
+        }
+        NativeOcrDiagnostics.Write($"Scroll focus foreground={foreground} mode={(useDesktopCenter ? "desktop-center" : "client-point")} screen={screenPoint.X},{screenPoint.Y} positionReady={clientToScreen}");
+        if (!clientToScreen) return false;
 
-        if (TryMouseEventScroll(screenCenter, scrollLength, scrollTimes, cancellationToken))
+        if (TryMouseEventScroll(screenPoint, scrollLength, scrollTimes, cancellationToken))
         {
             NativeOcrDiagnostics.Write("Scroll method=mouse_event result=success");
             return true;
         }
 
-        if (TrySendInputScroll(screenCenter, scrollLength, scrollTimes, cancellationToken))
+        if (TrySendInputScroll(screenPoint, scrollLength, scrollTimes, cancellationToken))
         {
             NativeOcrDiagnostics.Write("Scroll method=SendInput result=success");
             return true;
@@ -194,7 +280,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         {
             cancellationToken.ThrowIfCancellationRequested();
             var messageData = unchecked((UIntPtr)((uint)wheelData << 16));
-            var point = new IntPtr((screenCenter.Y << 16) | (screenCenter.X & 0xffff));
+            var point = new IntPtr((screenPoint.Y << 16) | (screenPoint.X & 0xffff));
             fallbackSucceeded &= NativeMethods.PostMessage(window.Handle, NativeMethods.MouseWheelMessage, messageData, point);
             Thread.Sleep(100);
         }

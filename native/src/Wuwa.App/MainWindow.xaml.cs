@@ -209,6 +209,7 @@ public partial class MainWindow : Window
         {
             _ocrCancellation.Cancel();
             OcrScanButton.IsEnabled = false;
+            OcrFullScanButton.IsEnabled = false;
             HintText.Text = "正在取消 OCR 扫描…";
             return;
         }
@@ -242,6 +243,7 @@ public partial class MainWindow : Window
 
         _ocrCancellation = new CancellationTokenSource();
         OcrScanButton.Content = "取消 OCR";
+        OcrFullScanButton.IsEnabled = false;
         HintText.Text = "正在检测游戏窗口并扫描当前页面…";
         ErrorText.Text = string.Empty;
         var previousState = WindowState;
@@ -369,9 +371,341 @@ public partial class MainWindow : Window
             _ocrCancellation.Dispose();
             _ocrCancellation = null;
             OcrScanButton.Content = "OCR 自动扫描当前分类";
+            OcrFullScanButton.IsEnabled = true;
             OcrScanButton.IsEnabled = true;
         }
     }
+
+    private async void OcrFullScan_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_ocrCancellation is not null)
+        {
+            _ocrCancellation.Cancel();
+            OcrFullScanButton.IsEnabled = false;
+            HintText.Text = "正在取消 OCR 全量扫描…";
+            return;
+        }
+
+        var ocrAssets = FindOcrAssets();
+        var templateDirectory = FindOcrTemplateDirectory();
+        if (ocrAssets is null || templateDirectory is null)
+        {
+            ShowOcrError("原生 OCR 组件或成就图标模板尚未部署。请先构建 native OCR 资源。", "OCR 组件缺失");
+            return;
+        }
+
+        var gameProcessNames = new[] { "Client-Win64-Shipping.exe", "Wuthering Waves.exe" };
+        if (!IsAnyProcessRunning(gameProcessNames))
+        {
+            ShowOcrError("未检测到《鸣潮》游戏进程，请先启动游戏后再进行 OCR 扫描。", "未检测到游戏");
+            return;
+        }
+
+        _ocrCancellation = new CancellationTokenSource();
+        OcrFullScanButton.Content = "取消 OCR";
+        OcrScanButton.IsEnabled = false;
+        HintText.Text = "正在准备 OCR 全量扫描…";
+        ErrorText.Text = string.Empty;
+        var previousState = WindowState;
+        try
+        {
+            var modelRoot = ocrAssets.ModelRoot;
+            var recognitionModel = Path.Combine(modelRoot, "rec", "rec.onnx");
+            var detectionModel = Path.Combine(modelRoot, "det", "det.onnx");
+            var classifierModel = Path.Combine(modelRoot, "cls", "cls.onnx");
+            var dictionary = Path.Combine(modelRoot, "ppocrv5_dict.txt");
+            using var rowClient = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.0f));
+            var rowReader = new NativeOcrTemplateTextReader(rowClient, templateDirectory);
+            var navigationClient = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.0f));
+            navigationClient.EnableDetection(detectionModel);
+            navigationClient.EnableClassifier(classifierModel);
+            using var navigationReader = new NativeOcrTextReader(navigationClient);
+            var capture = new WindowsGameWindowCapture();
+            var navigationService = new SinglePageOcrScanService(capture, navigationReader);
+            var achievementService = new SinglePageOcrScanService(capture, rowReader);
+            var initialWindow = await capture.TryFindGameWindowAsync(gameProcessNames, minimumWidth: 800, minimumHeight: 600, cancellationToken: _ocrCancellation.Token);
+            if (initialWindow is null)
+            {
+                ShowOcrError("找到了游戏进程，但没有找到可见且分辨率至少为 800×600 的游戏窗口。", "找不到游戏窗口");
+                return;
+            }
+
+            var rows = _workspace.Query(new AchievementQuery()).Rows;
+            var primaryNames = new[] { "索拉漫行", "长路留迹", "铿锵刃鸣", "诸音声轨" };
+            var secondaryMap = BuildSecondaryCategoryMap(rows, primaryNames);
+            var mergedCandidates = new Dictionary<AchievementId, OcrAchievementCandidate>();
+            var mergedUnmatched = new Dictionary<string, OcrUnmatchedText>(StringComparer.Ordinal);
+            var currentWindow = initialWindow;
+
+            WindowState = WindowState.Minimized;
+            await Task.Delay(350, _ocrCancellation.Token);
+
+            for (var primaryIndex = 0; primaryIndex < primaryNames.Length; primaryIndex++)
+            {
+                _ocrCancellation.Token.ThrowIfCancellationRequested();
+                var primaryName = primaryNames[primaryIndex];
+                var primaryX = (int)(currentWindow.ClientWidth * 0.0417);
+                var primaryY = (int)(currentWindow.ClientHeight * new[] { 0.1778, 0.2981, 0.4343, 0.5537 }[primaryIndex]);
+                var switched = false;
+                for (var attempt = 0; attempt < 3 && !switched; attempt++)
+                {
+                    HintText.Text = $"正在切换一级分类：{primaryName}（{attempt + 1}/3）";
+                    if (!await capture.ClickAsync(currentWindow, primaryX, primaryY, _ocrCancellation.Token)) break;
+                    await Task.Delay(800, _ocrCancellation.Token);
+                    var verification = await navigationService.ScanAsync(gameProcessNames, 1920, 1080, _ocrCancellation.Token);
+                    if (!verification.IsSuccess)
+                    {
+                        AddScanWarning(mergedUnmatched, primaryName, verification.Error?.Message ?? "一级分类验证失败");
+                        break;
+                    }
+                    currentWindow = verification.Window ?? currentWindow;
+                    switched = IsPrimaryTabRecognized(verification.Lines, primaryName, currentWindow.ClientWidth, currentWindow.ClientHeight);
+                    NativeOcrDiagnostics.Write($"OCR full primary={primaryName} attempt={attempt + 1} recognized={switched}");
+                }
+
+                if (!switched)
+                {
+                    AddScanWarning(mergedUnmatched, primaryName, "一级分类切换或 OCR 验证失败，已跳过");
+                    continue;
+                }
+
+                var secondaryNames = secondaryMap.GetValueOrDefault(primaryName, []).ToArray();
+                var visited = new HashSet<string>(StringComparer.Ordinal);
+                var noNewTabRounds = 0;
+                while (noNewTabRounds < 3 && visited.Count < secondaryNames.Length)
+                {
+                    _ocrCancellation.Token.ThrowIfCancellationRequested();
+                    var tabScan = await navigationService.ScanAsync(gameProcessNames, 1920, 1080, _ocrCancellation.Token);
+                    if (!tabScan.IsSuccess)
+                    {
+                        AddScanWarning(mergedUnmatched, primaryName, tabScan.Error?.Message ?? "二级分类识别失败");
+                        break;
+                    }
+                    currentWindow = tabScan.Window ?? currentWindow;
+                    var visibleTabs = FindVisibleSecondaryTabs(tabScan.Lines, secondaryNames, currentWindow.ClientWidth, currentWindow.ClientHeight);
+                    var foundNew = false;
+                    foreach (var tab in visibleTabs)
+                    {
+                        _ocrCancellation.Token.ThrowIfCancellationRequested();
+                        if (!visited.Add(tab.Name)) continue;
+                        foundNew = true;
+                        var secondaryX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
+                        HintText.Text = $"正在扫描：{primaryName} / {tab.Name}（{visited.Count}/{secondaryNames.Length}）";
+                        if (!await capture.ClickAsync(currentWindow, secondaryX, tab.ClientY, _ocrCancellation.Token))
+                        {
+                            AddScanWarning(mergedUnmatched, $"{primaryName}/{tab.Name}", "二级分类点击失败");
+                            continue;
+                        }
+                        await Task.Delay(500, _ocrCancellation.Token);
+                        await ScanAchievementCategoryAsync(
+                            capture,
+                            achievementService,
+                            gameProcessNames,
+                            rows,
+                            mergedCandidates,
+                            mergedUnmatched,
+                            primaryName,
+                            tab.Name,
+                            _ocrCancellation.Token);
+                    }
+
+                    if (visited.Count >= secondaryNames.Length) break;
+                    noNewTabRounds = foundNew ? 0 : noNewTabRounds + 1;
+                    var scrollX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
+                    var scrollY = (int)(currentWindow.ClientHeight * ((0.1796 + 1.0) / 2));
+                    if (!await capture.ScrollAtAsync(currentWindow, scrollX, scrollY, -160, 16, _ocrCancellation.Token))
+                    {
+                        AddScanWarning(mergedUnmatched, primaryName, "二级分类列表滚动失败");
+                        break;
+                    }
+                    await Task.Delay(800, _ocrCancellation.Token);
+                }
+
+                foreach (var missing in secondaryNames.Where(name => !visited.Contains(name)))
+                {
+                    AddScanWarning(mergedUnmatched, $"{primaryName}/{missing}", "二级分类未访问");
+                }
+            }
+
+            WindowState = previousState;
+            Activate();
+            var mergedPreview = MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows);
+            NativeOcrDiagnostics.Write($"OCR full finished candidates={mergedPreview.Candidates.Count} unmatched={mergedPreview.Unmatched.Count}");
+            if (mergedPreview.Candidates.Count == 0)
+            {
+                ShowOcrError("OCR 全量扫描没有匹配到成就。请确认游戏处于成就页面，并检查 native-ocr.log。", "OCR 扫描结果");
+                return;
+            }
+            var previewWindow = new OcrPreviewWindow(mergedPreview) { Owner = this };
+            if (previewWindow.ShowDialog() != true || previewWindow.AcceptedPreview is null)
+            {
+                HintText.Text = "OCR 全量扫描结果未应用，当前进度保持不变。";
+                return;
+            }
+            var applied = await _workspace.ApplyOcrPreviewAsync(previewWindow.AcceptedPreview, confirm: true, cancellationToken: _ocrCancellation.Token);
+            if (!applied.IsSuccess)
+            {
+                ShowOcrError(applied.Error?.Message ?? "OCR 结果应用失败。", "OCR 结果应用失败");
+                return;
+            }
+            RefreshView();
+            HintText.Text = $"OCR 全量扫描已应用 {applied.Updated} 条 · 防止降级 {applied.PreventedDowngrades} 条 · 未变化 {applied.Unchanged} 条";
+        }
+        catch (OperationCanceledException)
+        {
+            HintText.Text = "OCR 全量扫描已取消。";
+        }
+        catch (GameWindowNotFoundException exception)
+        {
+            NativeOcrDiagnostics.Write($"OCR full exception GameWindowNotFound: {exception}");
+            ShowOcrError($"未找到可捕获的游戏窗口：{exception.Message}", "未找到游戏窗口");
+        }
+        catch (GameWindowCaptureException exception)
+        {
+            NativeOcrDiagnostics.Write($"OCR full exception GameWindowCapture: {exception}");
+            ShowOcrError($"无法捕获游戏画面：{exception.Message}", "游戏画面捕获失败");
+        }
+        catch (Exception exception)
+        {
+            NativeOcrDiagnostics.Write($"OCR full exception: {exception}");
+            ShowOcrError($"OCR 全量扫描失败：{exception.Message}", "OCR 全量扫描失败");
+        }
+        finally
+        {
+            WindowState = previousState;
+            _ocrCancellation?.Dispose();
+            _ocrCancellation = null;
+            OcrFullScanButton.Content = "OCR 全量扫描所有分类";
+            OcrFullScanButton.IsEnabled = true;
+            OcrScanButton.IsEnabled = true;
+        }
+    }
+
+    private async Task<OcrCategoryScanStats> ScanAchievementCategoryAsync(
+        WindowsGameWindowCapture capture,
+        SinglePageOcrScanService service,
+        IReadOnlyCollection<string> gameProcessNames,
+        IReadOnlyList<AchievementRow> rows,
+        IDictionary<AchievementId, OcrAchievementCandidate> mergedCandidates,
+        IDictionary<string, OcrUnmatchedText> mergedUnmatched,
+        string primaryName,
+        string secondaryName,
+        CancellationToken cancellationToken)
+    {
+        var seenIds = new HashSet<AchievementId>();
+        var pages = 0;
+        var lines = 0;
+        for (var page = 1; page <= 80; page++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            HintText.Text = $"正在扫描：{primaryName} / {secondaryName} · 第 {page} 页 · 已识别 {mergedCandidates.Count} 条";
+            var scan = await service.ScanAsync(gameProcessNames, 1920, 1080, cancellationToken);
+            if (!scan.IsSuccess)
+            {
+                AddScanWarning(mergedUnmatched, $"{primaryName}/{secondaryName}", scan.Error?.Message ?? "成就页面扫描失败");
+                return new OcrCategoryScanStats(pages, lines, false);
+            }
+
+            pages = page;
+            lines += scan.Lines.Count;
+            var preview = AchievementOcrMatcher.CreatePreview(scan.Lines, rows);
+            var pageIds = preview.Candidates.Select(candidate => candidate.AchievementId).ToHashSet();
+            if (page > 1 && (pageIds.Count == 0 || pageIds.IsSubsetOf(seenIds))) break;
+            foreach (var candidate in preview.Candidates)
+            {
+                if (!mergedCandidates.TryGetValue(candidate.AchievementId, out var existing) || PreferOcrCandidate(candidate, existing))
+                {
+                    mergedCandidates[candidate.AchievementId] = candidate;
+                }
+            }
+            foreach (var unmatched in preview.Unmatched)
+            {
+                mergedUnmatched.TryAdd($"{primaryName}/{secondaryName}/{unmatched.Text}\u001f{unmatched.Reason}", unmatched);
+            }
+            seenIds.UnionWith(pageIds);
+            if (scan.Window is null || page == 80) break;
+            if (!await capture.ScrollAsync(scan.Window, -160, 15, cancellationToken))
+            {
+                AddScanWarning(mergedUnmatched, $"{primaryName}/{secondaryName}", "成就列表滚动失败");
+                return new OcrCategoryScanStats(pages, lines, false);
+            }
+            await Task.Delay(800, cancellationToken);
+        }
+        return new OcrCategoryScanStats(pages, lines, true);
+    }
+
+    private static Dictionary<string, IReadOnlyList<string>> BuildSecondaryCategoryMap(
+        IReadOnlyList<AchievementRow> rows,
+        IReadOnlyList<string> primaryNames) =>
+        primaryNames.ToDictionary(
+            primary => primary,
+            primary => (IReadOnlyList<string>)rows
+                .Where(row => string.Equals(row.FirstCategory, primary, StringComparison.Ordinal))
+                .OrderBy(row => row.AbsoluteOrder)
+                .Select(row => row.SecondCategory)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray(),
+            StringComparer.Ordinal);
+
+    private static bool IsPrimaryTabRecognized(
+        IReadOnlyList<OcrTextLine> lines,
+        string expectedName,
+        int width,
+        int height)
+    {
+        var x1 = width * 0.053;
+        var y1 = height * 0.047;
+        var x2 = width * 0.114;
+        var y2 = height * 0.083;
+        var text = string.Concat(lines
+            .Where(line => IsLineInRegion(line, x1, y1, x2, y2))
+            .OrderBy(line => LineCenterY(line))
+            .Select(line => line.Text.Trim()));
+        return AchievementOcrMatcher.MatchKnownText(text, [expectedName], out _) is not null;
+    }
+
+    private static IReadOnlyList<NavigationTab> FindVisibleSecondaryTabs(
+        IReadOnlyList<OcrTextLine> lines,
+        IReadOnlyList<string> knownNames,
+        int width,
+        int height)
+    {
+        var x1 = width * 0.1005;
+        var y1 = height * 0.1796;
+        var x2 = width * 0.3479;
+        var y2 = height;
+        var matches = new Dictionary<string, NavigationTab>(StringComparer.Ordinal);
+        foreach (var line in lines)
+        {
+            if (!IsLineInRegion(line, x1, y1, x2, y2)) continue;
+            var matched = AchievementOcrMatcher.MatchKnownText(line.Text, knownNames, out _);
+            if (matched is null) continue;
+            var tab = new NavigationTab(matched, (int)Math.Round(LineCenterY(line)));
+            if (!matches.TryGetValue(matched, out var existing) || tab.ClientY < existing.ClientY)
+            {
+                matches[matched] = tab;
+            }
+        }
+        return matches.Values.OrderBy(tab => tab.ClientY).ToArray();
+    }
+
+    private static bool IsLineInRegion(OcrTextLine line, double x1, double y1, double x2, double y2)
+    {
+        if (line.Points.Count == 0) return false;
+        var centerX = line.Points.Average(point => point.X);
+        var centerY = line.Points.Average(point => point.Y);
+        return centerX >= x1 && centerX <= x2 && centerY >= y1 && centerY <= y2;
+    }
+
+    private static double LineCenterY(OcrTextLine line) =>
+        line.Points.Count == 0 ? double.MaxValue : line.Points.Average(point => point.Y);
+
+    private static void AddScanWarning(IDictionary<string, OcrUnmatchedText> warnings, string scope, string reason) =>
+        warnings.TryAdd($"warning:{scope}:{reason}", new OcrUnmatchedText($"[{scope}]", reason, 0));
+
+    private sealed record NavigationTab(string Name, int ClientY);
+
+    private sealed record OcrCategoryScanStats(int Pages, int Lines, bool IsSuccess);
 
     private async void ImportLegacy_OnClick(object sender, RoutedEventArgs e)
     {
