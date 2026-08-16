@@ -10,9 +10,13 @@
 - [x] **03 — Native scan service**
   - Added process-name game-window discovery, client-area GDI capture to top-down BGR, current-page scan orchestration, cancellation/failure isolation, serialized native inference, and typed scan contracts independent of WPF.
 
-- [ ] **04 — Global navigation and matching**
+- [ ] **04 — Native full-scan navigation and matching** ([task doc](tasks/04-global-navigation-and-matching.md))
   - [x] Port achievement-name normalization, Levenshtein matching threshold, duplicate ambiguity quarantine, date/in-progress status parsing, and same-row status association.
-  - [ ] Port primary/secondary tab discovery, scrolling/navigation safeguards, and full-scan progress reporting.
+  - [ ] Add the separate full-scan command while preserving current-category scanning.
+  - [ ] Port Python primary/secondary tab discovery, verified clicks, bounded tab scrolling, per-category page scanning, progress reporting, cancellation, and no-write-before-preview merge.
+  - **Blocked by:** 03 is complete; no implementation blocker. **Environment prerequisite:** game and tool run at the same integrity level.
+  - **Acceptance:** A manual run visibly changes primary tabs, secondary tabs, and achievement list pages, then produces one multi-category preview without mutating workspace state before confirmation.
+  - **Verification:** Coordinator contract tests with fake navigation, native ABI tab-OCR smoke, and a Windows same-integrity manual full-scan smoke.
 
 - [x] **05 — Preview and transactional merge UI**
   - Added an OCR single-page command with cancel/minimize/restore lifecycle, immutable candidates, selectable preview, unmatched/unknown status feedback, and confirmed one-revision merge through `AchievementWorkspace`, including completed-status downgrade prevention.

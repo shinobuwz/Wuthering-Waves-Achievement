@@ -25,6 +25,11 @@
 事件：Added name normalization/edit-distance matching, ambiguity quarantine, date/in-progress parsing, nearest-line status association, `AchievementWorkspace.ApplyOcrPreviewAsync`, and a selectable WPF preview dialog.
 结论：Scanning produces immutable review candidates; explicit confirmation applies selected statuses in one generation and preserves completed-status downgrade protection.
 
+### Full-scan planning decision | planning
+背景：Python already provides a working `scan_all_tabs()` flow, while Native currently scans only the selected secondary category. Replacing the known current-category command would make input/navigation regressions harder to isolate.
+事件：Confirmed a second Native command for full scanning, preserving the existing current-category command. The plan ports Python's primary/secondary traversal, verification and bounded scrolling, per-category page scan, in-memory merge, progress reporting, cancellation, and final preview while reusing the existing same-integrity input adapter.
+结论：Full scan stays within the existing OCR surface; it adds no top-level application tab, achievement-group field, or legacy-data mutation path. Native full scan remains incomplete until the task-04 coordinator contract tests and a manual same-integrity game smoke demonstrate visible tab/list changes.
+
 ## Verification
 
 - `powershell -ExecutionPolicy Bypass -File native/scripts/build-native-ocr.ps1 -Configuration Release -Clean`: passed; CMake/MSVC x64 build succeeded.
