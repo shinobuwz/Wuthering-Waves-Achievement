@@ -87,6 +87,7 @@
                         <Button x:Name="ThemeButton" AutomationProperties.AutomationId="ThemeButton" Content="浅色主题" Click="Theme_OnClick" />
                         <Button x:Name="OcrScanButton" AutomationProperties.AutomationId="OcrScanButton" Content="OCR 自动扫描当前分类" Click="OcrScan_OnClick" />
                         <Button x:Name="OcrFullScanButton" AutomationProperties.AutomationId="OcrFullScanButton" Content="OCR 全量扫描所有分类" Click="OcrFullScan_OnClick" />
+                        <Button x:Name="OcrNavigationDebugButton" AutomationProperties.AutomationId="OcrNavigationDebugButton" Content="DEBUG：测试分类切换" Click="OcrNavigationDebug_OnClick" Visibility="Collapsed" />
                         <Button AutomationProperties.AutomationId="LegacyImportButton" Content="导入旧版进度" Click="ImportLegacy_OnClick" />
                         <Button AutomationProperties.AutomationId="ExchangeImportButton" Content="导入 JSON/Excel" Click="Import_OnClick" />
                         <Button AutomationProperties.AutomationId="ExchangeExportButton" Content="导出 JSON/Excel" Click="Export_OnClick" />

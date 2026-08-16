@@ -24,6 +24,9 @@ public partial class MainWindow : Window
     {
         _workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
         InitializeComponent();
+#if DEBUG
+        OcrNavigationDebugButton.Visibility = Visibility.Visible;
+#endif
         Loaded += MainWindow_OnLoaded;
     }
 
@@ -371,6 +374,199 @@ public partial class MainWindow : Window
             _ocrCancellation.Dispose();
             _ocrCancellation = null;
             OcrScanButton.Content = "OCR 自动扫描当前分类";
+            OcrFullScanButton.IsEnabled = true;
+            OcrScanButton.IsEnabled = true;
+        }
+    }
+
+    private async void OcrNavigationDebug_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_ocrCancellation is not null)
+        {
+            _ocrCancellation.Cancel();
+            OcrNavigationDebugButton.IsEnabled = false;
+            HintText.Text = "正在取消分类切换测试…";
+            return;
+        }
+
+        var ocrAssets = FindOcrAssets();
+        if (ocrAssets is null)
+        {
+            ShowOcrError("原生 OCR 组件尚未部署。开发环境请先运行 native/scripts/build-native-ocr.ps1。", "OCR 组件缺失");
+            return;
+        }
+
+        var gameProcessNames = new[] { "Client-Win64-Shipping.exe", "Wuthering Waves.exe" };
+        if (!IsAnyProcessRunning(gameProcessNames))
+        {
+            ShowOcrError("未检测到《鸣潮》游戏进程，请先启动游戏后再进行分类切换测试。", "未检测到游戏");
+            return;
+        }
+
+        _ocrCancellation = new CancellationTokenSource();
+        OcrNavigationDebugButton.Content = "取消分类测试";
+        OcrScanButton.IsEnabled = false;
+        OcrFullScanButton.IsEnabled = false;
+        HintText.Text = "正在准备分类切换测试…";
+        ErrorText.Text = string.Empty;
+        var previousState = WindowState;
+        try
+        {
+            var modelRoot = ocrAssets.ModelRoot;
+            var recognitionModel = Path.Combine(modelRoot, "rec", "rec.onnx");
+            var detectionModel = Path.Combine(modelRoot, "det", "det.onnx");
+            var classifierModel = Path.Combine(modelRoot, "cls", "cls.onnx");
+            var dictionary = Path.Combine(modelRoot, "ppocrv5_dict.txt");
+            var navigationClient = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.0f));
+            navigationClient.EnableDetection(detectionModel);
+            navigationClient.EnableClassifier(classifierModel);
+            using var navigationReader = new NativeOcrTextReader(navigationClient);
+            var capture = new WindowsGameWindowCapture();
+            var navigationService = new SinglePageOcrScanService(capture, navigationReader);
+            var initialWindow = await capture.TryFindGameWindowAsync(gameProcessNames, minimumWidth: 800, minimumHeight: 600, cancellationToken: _ocrCancellation.Token);
+            if (initialWindow is null)
+            {
+                ShowOcrError("找到了游戏进程，但没有找到可见且分辨率至少为 800×600 的游戏窗口。", "找不到游戏窗口");
+                return;
+            }
+
+            var rows = _workspace.Query(new AchievementQuery()).Rows;
+            var primaryNames = new[] { "索拉漫行", "长路留迹", "铿锵刃鸣", "诸音声轨" };
+            var primaryYPercentages = new[] { 0.1778, 0.2981, 0.4343, 0.5537 };
+            var secondaryMap = BuildSecondaryCategoryMap(rows, primaryNames);
+            var currentWindow = initialWindow;
+            var primarySucceeded = 0;
+            var primarySkipped = 0;
+            var secondaryClicked = 0;
+            var secondaryFailed = 0;
+            var failures = new List<string>();
+
+            WindowState = WindowState.Minimized;
+            await Task.Delay(350, _ocrCancellation.Token);
+
+            for (var primaryIndex = 0; primaryIndex < primaryNames.Length; primaryIndex++)
+            {
+                _ocrCancellation.Token.ThrowIfCancellationRequested();
+                var primaryName = primaryNames[primaryIndex];
+                var primaryX = (int)(currentWindow.ClientWidth * 0.0417);
+                var primaryY = (int)(currentWindow.ClientHeight * primaryYPercentages[primaryIndex]);
+                var primarySwitched = false;
+                for (var attempt = 1; attempt <= 3 && !primarySwitched; attempt++)
+                {
+                    HintText.Text = $"DEBUG：切换一级分类 {primaryName}（{attempt}/3）";
+                    var clicked = await capture.ClickAsync(currentWindow, primaryX, primaryY, _ocrCancellation.Token);
+                    NativeOcrDiagnostics.Write($"OCR navigation debug primary={primaryName} attempt={attempt} clicked={clicked} client={primaryX},{primaryY}");
+                    if (!clicked) break;
+                    await Task.Delay(800, _ocrCancellation.Token);
+                    var verification = await navigationService.ScanAsync(gameProcessNames, 1920, 1080, _ocrCancellation.Token);
+                    if (!verification.IsSuccess)
+                    {
+                        failures.Add($"一级 {primaryName}：OCR 验证失败（{verification.Error?.Message ?? "未知错误"}）");
+                        break;
+                    }
+                    currentWindow = verification.Window ?? currentWindow;
+                    primarySwitched = IsPrimaryTabRecognized(verification.Lines, primaryName, currentWindow.ClientWidth, currentWindow.ClientHeight);
+                    if (!primarySwitched && attempt == 3)
+                    {
+                        failures.Add($"一级 {primaryName}：切换后 OCR 未识别到目标名称");
+                    }
+                }
+
+                if (!primarySwitched)
+                {
+                    primarySkipped++;
+                    continue;
+                }
+
+                primarySucceeded++;
+                var secondaryNames = secondaryMap.GetValueOrDefault(primaryName, []).ToArray();
+                var visited = new HashSet<string>(StringComparer.Ordinal);
+                var noNewTabRounds = 0;
+                while (noNewTabRounds < 3 && visited.Count < secondaryNames.Length)
+                {
+                    _ocrCancellation.Token.ThrowIfCancellationRequested();
+                    var tabScan = await navigationService.ScanAsync(gameProcessNames, 1920, 1080, _ocrCancellation.Token);
+                    if (!tabScan.IsSuccess)
+                    {
+                        failures.Add($"一级 {primaryName}：二级分类 OCR 失败（{tabScan.Error?.Message ?? "未知错误"}）");
+                        break;
+                    }
+                    currentWindow = tabScan.Window ?? currentWindow;
+                    var visibleTabs = FindVisibleSecondaryTabs(tabScan.Lines, secondaryNames, currentWindow.ClientWidth, currentWindow.ClientHeight);
+                    var foundNew = false;
+                    foreach (var tab in visibleTabs)
+                    {
+                        _ocrCancellation.Token.ThrowIfCancellationRequested();
+                        if (!visited.Add(tab.Name)) continue;
+                        foundNew = true;
+                        var secondaryX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
+                        HintText.Text = $"DEBUG：点击二级分类 {primaryName} / {tab.Name}（{visited.Count}/{secondaryNames.Length}）";
+                        var clicked = await capture.ClickAsync(currentWindow, secondaryX, tab.ClientY, _ocrCancellation.Token);
+                        NativeOcrDiagnostics.Write($"OCR navigation debug secondary={primaryName}/{tab.Name} clicked={clicked} client={secondaryX},{tab.ClientY}");
+                        if (!clicked)
+                        {
+                            secondaryFailed++;
+                            failures.Add($"二级 {primaryName} / {tab.Name}：点击失败");
+                            continue;
+                        }
+                        secondaryClicked++;
+                        await Task.Delay(500, _ocrCancellation.Token);
+                    }
+
+                    if (visited.Count >= secondaryNames.Length) break;
+                    noNewTabRounds = foundNew ? 0 : noNewTabRounds + 1;
+                    var scrollX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
+                    var scrollY = (int)(currentWindow.ClientHeight * ((0.1796 + 1.0) / 2));
+                    HintText.Text = $"DEBUG：滚动二级分类列表 {primaryName}（无新分类 {noNewTabRounds}/3）";
+                    if (!await capture.ScrollAtAsync(currentWindow, scrollX, scrollY, -160, 16, _ocrCancellation.Token))
+                    {
+                        failures.Add($"一级 {primaryName}：二级分类列表滚动失败");
+                        break;
+                    }
+                    await Task.Delay(800, _ocrCancellation.Token);
+                }
+
+                foreach (var missing in secondaryNames.Where(name => !visited.Contains(name)))
+                {
+                    failures.Add($"二级 {primaryName} / {missing}：未找到或未点击");
+                }
+            }
+
+            WindowState = previousState;
+            Activate();
+            var summary = $"一级分类：成功 {primarySucceeded}，跳过 {primarySkipped}\n" +
+                          $"二级分类：点击成功 {secondaryClicked}，点击失败 {secondaryFailed}\n" +
+                          (failures.Count == 0 ? "\n未发现切换错误。" : $"\n问题 {failures.Count} 个：\n{string.Join("\n", failures.Take(12))}");
+            NativeOcrDiagnostics.Write($"OCR navigation debug finished primarySucceeded={primarySucceeded} primarySkipped={primarySkipped} secondaryClicked={secondaryClicked} secondaryFailed={secondaryFailed} failures={failures.Count}");
+            MessageBox.Show(this, summary, "DEBUG 分类切换测试完成", MessageBoxButton.OK, failures.Count == 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+            HintText.Text = $"DEBUG 分类切换测试完成 · 一级成功 {primarySucceeded}/{primaryNames.Length} · 二级点击成功 {secondaryClicked}";
+        }
+        catch (OperationCanceledException)
+        {
+            HintText.Text = "DEBUG 分类切换测试已取消。";
+        }
+        catch (GameWindowNotFoundException exception)
+        {
+            NativeOcrDiagnostics.Write($"OCR navigation debug exception GameWindowNotFound: {exception}");
+            ShowOcrError($"未找到可捕获的游戏窗口：{exception.Message}", "未找到游戏窗口");
+        }
+        catch (GameWindowCaptureException exception)
+        {
+            NativeOcrDiagnostics.Write($"OCR navigation debug exception GameWindowCapture: {exception}");
+            ShowOcrError($"无法捕获游戏画面：{exception.Message}", "游戏画面捕获失败");
+        }
+        catch (Exception exception)
+        {
+            NativeOcrDiagnostics.Write($"OCR navigation debug exception: {exception}");
+            ShowOcrError($"分类切换测试失败：{exception.Message}", "DEBUG 分类切换失败");
+        }
+        finally
+        {
+            WindowState = previousState;
+            _ocrCancellation?.Dispose();
+            _ocrCancellation = null;
+            OcrNavigationDebugButton.Content = "DEBUG：测试分类切换";
+            OcrNavigationDebugButton.IsEnabled = true;
             OcrFullScanButton.IsEnabled = true;
             OcrScanButton.IsEnabled = true;
         }
