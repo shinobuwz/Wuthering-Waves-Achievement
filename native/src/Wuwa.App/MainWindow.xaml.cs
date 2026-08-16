@@ -14,6 +14,10 @@ namespace Wuwa.App;
 
 public partial class MainWindow : Window
 {
+    // The current game client moves several rows per -160 wheel event;
+    // keep the secondary-tab pages overlapping so OCR cannot jump over rows.
+    private const int SecondaryNavigationScrollTimes = 4;
+
     private readonly AchievementWorkspace _workspace;
     private WorkspaceView? _view;
     private bool _initializingFilters;
@@ -526,7 +530,7 @@ public partial class MainWindow : Window
                     var scrollX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
                     var scrollY = (int)(currentWindow.ClientHeight * ((0.1796 + 1.0) / 2));
                     HintText.Text = $"DEBUG：滚动二级分类列表 {primaryName}（无变化 {noChangeRounds}/3）";
-                    if (!await capture.ScrollAtAsync(currentWindow, scrollX, scrollY, -160, 16, _ocrCancellation.Token))
+                    if (!await capture.ScrollAtAsync(currentWindow, scrollX, scrollY, -160, SecondaryNavigationScrollTimes, _ocrCancellation.Token))
                     {
                         failures.Add($"一级 {primaryName}：二级分类列表滚动失败");
                         break;
@@ -726,7 +730,7 @@ public partial class MainWindow : Window
                     var scrollX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
                     var scrollY = (int)(currentWindow.ClientHeight * ((0.1796 + 1.0) / 2));
                     HintText.Text = $"正在滚动二级分类列表：{primaryName}（无变化 {noChangeRounds}/3）";
-                    if (!await capture.ScrollAtAsync(currentWindow, scrollX, scrollY, -160, 16, _ocrCancellation.Token))
+                    if (!await capture.ScrollAtAsync(currentWindow, scrollX, scrollY, -160, SecondaryNavigationScrollTimes, _ocrCancellation.Token))
                     {
                         AddScanWarning(mergedUnmatched, primaryName, "二级分类列表滚动失败");
                         break;
@@ -870,7 +874,10 @@ public partial class MainWindow : Window
         foreach (var line in lines)
         {
             if (!IsLineInRegion(line, x1, y1, x2, y2)) continue;
+            var centerX = line.Points.Average(point => point.X);
+            if (centerX < width * 0.18) continue;
             var text = line.Text.Trim();
+            if (IsCompletionPercentage(text)) continue;
             var normalized = AchievementOcrMatcher.NormalizeName(text);
             if (normalized.Length < 2) continue;
             var tab = new NavigationTab(text, (int)Math.Round(LineCenterY(line)));
@@ -886,6 +893,12 @@ public partial class MainWindow : Window
 
     private static string BuildNavigationSignature(IReadOnlyList<NavigationTab> tabs) =>
         string.Join("\u001f", tabs.Select(tab => AchievementOcrMatcher.NormalizeName(tab.Name)));
+
+    private static bool IsCompletionPercentage(string text)
+    {
+        var value = text.Trim();
+        return value.EndsWith('%') && value[..^1].Trim().All(char.IsDigit);
+    }
 
     private static bool IsLineInRegion(OcrTextLine line, double x1, double y1, double x2, double y2)
     {
