@@ -14,6 +14,10 @@
         <SolidColorBrush x:Key="RowBorderBrush" Color="#304247" />
         <SolidColorBrush x:Key="SelectionBrush" Color="#285A5A" />
         <SolidColorBrush x:Key="ErrorBrush" Color="#FF9A8D" />
+        <SolidColorBrush x:Key="CompletedStatusBrush" Color="#42D8C2" />
+        <SolidColorBrush x:Key="IncompleteStatusBrush" Color="#E8C56C" />
+        <SolidColorBrush x:Key="UnavailableStatusBrush" Color="#FF9A8D" />
+        <SolidColorBrush x:Key="OccupiedStatusBrush" Color="#B9A3FF" />
         <Style x:Key="MetricCardStyle" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
@@ -111,6 +115,22 @@
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
             <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}" />
+        </Style>
+        <Style x:Key="AchievementStatusTextStyle" TargetType="TextBlock" BasedOn="{StaticResource DataGridCellTextStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding StatusText}" Value="已完成">
+                    <Setter Property="Foreground" Value="{DynamicResource CompletedStatusBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding StatusText}" Value="未完成">
+                    <Setter Property="Foreground" Value="{DynamicResource IncompleteStatusBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding StatusText}" Value="暂不可获取">
+                    <Setter Property="Foreground" Value="{DynamicResource UnavailableStatusBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding StatusText}" Value="已占用">
+                    <Setter Property="Foreground" Value="{DynamicResource OccupiedStatusBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
         <Style TargetType="DataGridColumnHeader"><Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" /><Setter Property="Background" Value="{DynamicResource PanelAltBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" /><Setter Property="VerticalContentAlignment" Value="Center" /><Setter Property="HorizontalContentAlignment" Value="Left" /><Setter Property="Padding" Value="0" /><Setter Property="MinHeight" Value="34" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
         <Style TargetType="DataGridCell"><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /><Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="VerticalContentAlignment" Value="Center" /><Setter Property="Padding" Value="8,0" /></Style>

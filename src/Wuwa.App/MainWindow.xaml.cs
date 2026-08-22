@@ -91,7 +91,6 @@ public partial class MainWindow : Window
             SetItems(SecondCategoryCombo, ["全部二级分类", .. snapshot.Rows.Select(row => row.SecondCategory).Distinct().OrderBy(item => item, StringComparer.Ordinal)]);
             SetItems(HiddenCombo, ["全部隐藏状态", "仅显示可见", "仅显示隐藏"]);
             SetItems(ObtainabilityCombo, ["全部可获取状态", "可获取", "暂不可获取"]);
-            SetItems(CompletionCombo, ["全部完成状态", "未完成", "已完成"]);
             SetItems(StatusCombo, ["全部状态", "未完成", "已完成", "暂不可获取", "已占用"]);
             SetItems(GroupCombo, ["全部成就", "仅成就组"]);
             SetItems(SortCombo, ["默认排序", "未完成优先"]);
@@ -139,12 +138,6 @@ public partial class MainWindow : Window
             1 => ObtainabilityFilter.ObtainableOnly,
             2 => ObtainabilityFilter.UnavailableOnly,
             _ => ObtainabilityFilter.All
-        },
-        Completion: CompletionCombo.SelectedIndex switch
-        {
-            1 => CompletionFilter.IncompleteOnly,
-            2 => CompletionFilter.CompletedOnly,
-            _ => CompletionFilter.All
         },
         Status: StatusCombo.SelectedIndex switch
         {
@@ -232,7 +225,6 @@ public partial class MainWindow : Window
         SecondCategoryCombo.SelectedIndex = 0;
         HiddenCombo.SelectedIndex = 0;
         ObtainabilityCombo.SelectedIndex = 0;
-        CompletionCombo.SelectedIndex = 0;
         StatusCombo.SelectedIndex = 0;
         GroupCombo.SelectedIndex = 0;
         SortCombo.SelectedIndex = 0;
@@ -1485,8 +1477,22 @@ public partial class MainWindow : Window
         _isLightTheme = light;
         ThemeButton.Content = light ? "深色主题" : "浅色主题";
         var colors = light
-            ? new Dictionary<string, string> { ["WindowBrush"] = "#F5F8F7", ["PanelBrush"] = "#FFFFFF", ["PanelAltBrush"] = "#E8F0EE", ["BorderBrush"] = "#C3D4D0", ["TextBrush"] = "#19302D", ["MutedTextBrush"] = "#5A7470", ["InputBrush"] = "#FFFFFF", ["RowBorderBrush"] = "#D7E2DF", ["SelectionBrush"] = "#B8E8DF", ["ErrorBrush"] = "#A52714" }
-            : new Dictionary<string, string> { ["WindowBrush"] = "#182124", ["PanelBrush"] = "#222E32", ["PanelAltBrush"] = "#29383D", ["BorderBrush"] = "#3A5055", ["TextBrush"] = "#E8F2F0", ["MutedTextBrush"] = "#9BB3AF", ["InputBrush"] = "#172225", ["RowBorderBrush"] = "#304247", ["SelectionBrush"] = "#285A5A", ["ErrorBrush"] = "#FF9A8D" };
+            ? new Dictionary<string, string>
+            {
+                ["WindowBrush"] = "#F5F8F7", ["PanelBrush"] = "#FFFFFF", ["PanelAltBrush"] = "#E8F0EE",
+                ["BorderBrush"] = "#C3D4D0", ["TextBrush"] = "#19302D", ["MutedTextBrush"] = "#5A7470",
+                ["InputBrush"] = "#FFFFFF", ["RowBorderBrush"] = "#D7E2DF", ["SelectionBrush"] = "#B8E8DF",
+                ["ErrorBrush"] = "#A52714", ["CompletedStatusBrush"] = "#087F6A", ["IncompleteStatusBrush"] = "#9A6B00",
+                ["UnavailableStatusBrush"] = "#B13B2F", ["OccupiedStatusBrush"] = "#6D4BC0"
+            }
+            : new Dictionary<string, string>
+            {
+                ["WindowBrush"] = "#182124", ["PanelBrush"] = "#222E32", ["PanelAltBrush"] = "#29383D",
+                ["BorderBrush"] = "#3A5055", ["TextBrush"] = "#E8F2F0", ["MutedTextBrush"] = "#9BB3AF",
+                ["InputBrush"] = "#172225", ["RowBorderBrush"] = "#304247", ["SelectionBrush"] = "#285A5A",
+                ["ErrorBrush"] = "#FF9A8D", ["CompletedStatusBrush"] = "#42D8C2", ["IncompleteStatusBrush"] = "#E8C56C",
+                ["UnavailableStatusBrush"] = "#FF9A8D", ["OccupiedStatusBrush"] = "#B9A3FF"
+            };
         foreach (var pair in colors)
         {
             Application.Current.Resources[pair.Key] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(pair.Value));
