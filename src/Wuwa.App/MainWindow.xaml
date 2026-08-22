@@ -92,7 +92,7 @@
                         <ComboBox Grid.Column="0" x:Name="ObtainabilityCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
                         <ComboBox Grid.Column="1" x:Name="StatusCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
                         <ComboBox Grid.Column="2" x:Name="GroupCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
-                        <ComboBox Grid.Column="3" x:Name="SortCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
+                        <ComboBox Grid.Column="3" x:Name="SortCombo" MaxDropDownHeight="360" SelectionChanged="Sort_OnChanged" />
                     </Grid>
                 </Grid>
 
@@ -163,6 +163,7 @@
                       Background="{DynamicResource PanelBrush}"
                       BorderThickness="0"
                       MouseDoubleClick="AchievementGrid_OnMouseDoubleClick"
+                      Sorting="AchievementGrid_OnSorting"
                       PreviewMouseRightButtonUp="AchievementGrid_OnPreviewMouseRightButtonUp">
                 <DataGrid.RowStyle>
                     <Style TargetType="DataGridRow">
@@ -178,16 +179,16 @@
                     </Style>
                 </DataGrid.RowStyle>
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" Width="95" ElementStyle="{StaticResource AchievementStatusTextStyle}" />
-                    <DataGridTextColumn Header="编号" Binding="{Binding LegacyCode}" Width="105" ElementStyle="{StaticResource DataGridCellTextStyle}" />
-                    <DataGridTextColumn Header="版本" Binding="{Binding Version}" Width="65" ElementStyle="{StaticResource DataGridCellTextStyle}" />
-                    <DataGridTextColumn Header="一级分类" Binding="{Binding FirstCategory}" Width="125" ElementStyle="{StaticResource DataGridCellTextStyle}" />
-                    <DataGridTextColumn Header="二级分类" Binding="{Binding SecondCategory}" Width="180" ElementStyle="{StaticResource DataGridCellTextStyle}" />
-                    <DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="190" ElementStyle="{StaticResource DataGridCellTextStyle}" />
-                    <DataGridTextColumn Header="描述" Binding="{Binding Description}" Width="2.2*" ElementStyle="{StaticResource DataGridCellTextStyle}" />
-                    <DataGridTextColumn Header="奖励" Binding="{Binding Reward}" Width="100" ElementStyle="{StaticResource DataGridCellTextStyle}" />
-                    <DataGridTextColumn Header="隐藏" Binding="{Binding HiddenText}" Width="60" ElementStyle="{StaticResource DataGridCellTextStyle}" />
-                    <DataGridTextColumn Header="成就组" Binding="{Binding GroupText}" Width="75" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                    <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" SortMemberPath="Status" Width="95" ElementStyle="{StaticResource AchievementStatusTextStyle}" />
+                    <DataGridTextColumn Header="编号" Binding="{Binding LegacyCode}" SortMemberPath="LegacyCode" Width="105" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                    <DataGridTextColumn Header="版本" Binding="{Binding Version}" SortMemberPath="Version" Width="65" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                    <DataGridTextColumn Header="一级分类" Binding="{Binding FirstCategory}" SortMemberPath="FirstCategory" Width="125" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                    <DataGridTextColumn Header="二级分类" Binding="{Binding SecondCategory}" SortMemberPath="SecondCategory" Width="180" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                    <DataGridTextColumn Header="名称" Binding="{Binding Name}" SortMemberPath="Name" Width="190" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                    <DataGridTextColumn Header="描述" Binding="{Binding Description}" SortMemberPath="Description" Width="2.2*" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                    <DataGridTextColumn Header="奖励" Binding="{Binding Reward}" SortMemberPath="Reward" Width="100" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                    <DataGridTextColumn Header="隐藏" Binding="{Binding HiddenText}" SortMemberPath="IsHidden" Width="60" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                    <DataGridTextColumn Header="成就组" Binding="{Binding GroupText}" SortMemberPath="GroupId" Width="75" ElementStyle="{StaticResource DataGridCellTextStyle}" />
                 </DataGrid.Columns>
             </DataGrid>
         </Border>

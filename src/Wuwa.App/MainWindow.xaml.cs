@@ -1,5 +1,7 @@
+using System.Collections;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Interop;
 using Microsoft.Win32;
 using System.Windows.Input;
@@ -55,6 +57,8 @@ public partial class MainWindow : Window
     private DispatcherTimer? _mapTrackingTimer;
     private bool _mapToggleInProgress;
     private bool _isLightTheme;
+    private string? _gridSortMemberPath;
+    private ListSortDirection? _gridSortDirection;
 
     public MainWindow(AchievementWorkspace workspace)
     {
@@ -121,7 +125,8 @@ public partial class MainWindow : Window
         }
 
         _view = _workspace.Query(BuildQuery());
-        AchievementGrid.ItemsSource = _view.Rows;
+        AchievementGrid.ItemsSource = new ListCollectionView((IList)_view.Rows);
+        RestoreGridSort();
         RevisionText.Text = _view.Revision.ToString();
         TotalText.Text = _view.Statistics.Total.ToString();
         CompletedText.Text = _view.Statistics.Completed.ToString();
@@ -227,6 +232,58 @@ public partial class MainWindow : Window
         {
             RefreshView();
         }
+    }
+
+    private void Sort_OnChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_initializingFilters || !IsLoaded)
+        {
+            return;
+        }
+
+        ClearGridSort();
+        RefreshView();
+    }
+
+    private void AchievementGrid_OnSorting(object sender, DataGridSortingEventArgs e)
+    {
+        _gridSortMemberPath = e.Column.SortMemberPath;
+        _gridSortDirection = e.Column.SortDirection == ListSortDirection.Ascending
+            ? ListSortDirection.Descending
+            : ListSortDirection.Ascending;
+    }
+
+    private void RestoreGridSort()
+    {
+        foreach (var column in AchievementGrid.Columns)
+        {
+            column.SortDirection = null;
+        }
+
+        if (AchievementGrid.ItemsSource is not ICollectionView view)
+        {
+            return;
+        }
+        view.SortDescriptions.Clear();
+        if (string.IsNullOrWhiteSpace(_gridSortMemberPath) || _gridSortDirection is not { } direction)
+        {
+            return;
+        }
+
+        view.SortDescriptions.Add(new SortDescription(_gridSortMemberPath, direction));
+        var sortedColumn = AchievementGrid.Columns.FirstOrDefault(column =>
+            string.Equals(column.SortMemberPath, _gridSortMemberPath, StringComparison.Ordinal));
+        if (sortedColumn is not null)
+        {
+            sortedColumn.SortDirection = direction;
+        }
+    }
+
+    private void ClearGridSort()
+    {
+        _gridSortMemberPath = null;
+        _gridSortDirection = null;
+        RestoreGridSort();
     }
 
     private void ClearFilters_OnClick(object sender, RoutedEventArgs e)
