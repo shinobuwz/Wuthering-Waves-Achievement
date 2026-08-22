@@ -96,6 +96,7 @@ public partial class MainWindow : Window
         UnavailableText.Text = _view.Statistics.Unavailable.ToString();
         HiddenText.Text = _view.Statistics.Hidden.ToString();
         RateText.Text = $"{_view.Statistics.CompletionRatePercent:0.0}%";
+        FilterSummaryText.Text = $"显示 {_view.Rows.Count} 条";
         HintText.Text = $"显示 {_view.Rows.Count} 条 · 双击切换完成状态 · 右键设置状态";
         ErrorText.Text = string.Empty;
     }
@@ -185,7 +186,13 @@ public partial class MainWindow : Window
         RefreshView();
     }
 
-    private void SearchBox_OnTextChanged(object sender, TextChangedEventArgs e) => RefreshView();
+    private void SearchBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        RefreshView();
+    }
 
     private void Filter_OnChanged(object sender, SelectionChangedEventArgs e)
     {
