@@ -12,12 +12,28 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <NativeOcrBuildDirectory>$(MSBuildProjectDirectory)\..\..\ocr\build\$(Configuration)</NativeOcrBuildDirectory>
+    <NativeOcrModelDirectory>$(MSBuildProjectDirectory)\..\..\..\onnxocr\models\ppocrv5</NativeOcrModelDirectory>
   </PropertyGroup>
 
   <ItemGroup>
     <Content Include="..\..\..\resources\base_achievements.json" Link="resources\base_achievements.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\..\resources\category_config.json" Link="resources\category_config.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\..\resources\ocr_templates\*.png" Link="resources\ocr_templates\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- A native OCR build is produced by build-native-ocr.ps1. When present, copy the
+       engine, runtime dependencies, and immutable models into both dev and publish output. -->
+  <ItemGroup Condition="Exists('$(NativeOcrBuildDirectory)\Wuwa.Ocr.Native.dll')">
+    <Content Include="$(NativeOcrBuildDirectory)\Wuwa.Ocr.Native.dll" Link="ocr\Wuwa.Ocr.Native.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NativeOcrBuildDirectory)\onnxruntime.dll" Link="ocr\onnxruntime.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NativeOcrBuildDirectory)\onnxruntime_providers_shared.dll" Link="ocr\onnxruntime_providers_shared.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NativeOcrBuildDirectory)\opencv_world4120.dll" Link="ocr\opencv_world4120.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NativeOcrModelDirectory)\det\det.onnx" Link="ocr\models\ppocrv5\det\det.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NativeOcrModelDirectory)\rec\rec.onnx" Link="ocr\models\ppocrv5\rec\rec.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NativeOcrModelDirectory)\cls\cls.onnx" Link="ocr\models\ppocrv5\cls\cls.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NativeOcrModelDirectory)\ppocrv5_dict.txt" Link="ocr\models\ppocrv5\ppocrv5_dict.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\ocr\THIRD_PARTY.md" Link="ocr\THIRD_PARTY.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

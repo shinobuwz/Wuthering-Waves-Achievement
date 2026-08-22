@@ -31,6 +31,20 @@ dotnet test native/WutheringWavesAchievement.sln -c Release
 dotnet build native/WutheringWavesAchievement.sln -c Release
 ```
 
+Native OCR 需要 C++ DLL、ONNX Runtime/OpenCV 依赖和 PP-OCRv5 模型。正式使用请运行发布脚本；脚本会自动构建并将 OCR 组件、模型和模板放入同一个发布包，用户不需要再手动执行 OCR 构建脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File native/scripts/publish-native.ps1 -Configuration Release
+```
+
+然后启动：
+
+```text
+native/publish/win-x64/Wuwa.App.exe
+```
+
+源码开发环境如果已经运行过 `build-native-ocr.ps1`，后续 `Wuwa.App` 的 Release 输出也会自动复制已构建的 OCR 组件到 `ocr/` 子目录；普通 `dotnet build` 不会自动下载 C++ 依赖或编译 OCR，以避免构建过程产生隐式网络和 Visual Studio 依赖。
+
 ## 发布
 
 ```powershell

@@ -439,7 +439,7 @@ public partial class MainWindow : Window
         if (ocrAssets is null)
         {
             NativeOcrDiagnostics.Write("OCR start failed: assets not found");
-            ShowOcrError("原生 OCR 组件尚未部署。开发环境请先运行 native/scripts/build-native-ocr.ps1；发布环境请安装包含 ocr/ 资产的发布包。", "OCR 组件缺失");
+            ShowOcrError("当前程序目录未找到内置 OCR 组件。请使用包含 ocr/ 目录的 Native 发布包运行；如果是源码开发环境，请先构建 Native OCR 资源后重新生成 Release 输出。", "OCR 组件缺失");
             return;
         }
 
@@ -832,7 +832,7 @@ public partial class MainWindow : Window
         var templateDirectory = FindOcrTemplateDirectory();
         if (ocrAssets is null || templateDirectory is null)
         {
-            ShowOcrError("原生 OCR 组件或成就图标模板尚未部署。请先构建 native OCR 资源。", "OCR 组件缺失");
+            ShowOcrError("当前程序目录未找到内置 OCR 组件或成就图标模板。请使用包含 ocr/ 和 resources/ocr_templates/ 的 Native 发布包运行。", "OCR 组件缺失");
             return;
         }
 
