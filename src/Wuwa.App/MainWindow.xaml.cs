@@ -111,11 +111,7 @@ public partial class MainWindow : Window
             SetItems(VersionCombo, ["全部版本", .. snapshot.Rows.Select(row => row.Version).Distinct().OrderBy(VersionSortKey)]);
             SetItems(FirstCategoryCombo, ["全部一级分类", .. snapshot.Categories.FirstCategories.OrderBy(pair => pair.Value).Select(pair => pair.Key)]);
             SetItems(SecondCategoryCombo, ["全部二级分类", .. snapshot.Rows.Select(row => row.SecondCategory).Distinct().OrderBy(item => item, StringComparer.Ordinal)]);
-            SetItems(HiddenCombo, ["全部隐藏状态", "仅显示可见", "仅显示隐藏"]);
-            SetItems(ObtainabilityCombo, ["全部可获取状态", "可获取", "暂不可获取"]);
             SetItems(StatusCombo, ["全部状态", "未完成", "已完成", "暂不可获取", "已占用"]);
-            SetItems(GroupCombo, ["全部成就", "仅成就组"]);
-            SetItems(SortCombo, ["默认排序", "未完成优先"]);
         }
         finally
         {
@@ -151,18 +147,6 @@ public partial class MainWindow : Window
         Version: SelectedValue(VersionCombo, "全部版本"),
         FirstCategory: SelectedValue(FirstCategoryCombo, "全部一级分类"),
         SecondCategory: SelectedValue(SecondCategoryCombo, "全部二级分类"),
-        Hidden: HiddenCombo.SelectedIndex switch
-        {
-            1 => HiddenFilter.VisibleOnly,
-            2 => HiddenFilter.HiddenOnly,
-            _ => HiddenFilter.All
-        },
-        Obtainability: ObtainabilityCombo.SelectedIndex switch
-        {
-            1 => ObtainabilityFilter.ObtainableOnly,
-            2 => ObtainabilityFilter.UnavailableOnly,
-            _ => ObtainabilityFilter.All
-        },
         Status: StatusCombo.SelectedIndex switch
         {
             1 => ProgressStatus.Incomplete,
@@ -170,9 +154,7 @@ public partial class MainWindow : Window
             3 => ProgressStatus.Unavailable,
             4 => ProgressStatus.Occupied,
             _ => null
-        },
-        GroupsOnly: GroupCombo.SelectedIndex == 1,
-        Sort: SortCombo.SelectedIndex == 1 ? AchievementSort.IncompleteFirst : AchievementSort.Default);
+        });
 
     private async void TrackSelected_OnClick(object sender, RoutedEventArgs e)
     {
@@ -352,11 +334,7 @@ public partial class MainWindow : Window
         VersionCombo.SelectedIndex = 0;
         FirstCategoryCombo.SelectedIndex = 0;
         SecondCategoryCombo.SelectedIndex = 0;
-        HiddenCombo.SelectedIndex = 0;
-        ObtainabilityCombo.SelectedIndex = 0;
         StatusCombo.SelectedIndex = 0;
-        GroupCombo.SelectedIndex = 0;
-        SortCombo.SelectedIndex = 0;
         RefreshView();
     }
 

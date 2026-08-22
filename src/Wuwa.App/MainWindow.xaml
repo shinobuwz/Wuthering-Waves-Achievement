@@ -56,44 +56,21 @@
                 </DockPanel>
 
                 <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <Grid Grid.Row="0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="2.1*" />
-                            <ColumnDefinition Width="0.95*" />
-                            <ColumnDefinition Width="1.2*" />
-                            <ColumnDefinition Width="1.55*" />
-                            <ColumnDefinition Width="1*" />
-                        </Grid.ColumnDefinitions>
-                        <Grid Grid.Column="0" Margin="0,0,8,0">
-                            <TextBox x:Name="SearchBox" ToolTip="搜索名称或描述" TextChanged="SearchBox_OnTextChanged" Margin="0" />
-                            <TextBlock x:Name="SearchPlaceholder" Text="搜索成就名称或描述" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" Margin="11,0,8,0" IsHitTestVisible="False" />
-                        </Grid>
-                        <ComboBox Grid.Column="1" x:Name="VersionCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
-                        <ComboBox Grid.Column="2" x:Name="FirstCategoryCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
-                        <ComboBox Grid.Column="3" x:Name="SecondCategoryCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
-                        <ComboBox Grid.Column="4" x:Name="HiddenCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" Margin="0" />
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2.1*" />
+                        <ColumnDefinition Width="0.95*" />
+                        <ColumnDefinition Width="1.2*" />
+                        <ColumnDefinition Width="1.55*" />
+                        <ColumnDefinition Width="1.15*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid Grid.Column="0" Margin="0,0,8,0">
+                        <TextBox x:Name="SearchBox" ToolTip="搜索名称或描述" TextChanged="SearchBox_OnTextChanged" Margin="0" />
+                        <TextBlock x:Name="SearchPlaceholder" Text="搜索成就名称或描述" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" Margin="11,0,8,0" IsHitTestVisible="False" />
                     </Grid>
-
-                    <TextBlock Grid.Row="1" Text="状态与排序" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,12,0,6" />
-
-                    <Grid Grid.Row="2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="1.15*" />
-                            <ColumnDefinition Width="1.15*" />
-                            <ColumnDefinition Width="1.0*" />
-                            <ColumnDefinition Width="1.1*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <ComboBox Grid.Column="0" x:Name="ObtainabilityCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
-                        <ComboBox Grid.Column="1" x:Name="StatusCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
-                        <ComboBox Grid.Column="2" x:Name="GroupCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
-                        <ComboBox Grid.Column="3" x:Name="SortCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
-                    </Grid>
+                    <ComboBox Grid.Column="1" x:Name="VersionCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
+                    <ComboBox Grid.Column="2" x:Name="FirstCategoryCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
+                    <ComboBox Grid.Column="3" x:Name="SecondCategoryCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
+                    <ComboBox Grid.Column="4" x:Name="StatusCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" Margin="0" />
                 </Grid>
 
                 <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,16,0,12" />
