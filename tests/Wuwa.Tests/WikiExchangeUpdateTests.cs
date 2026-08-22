@@ -130,6 +130,41 @@ public sealed class WikiExchangeUpdateTests
     }
 
     [TestMethod]
+    public async Task SyncWiki_UpdatesCategoryLabelsAndRetainsUiCompatibilityAliases()
+    {
+        var local = new Achievement(AchievementId.FromLegacyCode("401"), "401", 1, "1.0", "长路留迹", "旧标签", "名称", "描述", "星声*5", false);
+        var categories = new CategoryCatalog(
+            new Dictionary<string, int> { ["长路留迹"] = 1 },
+            new Dictionary<string, IReadOnlyDictionary<string, int>>
+            {
+                ["长路留迹"] = new Dictionary<string, int>
+                {
+                    ["漂泊之旅"] = 10,
+                    ["漂泊之旅·一"] = 10,
+                    ["旧标签"] = 20
+                }
+            });
+        var store = new InMemoryAppDataStore();
+        var workspace = new AchievementWorkspace(store, new FixedAchievementLibrarySource(new AchievementLibrary([local], categories)));
+        await workspace.OpenAsync();
+
+        var remote = local with
+        {
+            FirstCategory = "长路留迹",
+            SecondCategory = "漂泊之旅",
+            WikiSourceRef = "new-ref"
+        };
+        var result = await workspace.SyncWikiAsync(new FixedWikiSource(remote), new WikiSyncOptions(MinimumPlausibleRowCount: 1));
+
+        Assert.IsTrue(result.IsSuccess, result.Error?.Message);
+        Assert.AreEqual("漂泊之旅", result.Snapshot.Rows.Single().SecondCategory);
+        var labels = result.Snapshot.Categories.SecondCategories["长路留迹"];
+        Assert.IsTrue(labels.ContainsKey("漂泊之旅"));
+        Assert.IsTrue(labels.ContainsKey("漂泊之旅·一"));
+        Assert.IsFalse(labels.ContainsKey("旧标签"));
+    }
+
+    [TestMethod]
     public async Task JsonExchange_ReadsEnglishAliasesAndRejectsConflicts()
     {
         await WithRoot(async root =>

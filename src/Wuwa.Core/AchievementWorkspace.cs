@@ -50,13 +50,20 @@ public sealed partial class AchievementWorkspace
                 else
                 {
                     var mergedAchievements = MergeShippedMetadata(state.Achievements, library.Achievements, out var metadataChanged);
-                    if (metadataChanged)
+                    var statuses = state.Statuses.ToDictionary(pair => pair.Key, pair => pair.Value);
+                    foreach (var achievement in mergedAchievements)
+                    {
+                        if (statuses.TryAdd(achievement.Id, ProgressStatus.Incomplete)) metadataChanged = true;
+                    }
+
+                    var categoriesChanged = !CategoryCatalogEquivalent(state.Categories, library.Categories);
+                    if (metadataChanged || categoriesChanged || statuses.Count != state.Statuses.Count)
                     {
                         state = new WorkspaceState(
                             state.Revision + 1,
                             mergedAchievements,
-                            state.Statuses,
-                            state.Categories,
+                            statuses,
+                            library.Categories,
                             state.Metadata);
                         await _store.SaveAsync(state, cancellationToken).ConfigureAwait(false);
                     }
@@ -206,6 +213,11 @@ public sealed partial class AchievementWorkspace
         {
             _gate.Release();
         }
+    }
+
+    public WorkspaceSnapshot GetSnapshot()
+    {
+        return _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state);
     }
 
     public WorkspaceView Query(AchievementQuery? query = null)
@@ -864,27 +876,83 @@ public sealed partial class AchievementWorkspace
     {
         var shippedById = shippedAchievements.ToDictionary(item => item.Id);
         var shippedByLegacyCode = shippedAchievements.ToDictionary(item => item.LegacyCode, StringComparer.Ordinal);
+        var seenIds = new HashSet<AchievementId>();
+        var seenCodes = new HashSet<string>(StringComparer.Ordinal);
         changed = false;
-        var merged = new List<Achievement>(stateAchievements.Count);
+        var merged = new List<Achievement>(Math.Max(stateAchievements.Count, shippedAchievements.Count));
 
         foreach (var existing in stateAchievements)
         {
             var shipped = shippedById.GetValueOrDefault(existing.Id) ??
                 shippedByLegacyCode.GetValueOrDefault(existing.LegacyCode);
-            if (shipped is not null &&
-                string.IsNullOrWhiteSpace(existing.GroupId) &&
-                !string.IsNullOrWhiteSpace(shipped.GroupId))
+            if (shipped is not null)
             {
-                merged.Add(existing with { GroupId = shipped.GroupId });
-                changed = true;
+                var replacement = shipped with
+                {
+                    Id = existing.Id,
+                    LegacyCode = existing.LegacyCode,
+                    IsTombstone = false
+                };
+                merged.Add(replacement);
+                if (!AchievementEquivalent(existing, replacement)) changed = true;
             }
             else
             {
                 merged.Add(existing);
             }
+
+            seenIds.Add(existing.Id);
+            seenCodes.Add(existing.LegacyCode);
+        }
+
+        foreach (var shipped in shippedAchievements)
+        {
+            if (seenIds.Contains(shipped.Id) || seenCodes.Contains(shipped.LegacyCode)) continue;
+            merged.Add(shipped);
+            seenIds.Add(shipped.Id);
+            seenCodes.Add(shipped.LegacyCode);
+            changed = true;
         }
 
         return merged;
+    }
+
+    private static bool AchievementEquivalent(Achievement left, Achievement right) =>
+        left.Id == right.Id &&
+        left.LegacyCode == right.LegacyCode &&
+        left.AbsoluteOrder == right.AbsoluteOrder &&
+        left.Version == right.Version &&
+        left.FirstCategory == right.FirstCategory &&
+        left.SecondCategory == right.SecondCategory &&
+        left.Name == right.Name &&
+        left.Description == right.Description &&
+        left.Reward == right.Reward &&
+        left.IsHidden == right.IsHidden &&
+        left.GroupId == right.GroupId &&
+        left.WikiSourceRef == right.WikiSourceRef &&
+        left.IsTombstone == right.IsTombstone &&
+        left.EffectiveMutualExclusionCodes.SequenceEqual(right.EffectiveMutualExclusionCodes, StringComparer.Ordinal);
+
+    private static bool CategoryCatalogEquivalent(CategoryCatalog left, CategoryCatalog right)
+    {
+        if (left.FirstCategories.Count != right.FirstCategories.Count ||
+            left.FirstCategories.Any(pair => !right.FirstCategories.TryGetValue(pair.Key, out var order) || order != pair.Value))
+        {
+            return false;
+        }
+
+        if (left.SecondCategories.Count != right.SecondCategories.Count) return false;
+        foreach (var pair in left.SecondCategories)
+        {
+            if (!right.SecondCategories.TryGetValue(pair.Key, out var rightSecond) ||
+                pair.Value.Count != rightSecond.Count ||
+                pair.Value.Any(item => !rightSecond.TryGetValue(item.Key, out var order) || order != item.Value))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private OcrApplyResult OcrApplyFailure(WorkspaceErrorCode code, string message) =>

@@ -729,7 +729,9 @@ public partial class MainWindow : Window
             }
 
             var primaryYPercentages = new[] { 0.1778, 0.2981, 0.4343, 0.5537 };
-            var rows = _workspace.Query(new AchievementQuery()).Rows;
+            var workspaceSnapshot = _workspace.GetSnapshot();
+            var rows = workspaceSnapshot.Rows;
+            var categories = workspaceSnapshot.Categories;
             var currentWindow = initialWindow;
             var primarySucceeded = 0;
             var primarySkipped = 0;
@@ -775,7 +777,7 @@ public partial class MainWindow : Window
                 }
 
                 primarySucceeded++;
-                var knownSecondaryNames = FindKnownSecondaryNames(rows, primaryName);
+                var knownSecondaryNames = FindKnownSecondaryNames(rows, primaryName, categories);
                 var visited = new HashSet<string>(StringComparer.Ordinal);
                 for (var secondaryRound = 0; secondaryRound < 64; secondaryRound++)
                 {
@@ -930,7 +932,9 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var rows = _workspace.Query(new AchievementQuery()).Rows;
+            var workspaceSnapshot = _workspace.GetSnapshot();
+            var rows = workspaceSnapshot.Rows;
+            var categories = workspaceSnapshot.Categories;
             var primaryYPercentages = new[] { 0.1778, 0.2981, 0.4343, 0.5537 };
             var mergedCandidates = new Dictionary<AchievementId, OcrAchievementCandidate>();
             var mergedUnmatched = new Dictionary<string, OcrUnmatchedText>(StringComparer.Ordinal);
@@ -975,7 +979,7 @@ public partial class MainWindow : Window
                     continue;
                 }
 
-                var knownSecondaryNames = FindKnownSecondaryNames(rows, primaryName);
+                var knownSecondaryNames = FindKnownSecondaryNames(rows, primaryName, categories);
                 var visited = new HashSet<string>(StringComparer.Ordinal);
                 for (var secondaryRound = 0; secondaryRound < 64; secondaryRound++)
                 {
@@ -1191,7 +1195,8 @@ public partial class MainWindow : Window
 
     private static IReadOnlySet<string> FindKnownSecondaryNames(
         IReadOnlyList<AchievementRow> rows,
-        string primaryName)
+        string primaryName,
+        CategoryCatalog? categories = null)
     {
         var firstNames = rows
             .Select(row => row.FirstCategory)
@@ -1201,7 +1206,7 @@ public partial class MainWindow : Window
         var canonicalPrimary = AchievementOcrMatcher.MatchKnownText(primaryName, firstNames, out _);
         if (canonicalPrimary is null) return new HashSet<string>(StringComparer.Ordinal);
         var normalizedPrimary = AchievementOcrMatcher.NormalizeName(canonicalPrimary);
-        return rows
+        var names = rows
             .Where(row => string.Equals(
                 AchievementOcrMatcher.NormalizeName(row.FirstCategory),
                 normalizedPrimary,
@@ -1209,6 +1214,11 @@ public partial class MainWindow : Window
             .Select(row => row.SecondCategory)
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .ToHashSet(StringComparer.Ordinal);
+        if (categories?.SecondCategories.TryGetValue(canonicalPrimary, out var configured) == true)
+        {
+            names.UnionWith(configured.Keys);
+        }
+        return names;
     }
 
     private static IReadOnlyList<NavigationTab> FindVisibleSecondaryTabs(
