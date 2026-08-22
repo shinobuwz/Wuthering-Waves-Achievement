@@ -3,7 +3,7 @@ param([string]$OutputDirectory = '', [string]$Executable = '')
 $ErrorActionPreference = 'Stop'
 $nativeRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory = Join-Path $nativeRoot 'artifacts/ui' }
-if ([string]::IsNullOrWhiteSpace($Executable)) { $Executable = Join-Path $nativeRoot 'src/Wuwa.App/bin/Release/net8.0-windows/Wuwa.App.exe' }
+if ([string]::IsNullOrWhiteSpace($Executable)) { $Executable = Join-Path $nativeRoot 'src/Wuwa.App/bin/Release/net8.0-windows/WutheringWavesAchievement.exe' }
 if (-not (Test-Path $Executable)) { throw "Build the Release app before UI verification: $Executable" }
 New-Item $OutputDirectory -ItemType Directory -Force | Out-Null
 Get-ChildItem $OutputDirectory -Filter '*.png' -ErrorAction SilentlyContinue | Remove-Item -Force
@@ -23,7 +23,7 @@ try {
     $process = Start-Process $Executable -PassThru
     for ($i = 0; $i -lt 100 -and $process.MainWindowHandle -eq 0 -and -not $process.HasExited; $i++) { Start-Sleep -Milliseconds 100; $process.Refresh() }
     if (-not $process.HasExited -and $process.MainWindowHandle -ne 0) {
-        $required = @('ThemeButton','TrackSelectedButton','UntrackSelectedButton','OpenTrackerButton','OcrSearchSyncButton','LegacyImportButton','ExchangeImportButton','ExchangeExportButton','WikiSyncButton','UpdateButton','AchievementGrid')
+        $required = @('ThemeButton','TrackSelectedButton','UntrackSelectedButton','OpenTrackerButton','MapOverlayButton','OcrSearchSyncButton','LegacyImportButton','ExchangeImportButton','ExchangeExportButton','WikiSyncButton','UpdateButton','AchievementGrid')
         foreach ($id in $required) {
             $found = $null
             for ($attempt = 0; $attempt -lt 30 -and -not $found -and -not $process.HasExited; $attempt++) {

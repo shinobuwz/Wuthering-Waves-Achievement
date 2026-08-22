@@ -39,7 +39,7 @@ public sealed class GitHubUpdateChecker
         _owner = owner;
         _repository = repository;
         _cachePath = string.IsNullOrWhiteSpace(cachePath)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WutheringWavesAchievement", "update-cache.json")
+            ? Path.Combine(AppPaths.DataDirectory, "update-cache.json")
             : Path.GetFullPath(cachePath);
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         _cacheTtl = cacheTtl ?? TimeSpan.FromHours(12);

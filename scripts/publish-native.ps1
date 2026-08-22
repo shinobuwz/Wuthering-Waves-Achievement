@@ -11,6 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $nativeRoot = $repoRoot
+$applicationExeName = 'WutheringWavesAchievement.exe'
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $nativeRoot "publish/$RuntimeIdentifier"
 } elseif (-not [System.IO.Path]::IsPathRooted($OutputDirectory)) {
@@ -24,7 +25,7 @@ if ($OutputDirectory -eq $allowedPublishRoot -or -not $OutputDirectory.StartsWit
 }
 if (Test-Path $OutputDirectory) {
     $hasPackageMarker = Test-Path (Join-Path $OutputDirectory 'package-manifest.json')
-    $hasPublishedExe = Test-Path (Join-Path $OutputDirectory 'Wuwa.App.exe')
+    $hasPublishedExe = Test-Path (Join-Path $OutputDirectory $applicationExeName)
     if (-not $hasPackageMarker -and -not $hasPublishedExe) { throw "Refusing to replace an existing non-package directory: $OutputDirectory" }
 }
 
@@ -72,7 +73,7 @@ try {
     Copy-Item (Join-Path $repoRoot 'models/ppocrv5/ppocrv5_dict.txt') $modelTarget -Force
     Copy-Item (Join-Path $nativeRoot 'ocr/THIRD_PARTY.md') $packageOcrRoot -Force
 
-    foreach ($required in @('Wuwa.App.exe', 'resources/base_achievements.json', 'resources/category_config.json', 'resources/ocr_templates/icon_1star.png', 'resources/ocr_templates/icon_2star.png', 'resources/ocr_templates/icon_3star.png', 'ocr/Wuwa.Ocr.Native.dll')) {
+    foreach ($required in @($applicationExeName, 'resources/base_achievements.json', 'resources/category_config.json', 'resources/ocr_templates/icon_1star.png', 'resources/ocr_templates/icon_2star.png', 'resources/ocr_templates/icon_3star.png', 'ocr/Wuwa.Ocr.Native.dll')) {
         if (-not (Test-Path (Join-Path $temporaryOutput $required))) { throw "Published package is missing $required." }
     }
     Get-ChildItem $temporaryOutput -Recurse -File -Filter '*.pdb' | Remove-Item -Force
