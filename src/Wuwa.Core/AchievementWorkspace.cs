@@ -50,14 +50,15 @@ public sealed partial class AchievementWorkspace
                 else
                 {
                     var mergedAchievements = MergeShippedMetadata(state.Achievements, library.Achievements, out var metadataChanged);
-                    if (metadataChanged)
+                    var normalizedMetadata = NormalizeTrackingMetadata(state.Metadata, mergedAchievements, state.Statuses, out var trackingChanged);
+                    if (metadataChanged || trackingChanged)
                     {
                         state = new WorkspaceState(
                             state.Revision + 1,
                             mergedAchievements,
                             state.Statuses,
                             state.Categories,
-                            state.Metadata);
+                            normalizedMetadata);
                         await _store.SaveAsync(state, cancellationToken).ConfigureAwait(false);
                     }
                 }
@@ -85,6 +86,12 @@ public sealed partial class AchievementWorkspace
         {
             _gate.Release();
         }
+    }
+
+    public WorkspaceSnapshot GetSnapshot()
+    {
+        var state = _state ?? throw new InvalidOperationException("OpenAsync must complete successfully before reading the workspace snapshot.");
+        return CreateSnapshot(state);
     }
 
     public async Task<LegacyDiscoveryResult> DiscoverLegacyProfilesAsync(
@@ -173,18 +180,19 @@ public sealed partial class AchievementWorkspace
                 statuses[byCode[item.Key].Id] = item.Value;
             }
 
+            var importedMetadata = _state.Metadata with
+            {
+                ProfileNickname = options.SelectedCandidate.Nickname,
+                ProfileUid = options.SelectedCandidate.Uid,
+                LegacySourcePath = options.SelectedCandidate.ProgressPath,
+                ImportedAtUtc = DateTimeOffset.UtcNow
+            };
             var candidate = new WorkspaceState(
                 _state.Revision + 1,
                 _state.Achievements,
                 statuses,
                 _state.Categories,
-                _state.Metadata with
-                {
-                    ProfileNickname = options.SelectedCandidate.Nickname,
-                    ProfileUid = options.SelectedCandidate.Uid,
-                    LegacySourcePath = options.SelectedCandidate.ProgressPath,
-                    ImportedAtUtc = DateTimeOffset.UtcNow
-                });
+                NormalizeTrackingMetadata(importedMetadata, _state.Achievements, statuses, out _));
 
             try
             {
@@ -220,6 +228,12 @@ public sealed partial class AchievementWorkspace
             rows = rows.Where(row =>
                 row.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
                 row.Description.Contains(searchText, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.NameSearchText))
+        {
+            var nameSearchText = query.NameSearchText.Trim();
+            rows = rows.Where(row => row.Name.Contains(nameSearchText, StringComparison.OrdinalIgnoreCase));
         }
 
         if (!string.IsNullOrWhiteSpace(query.Version))
@@ -284,6 +298,144 @@ public sealed partial class AchievementWorkspace
             Array.AsReadOnly(state.Achievements.Select(item => item.Version).Distinct().OrderBy(VersionSortKey).ToArray()),
             Array.AsReadOnly(GetOrderedFirstCategories(state).ToArray()),
             Array.AsReadOnly(GetOrderedSecondCategories(state, query.FirstCategory).ToArray()));
+    }
+
+    public async Task<WorkspaceCommandResult> AddTrackedAchievementsAsync(
+        IEnumerable<AchievementId> achievementIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(achievementIds);
+        var requested = achievementIds.Distinct().ToArray();
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return Failure(WorkspaceErrorCode.Cancelled, "Adding achievements to tracking was cancelled.", _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state));
+        }
+
+        try
+        {
+            if (_state is null)
+            {
+                return Failure(WorkspaceErrorCode.NotOpen, "The achievement workspace is not open.", WorkspaceSnapshot.Empty);
+            }
+
+            var previousSnapshot = CreateSnapshot(_state);
+            var achievements = _state.Achievements.ToDictionary(item => item.Id);
+            foreach (var id in requested)
+            {
+                if (!achievements.TryGetValue(id, out var achievement))
+                {
+                    return Failure(WorkspaceErrorCode.AchievementNotFound, "The selected achievement does not exist.", previousSnapshot);
+                }
+
+                if (achievement.IsTombstone || _state.Statuses[id] != ProgressStatus.Incomplete)
+                {
+                    return Failure(WorkspaceErrorCode.TrackingInvalid, "Only active achievements with incomplete status can be tracked.", previousSnapshot);
+                }
+            }
+
+            var tracked = _state.Metadata.EffectiveTrackedAchievementIds.ToList();
+            var changed = false;
+            foreach (var id in requested)
+            {
+                if (tracked.Contains(id)) continue;
+                tracked.Add(id);
+                changed = true;
+            }
+
+            if (!changed)
+            {
+                return Success(previousSnapshot);
+            }
+
+            var candidate = new WorkspaceState(
+                _state.Revision + 1,
+                _state.Achievements,
+                _state.Statuses,
+                _state.Categories,
+                _state.Metadata with { TrackedAchievementIds = tracked });
+            try
+            {
+                await _store.SaveAsync(candidate, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return Failure(WorkspaceErrorCode.Cancelled, "Saving tracked achievements was cancelled.", previousSnapshot);
+            }
+            catch (Exception exception)
+            {
+                return Failure(WorkspaceErrorCode.SaveFailed, $"Unable to save tracked achievements: {exception.Message}", previousSnapshot);
+            }
+
+            _state = candidate;
+            return Success(CreateSnapshot(candidate));
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<WorkspaceCommandResult> RemoveTrackedAchievementsAsync(
+        IEnumerable<AchievementId> achievementIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(achievementIds);
+        var requested = achievementIds.ToHashSet();
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return Failure(WorkspaceErrorCode.Cancelled, "Removing achievements from tracking was cancelled.", _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state));
+        }
+
+        try
+        {
+            if (_state is null)
+            {
+                return Failure(WorkspaceErrorCode.NotOpen, "The achievement workspace is not open.", WorkspaceSnapshot.Empty);
+            }
+
+            var previousSnapshot = CreateSnapshot(_state);
+            var tracked = _state.Metadata.EffectiveTrackedAchievementIds
+                .Where(id => !requested.Contains(id))
+                .ToArray();
+            if (tracked.SequenceEqual(_state.Metadata.EffectiveTrackedAchievementIds))
+            {
+                return Success(previousSnapshot);
+            }
+
+            var candidate = new WorkspaceState(
+                _state.Revision + 1,
+                _state.Achievements,
+                _state.Statuses,
+                _state.Categories,
+                _state.Metadata with { TrackedAchievementIds = tracked });
+            try
+            {
+                await _store.SaveAsync(candidate, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return Failure(WorkspaceErrorCode.Cancelled, "Saving tracked achievements was cancelled.", previousSnapshot);
+            }
+            catch (Exception exception)
+            {
+                return Failure(WorkspaceErrorCode.SaveFailed, $"Unable to save tracked achievements: {exception.Message}", previousSnapshot);
+            }
+
+            _state = candidate;
+            return Success(CreateSnapshot(candidate));
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     public async Task<WorkspaceCommandResult> SetSettingAsync(
@@ -409,7 +561,12 @@ public sealed partial class AchievementWorkspace
                 if (byCode.TryGetValue(item.Key, out var achievement)) statuses[achievement.Id] = item.Value;
             }
 
-            var candidate = new WorkspaceState(_state.Revision + 1, rows, statuses, _state.Categories, _state.Metadata);
+            var candidate = new WorkspaceState(
+                _state.Revision + 1,
+                rows,
+                statuses,
+                _state.Categories,
+                NormalizeTrackingMetadata(_state.Metadata, rows, statuses, out _));
             await _store.SaveAsync(candidate, cancellationToken).ConfigureAwait(false);
             _state = candidate;
             return new ExchangeImportResult(true, CreateSnapshot(candidate), payload.Kind);
@@ -491,7 +648,7 @@ public sealed partial class AchievementWorkspace
                 _state.Achievements,
                 statuses,
                 _state.Categories,
-                _state.Metadata with { Settings = settings });
+                NormalizeTrackingMetadata(_state.Metadata with { Settings = settings }, _state.Achievements, statuses, out _));
             await _store.SaveAsync(candidateState, cancellationToken).ConfigureAwait(false);
             _state = candidateState;
             return new OcrApplyResult(true, CreateSnapshot(candidateState), updated, unchanged, prevented);
@@ -553,7 +710,7 @@ public sealed partial class AchievementWorkspace
                 _state.Achievements,
                 statuses,
                 _state.Categories,
-                _state.Metadata);
+                NormalizeTrackingMetadata(_state.Metadata, _state.Achievements, statuses, out _));
 
             try
             {
@@ -796,6 +953,39 @@ public sealed partial class AchievementWorkspace
         {
             throw new InvalidDataException("Workspace contains progress for an unknown achievement.");
         }
+
+        var tracked = state.Metadata.EffectiveTrackedAchievementIds;
+        if (tracked.Distinct().Count() != tracked.Count || tracked.Any(id => !state.Statuses.TryGetValue(id, out var status) || status != ProgressStatus.Incomplete))
+        {
+            throw new InvalidDataException("Workspace contains an invalid tracked achievement.");
+        }
+    }
+
+    private static WorkspaceMetadata NormalizeTrackingMetadata(
+        WorkspaceMetadata metadata,
+        IReadOnlyList<Achievement> achievements,
+        IReadOnlyDictionary<AchievementId, ProgressStatus> statuses,
+        out bool changed)
+    {
+        var byId = achievements.ToDictionary(item => item.Id);
+        var normalized = new List<AchievementId>();
+        var seen = new HashSet<AchievementId>();
+        foreach (var id in metadata.EffectiveTrackedAchievementIds)
+        {
+            if (!seen.Add(id) ||
+                !byId.TryGetValue(id, out var achievement) ||
+                achievement.IsTombstone ||
+                !statuses.TryGetValue(id, out var status) ||
+                status != ProgressStatus.Incomplete)
+            {
+                continue;
+            }
+
+            normalized.Add(id);
+        }
+
+        changed = !metadata.EffectiveTrackedAchievementIds.SequenceEqual(normalized);
+        return changed ? metadata with { TrackedAchievementIds = normalized } : metadata;
     }
 
     private static IReadOnlyList<ExchangeDiagnostic> ValidateExchangeCandidate(

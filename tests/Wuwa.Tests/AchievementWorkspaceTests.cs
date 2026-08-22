@@ -29,6 +29,23 @@ public sealed class AchievementWorkspaceTests
     }
 
     [TestMethod]
+    public async Task Query_NameSearchTextOnlyReturnsIncompleteNameMatches()
+    {
+        var matching = Achievement("050", 1, name: "晨光回响", description: "描述一");
+        var descriptionOnly = Achievement("051", 2, name: "静默", description: "晨光回响");
+        var completed = Achievement("052", 3, name: "晨光回响", description: "已完成");
+        var unavailable = Achievement("053", 4, name: "晨光回响", description: "暂不可获取");
+        var workspace = CreateWorkspace(matching, descriptionOnly, completed, unavailable);
+        await workspace.OpenAsync();
+        await workspace.ChangeStatusAsync(completed.Id, ProgressStatus.Completed);
+        await workspace.ChangeStatusAsync(unavailable.Id, ProgressStatus.Unavailable);
+
+        var view = workspace.Query(new AchievementQuery(NameSearchText: "晨光", Status: ProgressStatus.Incomplete));
+
+        CollectionAssert.AreEqual(new[] { "050" }, view.Rows.Select(row => row.LegacyCode).ToArray());
+    }
+
+    [TestMethod]
     public async Task Query_AppliesVersionCategoryStatusAndObtainabilityFilters()
     {
         var completed = Achievement("100", 1, "1.0", "探索", "区域一", "晨光", "地标");
@@ -171,6 +188,101 @@ public sealed class AchievementWorkspaceTests
         Assert.AreEqual(2, view.Statistics.ByFirstCategory["探索"]);
         Assert.AreEqual(1, view.Statistics.BySecondCategory["区域一"]);
         Assert.AreEqual(2, view.Statistics.ByVersion["1.0"]);
+    }
+
+    [TestMethod]
+    public async Task Tracking_BatchRoundTripsInStableOrderAndCompletingRemovesTrackedItem()
+    {
+        var first = Achievement("350", 1, name: "第一条");
+        var second = Achievement("351", 2, name: "第二条");
+        var store = new InMemoryAppDataStore();
+        var source = new FixedAchievementLibrarySource(new AchievementLibrary([first, second], CategoryCatalog.Empty));
+        var workspace = new AchievementWorkspace(store, source);
+        await workspace.OpenAsync();
+
+        var added = await workspace.AddTrackedAchievementsAsync([second.Id, first.Id]);
+
+        Assert.IsTrue(added.IsSuccess, added.Error?.Message);
+        CollectionAssert.AreEqual(new[] { second.Id, first.Id }, added.Snapshot.Metadata.EffectiveTrackedAchievementIds.ToArray());
+
+        var reopened = new AchievementWorkspace(store, source);
+        var opened = await reopened.OpenAsync();
+        Assert.IsTrue(opened.IsSuccess, opened.Error?.Message);
+        CollectionAssert.AreEqual(new[] { second.Id, first.Id }, opened.Snapshot.Metadata.EffectiveTrackedAchievementIds.ToArray());
+
+        var completed = await reopened.ChangeStatusAsync(second.Id, ProgressStatus.Completed);
+        Assert.IsTrue(completed.IsSuccess, completed.Error?.Message);
+        CollectionAssert.AreEqual(new[] { first.Id }, completed.Snapshot.Metadata.EffectiveTrackedAchievementIds.ToArray());
+        Assert.AreEqual(ProgressStatus.Completed, completed.Snapshot.Rows.Single(row => row.Id == second.Id).Status);
+    }
+
+    [TestMethod]
+    public async Task Tracking_RejectsCompletedUnavailableAndOccupiedAchievements()
+    {
+        var completed = Achievement("360", 1);
+        var unavailable = Achievement("361", 2);
+        var choiceA = Achievement("362", 3, groupId: "choice-track");
+        var choiceB = Achievement("363", 4, groupId: "choice-track");
+        var workspace = CreateWorkspace(completed, unavailable, choiceA, choiceB);
+        await workspace.OpenAsync();
+        await workspace.ChangeStatusAsync(completed.Id, ProgressStatus.Completed);
+        await workspace.ChangeStatusAsync(unavailable.Id, ProgressStatus.Unavailable);
+        await workspace.ChangeStatusAsync(choiceA.Id, ProgressStatus.Completed);
+
+        var completedResult = await workspace.AddTrackedAchievementsAsync([completed.Id]);
+        var unavailableResult = await workspace.AddTrackedAchievementsAsync([unavailable.Id]);
+        var occupiedResult = await workspace.AddTrackedAchievementsAsync([choiceB.Id]);
+
+        Assert.IsFalse(completedResult.IsSuccess);
+        Assert.AreEqual(WorkspaceErrorCode.TrackingInvalid, completedResult.Error?.Code);
+        Assert.IsFalse(unavailableResult.IsSuccess);
+        Assert.AreEqual(WorkspaceErrorCode.TrackingInvalid, unavailableResult.Error?.Code);
+        Assert.IsFalse(occupiedResult.IsSuccess);
+        Assert.AreEqual(WorkspaceErrorCode.TrackingInvalid, occupiedResult.Error?.Code);
+    }
+
+    [TestMethod]
+    public async Task Tracking_CompletingChoiceGroupClearsAllAffectedTrackedItems()
+    {
+        var first = Achievement("370", 1, groupId: "choice-track-2");
+        var second = Achievement("371", 2, groupId: "choice-track-2");
+        var workspace = CreateWorkspace(first, second);
+        await workspace.OpenAsync();
+        await workspace.AddTrackedAchievementsAsync([first.Id, second.Id]);
+
+        var completed = await workspace.ChangeStatusAsync(first.Id, ProgressStatus.Completed);
+
+        Assert.IsTrue(completed.IsSuccess, completed.Error?.Message);
+        Assert.AreEqual(0, completed.Snapshot.Metadata.EffectiveTrackedAchievementIds.Count);
+        Assert.AreEqual(ProgressStatus.Completed, completed.Snapshot.Rows.Single(row => row.Id == first.Id).Status);
+        Assert.AreEqual(ProgressStatus.Occupied, completed.Snapshot.Rows.Single(row => row.Id == second.Id).Status);
+    }
+
+    [TestMethod]
+    public async Task Open_CleansTrackedItemsThatAreNoLongerIncomplete()
+    {
+        var completed = Achievement("380", 1);
+        var incomplete = Achievement("381", 2);
+        var store = new InMemoryAppDataStore();
+        var source = new FixedAchievementLibrarySource(new AchievementLibrary([completed, incomplete], CategoryCatalog.Empty));
+        var stale = new WorkspaceState(
+            4,
+            [completed, incomplete],
+            new Dictionary<AchievementId, ProgressStatus>
+            {
+                [completed.Id] = ProgressStatus.Completed,
+                [incomplete.Id] = ProgressStatus.Incomplete
+            },
+            CategoryCatalog.Empty,
+            new WorkspaceMetadata(TrackedAchievementIds: [completed.Id, incomplete.Id]));
+        await store.SaveAsync(stale);
+
+        var workspace = new AchievementWorkspace(store, source);
+        var opened = await workspace.OpenAsync();
+
+        Assert.IsTrue(opened.IsSuccess, opened.Error?.Message);
+        CollectionAssert.AreEqual(new[] { incomplete.Id }, opened.Snapshot.Metadata.EffectiveTrackedAchievementIds.ToArray());
+        Assert.AreEqual(5, opened.Snapshot.Revision);
     }
 
     [TestMethod]

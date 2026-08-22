@@ -58,7 +58,8 @@ public sealed record WorkspaceMetadata(
     DateTimeOffset? ImportedAtUtc = null,
     IReadOnlyDictionary<string, string>? Settings = null,
     IReadOnlyDictionary<string, string>? IdentityMappings = null,
-    IReadOnlySet<AchievementId>? Tombstones = null)
+    IReadOnlySet<AchievementId>? Tombstones = null,
+    IReadOnlyList<AchievementId>? TrackedAchievementIds = null)
 {
     public static WorkspaceMetadata Empty { get; } = new();
 
@@ -70,6 +71,9 @@ public sealed record WorkspaceMetadata(
 
     public IReadOnlySet<AchievementId> EffectiveTombstones =>
         Tombstones ?? new HashSet<AchievementId>();
+
+    public IReadOnlyList<AchievementId> EffectiveTrackedAchievementIds =>
+        TrackedAchievementIds ?? Array.Empty<AchievementId>();
 }
 
 public sealed class WorkspaceState
@@ -138,7 +142,8 @@ public enum WorkspaceErrorCode
     WikiRejected,
     UpdateCheckFailed,
     OcrApplyRequiresConfirmation,
-    OcrPreviewInvalid
+    OcrPreviewInvalid,
+    TrackingInvalid
 }
 
 public sealed record WorkspaceError(WorkspaceErrorCode Code, string Message);

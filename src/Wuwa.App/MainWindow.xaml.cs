@@ -25,12 +25,20 @@ public partial class MainWindow : Window
     private WorkspaceView? _view;
     private bool _initializingFilters;
     private CancellationTokenSource? _ocrCancellation;
+    private AchievementTrackerWindow? _trackerWindow;
+    private bool _restoringMainWindow;
+    private bool _isClosing;
     private bool _isLightTheme;
 
     public MainWindow(AchievementWorkspace workspace)
     {
         _workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
         InitializeComponent();
+        Closing += (_, _) =>
+        {
+            _isClosing = true;
+            _trackerWindow?.Close();
+        };
 #if DEBUG
         OcrNavigationDebugButton.Visibility = Visibility.Visible;
 #endif
@@ -90,8 +98,10 @@ public partial class MainWindow : Window
             return;
         }
 
+        var snapshot = _workspace.GetSnapshot();
         _view = _workspace.Query(BuildQuery());
         AchievementGrid.ItemsSource = _view.Rows;
+        _trackerWindow?.ApplySnapshot(snapshot);
         RevisionText.Text = _view.Revision.ToString();
         TotalText.Text = _view.Statistics.Total.ToString();
         CompletedText.Text = _view.Statistics.Completed.ToString();
@@ -100,7 +110,7 @@ public partial class MainWindow : Window
         HiddenText.Text = _view.Statistics.Hidden.ToString();
         RateText.Text = $"{_view.Statistics.CompletionRatePercent:0.0}%";
         FilterSummaryText.Text = $"显示 {_view.Rows.Count} 条";
-        HintText.Text = $"显示 {_view.Rows.Count} 条 · 双击切换完成状态 · 右键设置状态";
+        HintText.Text = $"显示 {_view.Rows.Count} 条 · Ctrl/Shift 多选后可加入追踪 · 双击切换完成状态 · 右键设置状态";
         ErrorText.Text = string.Empty;
     }
 
@@ -137,6 +147,84 @@ public partial class MainWindow : Window
         },
         GroupsOnly: GroupCombo.SelectedIndex == 1,
         Sort: SortCombo.SelectedIndex == 1 ? AchievementSort.IncompleteFirst : AchievementSort.Default);
+
+    private async void TrackSelected_OnClick(object sender, RoutedEventArgs e)
+    {
+        var selected = AchievementGrid.SelectedItems
+            .OfType<AchievementRow>()
+            .Where(row => row.Status == ProgressStatus.Incomplete)
+            .Select(row => row.Id)
+            .Distinct()
+            .ToArray();
+        if (selected.Length == 0)
+        {
+            HintText.Text = "请先使用 Ctrl/Shift 选择至少一条未完成成就。";
+            return;
+        }
+
+        var result = await _workspace.AddTrackedAchievementsAsync(selected);
+        if (!result.IsSuccess)
+        {
+            ShowError(result.Error?.Message ?? "加入追踪失败。");
+            return;
+        }
+
+        AchievementGrid.UnselectAll();
+        RefreshView();
+        HintText.Text = $"已加入 {selected.Length} 条成就追踪。";
+    }
+
+    private void OpenTracker_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_trackerWindow is null)
+        {
+            _trackerWindow = new AchievementTrackerWindow(
+                _workspace,
+                _workspace.GetSnapshot(),
+                RestoreMainWindow,
+                _ => RefreshView());
+            _trackerWindow.Closed += TrackerWindow_OnClosed;
+        }
+
+        Hide();
+        _trackerWindow.ApplySnapshot(_workspace.GetSnapshot());
+        if (!_trackerWindow.IsVisible)
+        {
+            _trackerWindow.Show();
+        }
+        _trackerWindow.Topmost = true;
+        _trackerWindow.Activate();
+    }
+
+    private void TrackerWindow_OnClosed(object? sender, EventArgs e)
+    {
+        _trackerWindow = null;
+        if (!_isClosing && !_restoringMainWindow)
+        {
+            RestoreMainWindow();
+        }
+    }
+
+    private void RestoreMainWindow()
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        _restoringMainWindow = true;
+        try
+        {
+            _trackerWindow?.Close();
+            Show();
+            WindowState = WindowState.Normal;
+            Activate();
+        }
+        finally
+        {
+            _restoringMainWindow = false;
+        }
+    }
 
     private async void AchievementGrid_OnMouseDoubleClick(object sender, MouseButtonEventArgs e)
     {

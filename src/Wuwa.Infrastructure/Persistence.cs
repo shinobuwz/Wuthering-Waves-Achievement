@@ -398,18 +398,70 @@ public sealed class JsonAppDataStore : IAppDataStore
             : new CategoryCatalog(First, Second);
     }
 
-    private sealed record MetadataDocument(string? ProfileNickname, string? ProfileUid, string? LegacySourcePath, DateTimeOffset? ImportedAtUtc, IReadOnlyDictionary<string, string>? Settings, IReadOnlyDictionary<string, string>? IdentityMappings, IReadOnlyList<string>? Tombstones)
+    private sealed record MetadataDocument(
+        string? ProfileNickname,
+        string? ProfileUid,
+        string? LegacySourcePath,
+        DateTimeOffset? ImportedAtUtc,
+        IReadOnlyDictionary<string, string>? Settings,
+        IReadOnlyDictionary<string, string>? IdentityMappings,
+        IReadOnlyList<string>? Tombstones,
+        IReadOnlyList<string>? TrackedAchievementIds)
     {
-        public static MetadataDocument FromMetadata(WorkspaceMetadata metadata) => new(metadata.ProfileNickname, metadata.ProfileUid, metadata.LegacySourcePath, metadata.ImportedAtUtc, metadata.EffectiveSettings, metadata.EffectiveIdentityMappings, metadata.EffectiveTombstones.Select(item => item.ToString()).ToArray());
+        public static MetadataDocument FromMetadata(WorkspaceMetadata metadata) => new(
+            metadata.ProfileNickname,
+            metadata.ProfileUid,
+            metadata.LegacySourcePath,
+            metadata.ImportedAtUtc,
+            metadata.EffectiveSettings,
+            metadata.EffectiveIdentityMappings,
+            metadata.EffectiveTombstones.Select(item => item.ToString()).ToArray(),
+            metadata.EffectiveTrackedAchievementIds.Select(item => item.ToString()).ToArray());
+
         public WorkspaceMetadata ToMetadata()
         {
-            if (Settings is null || IdentityMappings is null || Tombstones is null) throw new InvalidDataException("Native metadata is incomplete.");
+            if (Settings is null || IdentityMappings is null || Tombstones is null)
+            {
+                throw new InvalidDataException("Native metadata is incomplete.");
+            }
+
             var tombstones = new HashSet<AchievementId>();
             foreach (var item in Tombstones)
             {
-                if (!Guid.TryParse(item, out var guid) || !tombstones.Add(new AchievementId(guid))) throw new InvalidDataException("Native metadata contains an invalid tombstone identity.");
+                if (!Guid.TryParse(item, out var guid) || !tombstones.Add(new AchievementId(guid)))
+                {
+                    throw new InvalidDataException("Native metadata contains an invalid tombstone identity.");
+                }
             }
-            return new WorkspaceMetadata(ProfileNickname, ProfileUid, LegacySourcePath, ImportedAtUtc, Settings, IdentityMappings, tombstones);
+
+            var tracked = new List<AchievementId>();
+            foreach (var item in TrackedAchievementIds ?? Array.Empty<string>())
+            {
+                if (!Guid.TryParse(item, out var guid))
+                {
+                    throw new InvalidDataException("Native metadata contains an invalid tracked achievement identity.");
+                }
+
+                var id = new AchievementId(guid);
+                if (!tracked.Contains(id))
+                {
+                    tracked.Add(id);
+                }
+                else
+                {
+                    throw new InvalidDataException("Native metadata contains a duplicate tracked achievement identity.");
+                }
+            }
+
+            return new WorkspaceMetadata(
+                ProfileNickname,
+                ProfileUid,
+                LegacySourcePath,
+                ImportedAtUtc,
+                Settings,
+                IdentityMappings,
+                tombstones,
+                tracked);
         }
     }
 }

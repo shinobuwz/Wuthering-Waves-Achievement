@@ -134,12 +134,13 @@ public sealed partial class AchievementWorkspace
             {
                 statuses.TryAdd(row.Id, ProgressStatus.Incomplete);
             }
-            if (EquivalentContent(_state, nextRows, statuses))
+            var normalizedMetadata = NormalizeTrackingMetadata(_state.Metadata, nextRows, statuses, out var trackingChanged);
+            if (EquivalentContent(_state, nextRows, statuses) && !trackingChanged)
             {
                 return new WorkspaceSyncResult(true, CreateSnapshot(_state), matched.Count, 0, 0, Array.Empty<string>());
             }
 
-            var candidate = new WorkspaceState(_state.Revision + 1, nextRows, statuses, _state.Categories, _state.Metadata);
+            var candidate = new WorkspaceState(_state.Revision + 1, nextRows, statuses, _state.Categories, normalizedMetadata);
             try
             {
                 await _store.SaveAsync(candidate, cancellationToken).ConfigureAwait(false);

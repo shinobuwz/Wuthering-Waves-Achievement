@@ -170,4 +170,5 @@ public sealed record AchievementQuery(
     CompletionFilter Completion = CompletionFilter.All,
     ProgressStatus? Status = null,
     bool GroupsOnly = false,
-    AchievementSort Sort = AchievementSort.Default);
+    AchievementSort Sort = AchievementSort.Default,
+    string? NameSearchText = null);

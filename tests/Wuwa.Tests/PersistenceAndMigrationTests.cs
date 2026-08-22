@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Wuwa.Core;
 using Wuwa.Infrastructure;
 
@@ -138,6 +139,37 @@ public sealed class PersistenceAndMigrationTests
 
             var loaded = await new JsonAppDataStore(root).LoadAsync();
             Assert.AreEqual(1, loaded!.Revision);
+        });
+    }
+
+    [TestMethod]
+    public async Task TrackingMetadata_RoundTripsAndMissingFieldDefaultsToEmpty()
+    {
+        await WithRoot(async root =>
+        {
+            var achievement = Achievement();
+            var state = new WorkspaceState(
+                1,
+                [achievement],
+                new Dictionary<AchievementId, ProgressStatus> { [achievement.Id] = ProgressStatus.Incomplete },
+                Categories(),
+                new WorkspaceMetadata(TrackedAchievementIds: [achievement.Id]));
+            var store = new JsonAppDataStore(root);
+            await store.SaveAsync(state);
+
+            var manifest = JsonDocument.Parse(await File.ReadAllTextAsync(store.ManifestPath));
+            var generation = manifest.RootElement.GetProperty("generation").GetString()!;
+            var path = Path.Combine(root, "generations", generation, "state.json");
+            var json = await File.ReadAllTextAsync(path);
+            Assert.IsTrue(json.Contains("trackedAchievementIds", StringComparison.Ordinal));
+            var document = JsonNode.Parse(json)!.AsObject();
+            document["metadata"]!.AsObject().Remove("trackedAchievementIds");
+            await File.WriteAllTextAsync(path, document.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+
+            var loaded = await new JsonAppDataStore(root).LoadAsync();
+
+            Assert.IsNotNull(loaded);
+            Assert.AreEqual(0, loaded!.Metadata.EffectiveTrackedAchievementIds.Count);
         });
     }
 
