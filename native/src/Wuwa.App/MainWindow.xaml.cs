@@ -6,7 +6,10 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using System.Diagnostics;
+using System.ComponentModel;
 using System.IO;
+using System.Security;
+using System.Runtime.InteropServices;
 using Wuwa.Core;
 using Wuwa.Infrastructure;
 
@@ -215,6 +218,209 @@ public partial class MainWindow : Window
         GroupCombo.SelectedIndex = 0;
         SortCombo.SelectedIndex = 0;
         RefreshView();
+    }
+
+    private void ConveneLink_OnClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var logPath = FindConveneLogPath();
+            if (logPath is null)
+            {
+                var dialog = new OpenFileDialog
+                {
+                    Title = "选择鸣潮 Client.log",
+                    Filter = "Client.log|Client.log|日志文件 (*.log)|*.log|所有文件 (*.*)|*.*",
+                    CheckFileExists = true,
+                    Multiselect = false,
+                    FileName = "Client.log"
+                };
+                if (dialog.ShowDialog(this) != true)
+                {
+                    return;
+                }
+
+                logPath = dialog.FileName;
+            }
+
+            var link = ConveneLinkExtractor.Extract(ReadSharedFile(logPath));
+            if (string.IsNullOrWhiteSpace(link))
+            {
+                const string message = "未找到唤取记录链接。\n\n请先在游戏内手动打开“唤取记录”，点击翻页或切换到历史记录，等待记录加载完成后再重试。";
+                ShowError(message.Replace("\n\n", " "));
+                MessageBox.Show(this, message, "无法获取唤取链接", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            SetClipboardWithRetry(link);
+            ErrorText.Text = string.Empty;
+            HintText.Text = "已获取并复制唤取链接，有效期约 1 小时。";
+            MessageBox.Show(this, "唤取链接已复制到剪贴板。\n\n链接通常有效期约 1 小时。", "获取成功", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception exception)
+        {
+            var message = $"获取唤取链接失败：{exception.Message}";
+            ShowError(message);
+            MessageBox.Show(this, message, "获取唤取链接失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void ConveneHelp_OnClick(object sender, RoutedEventArgs e)
+    {
+        MessageBox.Show(
+            this,
+            "获取唤取链接前，请先在游戏内完成以下操作：\n\n1. 打开“唤取记录”界面。\n2. 点击翻页，或切换到任意历史记录页。\n3. 等待记录加载完成后，回到这里点击“获取唤取链接”。\n\n链接会从 Client.log 中读取，并复制到剪贴板。",
+            "获取唤取链接说明",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private static void SetClipboardWithRetry(string text)
+    {
+        ExternalException? lastException = null;
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                Clipboard.SetText(text);
+                return;
+            }
+            catch (ExternalException exception)
+            {
+                lastException = exception;
+                Thread.Sleep(80);
+            }
+        }
+
+        // WPF's clipboard wrapper can lose a race with overlays, game clients, or
+        // clipboard managers. clip.exe performs the same operation through the
+        // Windows shell and is a reliable fallback for this short-lived text.
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = Path.Combine(Environment.SystemDirectory, "clip.exe"),
+                    UseShellExecute = false,
+                    RedirectStandardInput = true,
+                    CreateNoWindow = true
+                }
+            };
+            if (!process.Start())
+            {
+                throw new InvalidOperationException("无法启动 Windows 剪贴板工具。");
+            }
+
+            process.StandardInput.Write(text);
+            process.StandardInput.Close();
+            if (!process.WaitForExit(2000) || process.ExitCode != 0)
+            {
+                throw new InvalidOperationException("Windows 剪贴板工具执行失败。");
+            }
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or Win32Exception or ExternalException)
+        {
+            throw lastException ?? new ExternalException($"无法写入系统剪贴板：{exception.Message}");
+        }
+    }
+
+    private static byte[] ReadSharedFile(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        return buffer.ToArray();
+    }
+
+    private static string? FindConveneLogPath()
+    {
+        const string uninstallKey = @"SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\KRInstall Wuthering Waves";
+        var registryCandidates = new List<string>();
+
+        foreach (var view in new[] { RegistryView.Registry32, RegistryView.Registry64 })
+        {
+            try
+            {
+                using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+                using var key = baseKey.OpenSubKey(uninstallKey);
+                if (key is null)
+                {
+                    continue;
+                }
+
+                foreach (var valueName in new[] { "wwGamePath", "InstallPath" })
+                {
+                    if (key.GetValue(valueName) is string value && !string.IsNullOrWhiteSpace(value))
+                    {
+                        registryCandidates.Add(value);
+                    }
+                }
+            }
+            catch (SecurityException)
+            {
+                // Registry access is optional; the file picker remains available.
+            }
+            catch (IOException)
+            {
+                // Registry access is optional; the file picker remains available.
+            }
+        }
+
+        foreach (var candidate in registryCandidates)
+        {
+            var logPath = ResolveConveneLogPath(candidate);
+            if (logPath is not null)
+            {
+                return logPath;
+            }
+        }
+
+        foreach (var drive in DriveInfo.GetDrives().Where(drive => drive.IsReady))
+        {
+            foreach (var candidate in new[]
+            {
+                Path.Combine(drive.RootDirectory.FullName, "Wuthering Waves Game"),
+                Path.Combine(drive.RootDirectory.FullName, "Wuthering Waves", "Wuthering Waves Game"),
+                Path.Combine(drive.RootDirectory.FullName, "Program Files", "Epic Games", "WutheringWavesj3oFh"),
+                Path.Combine(drive.RootDirectory.FullName, "Program Files", "Epic Games", "WutheringWavesj3oFh", "Wuthering Waves Game")
+            })
+            {
+                var logPath = ResolveConveneLogPath(candidate);
+                if (logPath is not null)
+                {
+                    return logPath;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ResolveConveneLogPath(string candidate)
+    {
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            return null;
+        }
+
+        var normalized = candidate.Trim().Trim('"');
+        var candidates = new[]
+        {
+            normalized,
+            Path.Combine(normalized, "Wuthering Waves Game")
+        };
+
+        foreach (var root in candidates)
+        {
+            var logPath = Path.Combine(root, "Client", "Saved", "Logs", "Client.log");
+            if (File.Exists(logPath))
+            {
+                return logPath;
+            }
+        }
+
+        return null;
     }
 
     private async void OcrScan_OnClick(object sender, RoutedEventArgs e)
