@@ -20,6 +20,7 @@ public sealed class ShippedJsonAchievementLibrarySource : IAchievementLibrarySou
     private static readonly string[] RewardNames = ["奖励", "reward", "Reward"];
     private static readonly string[] HiddenNames = ["是否隐藏", "isHidden", "IsHidden"];
     private static readonly string[] GroupNames = ["成就组ID", "groupId", "GroupId"];
+    private static readonly string[] WikiSourceRefNames = ["WikiSourceRef", "wikiSourceRef", "wiki_source_ref"];
 
     private readonly string _achievementsPath;
     private readonly string _categoryConfigPath;
@@ -101,6 +102,7 @@ public sealed class ShippedJsonAchievementLibrarySource : IAchievementLibrarySou
         var reward = RequiredString(element, RewardNames);
         var isHidden = ReadHidden(element, HiddenNames);
         var groupId = OptionalString(element, GroupNames);
+        var wikiSourceRef = OptionalString(element, WikiSourceRefNames);
         var mutualCodes = OptionalString(element, ["互斥成就", "mutualExclusionCodes", "MutualExclusionCodes"])?
             .Split([',', ';', '，', '；', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             ?? Array.Empty<string>();
@@ -117,6 +119,7 @@ public sealed class ShippedJsonAchievementLibrarySource : IAchievementLibrarySou
             reward,
             isHidden,
             string.IsNullOrWhiteSpace(groupId) ? null : groupId,
+            string.IsNullOrWhiteSpace(wikiSourceRef) ? null : wikiSourceRef,
             MutualExclusionCodes: mutualCodes);
     }
 

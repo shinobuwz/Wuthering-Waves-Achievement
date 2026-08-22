@@ -16,16 +16,17 @@ public sealed class ShippedJsonAchievementLibrarySourceTests
 
         var library = await source.LoadAsync();
 
-        Assert.AreEqual(958, library.Achievements.Count);
-        Assert.AreEqual(958, library.Achievements.Select(item => item.Id).Distinct().Count());
-        Assert.AreEqual(958, library.Achievements.Select(item => item.LegacyCode).Distinct().Count());
+        Assert.AreEqual(1205, library.Achievements.Count);
+        Assert.AreEqual(1205, library.Achievements.Select(item => item.Id).Distinct().Count());
+        Assert.AreEqual(1205, library.Achievements.Select(item => item.LegacyCode).Distinct().Count());
         Assert.AreEqual(4, library.Categories.FirstCategories.Count);
-        Assert.AreEqual(59, library.Achievements.Count(item => item.GroupId?.StartsWith("progression-", StringComparison.Ordinal) == true));
-        Assert.AreEqual(19, library.Achievements.Where(item => item.GroupId?.StartsWith("progression-", StringComparison.Ordinal) == true).Select(item => item.GroupId).Distinct().Count());
-        Assert.AreEqual("progression-64b2f3e8e9df", library.Achievements.Single(item => item.LegacyCode == "10900016").GroupId);
-        Assert.AreEqual("progression-64b2f3e8e9df", library.Achievements.Single(item => item.LegacyCode == "10900018").GroupId);
+        Assert.AreEqual(56, library.Achievements.Count(item => item.GroupId?.StartsWith("progression-", StringComparison.Ordinal) == true));
+        Assert.AreEqual(18, library.Achievements.Where(item => item.GroupId?.StartsWith("progression-", StringComparison.Ordinal) == true).Select(item => item.GroupId).Distinct().Count());
+        Assert.AreEqual("progression-974f25a640bc", library.Achievements.Single(item => item.LegacyCode == "10900016").GroupId);
+        Assert.AreEqual("progression-974f25a640bc", library.Achievements.Single(item => item.LegacyCode == "10900018").GroupId);
         Assert.AreEqual("10100001", library.Achievements[0].LegacyCode);
         Assert.AreEqual("往日之音·今州 Ⅰ", library.Achievements[0].Name);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(library.Achievements[0].WikiSourceRef));
     }
 
     private static string FindRepositoryRoot()

@@ -83,18 +83,16 @@
 
                     <Grid Grid.Row="2">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.15*" />
+                            <ColumnDefinition Width="1.15*" />
+                            <ColumnDefinition Width="1.0*" />
                             <ColumnDefinition Width="1.1*" />
-                            <ColumnDefinition Width="1.1*" />
-                            <ColumnDefinition Width="0.95*" />
-                            <ColumnDefinition Width="0.95*" />
-                            <ColumnDefinition Width="1.05*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <ComboBox Grid.Column="0" x:Name="ObtainabilityCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
-                        <ComboBox Grid.Column="1" x:Name="CompletionCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
-                        <ComboBox Grid.Column="2" x:Name="StatusCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
-                        <ComboBox Grid.Column="3" x:Name="GroupCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
-                        <ComboBox Grid.Column="4" x:Name="SortCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
+                        <ComboBox Grid.Column="1" x:Name="StatusCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
+                        <ComboBox Grid.Column="2" x:Name="GroupCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
+                        <ComboBox Grid.Column="3" x:Name="SortCombo" MaxDropDownHeight="360" SelectionChanged="Filter_OnChanged" />
                     </Grid>
                 </Grid>
 
@@ -229,7 +227,7 @@
                     </Style>
                 </DataGrid.RowStyle>
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" Width="95" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                    <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" Width="95" ElementStyle="{StaticResource AchievementStatusTextStyle}" />
                     <DataGridTextColumn Header="编号" Binding="{Binding LegacyCode}" Width="105" ElementStyle="{StaticResource DataGridCellTextStyle}" />
                     <DataGridTextColumn Header="版本" Binding="{Binding Version}" Width="65" ElementStyle="{StaticResource DataGridCellTextStyle}" />
                     <DataGridTextColumn Header="一级分类" Binding="{Binding FirstCategory}" Width="125" ElementStyle="{StaticResource DataGridCellTextStyle}" />

@@ -134,13 +134,14 @@ public sealed partial class AchievementWorkspace
             {
                 statuses.TryAdd(row.Id, ProgressStatus.Incomplete);
             }
+            var categories = BuildCategoryCatalog(_state.Categories, remote.Achievements);
             var normalizedMetadata = NormalizeTrackingMetadata(_state.Metadata, nextRows, statuses, out var trackingChanged);
-            if (EquivalentContent(_state, nextRows, statuses) && !trackingChanged)
+            if (EquivalentContent(_state, nextRows, statuses, categories) && !trackingChanged)
             {
                 return new WorkspaceSyncResult(true, CreateSnapshot(_state), matched.Count, 0, 0, Array.Empty<string>());
             }
 
-            var candidate = new WorkspaceState(_state.Revision + 1, nextRows, statuses, _state.Categories, normalizedMetadata);
+            var candidate = new WorkspaceState(_state.Revision + 1, nextRows, statuses, categories, normalizedMetadata);
             try
             {
                 await _store.SaveAsync(candidate, cancellationToken).ConfigureAwait(false);
@@ -191,10 +192,80 @@ public sealed partial class AchievementWorkspace
 
     private sealed record MatchResult(Achievement? Achievement, bool IsAmbiguous);
 
-    private static bool EquivalentContent(WorkspaceState current, IReadOnlyList<Achievement> rows, IReadOnlyDictionary<AchievementId, ProgressStatus> statuses)
+    private static CategoryCatalog BuildCategoryCatalog(
+        CategoryCatalog current,
+        IReadOnlyList<Achievement> remoteRows)
+    {
+        var firstNames = remoteRows
+            .Select(item => item.FirstCategory)
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var firstCategories = new Dictionary<string, int>(StringComparer.Ordinal);
+        if (current.FirstCategories.Count > 0)
+        {
+            foreach (var old in current.FirstCategories.OrderBy(item => item.Value))
+            {
+                if (firstNames.Contains(old.Key, StringComparer.Ordinal)) firstCategories[old.Key] = old.Value;
+            }
+        }
+        var nextFirstOrder = firstCategories.Values.DefaultIfEmpty(0).Max() + 1;
+        foreach (var first in firstNames)
+        {
+            if (!firstCategories.ContainsKey(first)) firstCategories[first] = nextFirstOrder++;
+        }
+
+        var secondCategories = new Dictionary<string, IReadOnlyDictionary<string, int>>(StringComparer.Ordinal);
+        foreach (var first in firstNames)
+        {
+            var remoteNames = remoteRows
+                .Where(item => string.Equals(item.FirstCategory, first, StringComparison.Ordinal))
+                .Select(item => item.SecondCategory)
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            var orders = new Dictionary<string, int>(StringComparer.Ordinal);
+
+            if (current.SecondCategories.TryGetValue(first, out var oldOrders))
+            {
+                foreach (var old in oldOrders.OrderBy(item => item.Value))
+                {
+                    if (remoteNames.Contains(old.Key, StringComparer.Ordinal) || IsCompatibilityCategoryAlias(old.Key, remoteNames))
+                    {
+                        orders[old.Key] = old.Value;
+                    }
+                }
+            }
+
+            var nextSecondOrder = orders.Values.DefaultIfEmpty(0).Max() + 10;
+            foreach (var name in remoteNames)
+            {
+                if (!orders.ContainsKey(name)) orders[name] = nextSecondOrder;
+                nextSecondOrder += 10;
+            }
+
+            secondCategories[first] = orders;
+        }
+
+        return new CategoryCatalog(firstCategories, secondCategories);
+    }
+
+    private static bool IsCompatibilityCategoryAlias(string name, IReadOnlyCollection<string> remoteNames)
+    {
+        var separator = name.LastIndexOf('·');
+        if (separator <= 0 || separator == name.Length - 1 || name[(separator + 1)..] != "一") return false;
+        var canonical = name[..separator];
+        return remoteNames.Contains(canonical, StringComparer.Ordinal);
+    }
+
+    private static bool EquivalentContent(
+        WorkspaceState current,
+        IReadOnlyList<Achievement> rows,
+        IReadOnlyDictionary<AchievementId, ProgressStatus> statuses,
+        CategoryCatalog categories)
     {
         var ordered = rows.OrderBy(item => item.AbsoluteOrder).ToArray();
-        if (ordered.Length != current.Achievements.Count || statuses.Count != current.Statuses.Count) return false;
+        if (ordered.Length != current.Achievements.Count || statuses.Count != current.Statuses.Count || !CategoryCatalogEquivalent(current.Categories, categories)) return false;
         for (var index = 0; index < ordered.Length; index++)
         {
             var left = current.Achievements[index];

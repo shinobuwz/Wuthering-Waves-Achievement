@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using Microsoft.Win32;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -17,9 +18,22 @@ namespace Wuwa.App;
 
 public partial class MainWindow : Window
 {
-    // The current game client moves several rows per -160 wheel event;
-    // keep the secondary-tab pages overlapping so OCR cannot jump over rows.
-    private const int SecondaryNavigationScrollTimes = 4;
+    // A negative drag moves the list content upward, advancing to lower rows.
+    // Keep the movement below the client height so each OCR pass can overlap rows.
+    private const int OcrListDragPixels = -600;
+    private const int SecondaryNavigationDragPixels = OcrListDragPixels;
+    private const int OcrCancelHotKeyId = 0x5741;
+    private const uint OcrCancelHotKeyModifiers = 0x0002 | 0x0004; // CTRL + SHIFT
+    private const uint VirtualKeyF12 = 0x7B;
+    private const int WmHotKey = 0x0312;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint modifiers, uint virtualKey);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     private readonly AchievementWorkspace _workspace;
     private WorkspaceView? _view;
@@ -28,6 +42,9 @@ public partial class MainWindow : Window
     private AchievementTrackerWindow? _trackerWindow;
     private bool _restoringMainWindow;
     private bool _isClosing;
+    private OcrScanMode? _activeOcrMode;
+    private HwndSource? _windowSource;
+    private bool _ocrCancelHotKeyRegistered;
     private bool _isLightTheme;
 
     public MainWindow(AchievementWorkspace workspace)
@@ -39,6 +56,8 @@ public partial class MainWindow : Window
             _isClosing = true;
             _trackerWindow?.Close();
         };
+        SourceInitialized += MainWindow_OnSourceInitialized;
+        Closed += MainWindow_OnClosed;
 #if DEBUG
         OcrNavigationDebugButton.Visibility = Visibility.Visible;
 #endif
@@ -80,7 +99,6 @@ public partial class MainWindow : Window
             SetItems(SecondCategoryCombo, ["全部二级分类", .. snapshot.Rows.Select(row => row.SecondCategory).Distinct().OrderBy(item => item, StringComparer.Ordinal)]);
             SetItems(HiddenCombo, ["全部隐藏状态", "仅显示可见", "仅显示隐藏"]);
             SetItems(ObtainabilityCombo, ["全部可获取状态", "可获取", "暂不可获取"]);
-            SetItems(CompletionCombo, ["全部完成状态", "未完成", "已完成"]);
             SetItems(StatusCombo, ["全部状态", "未完成", "已完成", "暂不可获取", "已占用"]);
             SetItems(GroupCombo, ["全部成就", "仅成就组"]);
             SetItems(SortCombo, ["默认排序", "未完成优先"]);
@@ -130,12 +148,6 @@ public partial class MainWindow : Window
             1 => ObtainabilityFilter.ObtainableOnly,
             2 => ObtainabilityFilter.UnavailableOnly,
             _ => ObtainabilityFilter.All
-        },
-        Completion: CompletionCombo.SelectedIndex switch
-        {
-            1 => CompletionFilter.IncompleteOnly,
-            2 => CompletionFilter.CompletedOnly,
-            _ => CompletionFilter.All
         },
         Status: StatusCombo.SelectedIndex switch
         {
@@ -301,7 +313,6 @@ public partial class MainWindow : Window
         SecondCategoryCombo.SelectedIndex = 0;
         HiddenCombo.SelectedIndex = 0;
         ObtainabilityCombo.SelectedIndex = 0;
-        CompletionCombo.SelectedIndex = 0;
         StatusCombo.SelectedIndex = 0;
         GroupCombo.SelectedIndex = 0;
         SortCombo.SelectedIndex = 0;
@@ -511,14 +522,65 @@ public partial class MainWindow : Window
         return null;
     }
 
+    private void MainWindow_OnSourceInitialized(object? sender, EventArgs e)
+    {
+        _windowSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+        if (_windowSource is null) return;
+        _windowSource.AddHook(MainWindowMessageHook);
+        _ocrCancelHotKeyRegistered = RegisterHotKey(
+            _windowSource.Handle,
+            OcrCancelHotKeyId,
+            OcrCancelHotKeyModifiers,
+            VirtualKeyF12);
+        NativeOcrDiagnostics.Write($"OCR cancel hotkey registered={_ocrCancelHotKeyRegistered} shortcut=Ctrl+Shift+F12");
+    }
+
+    private void MainWindow_OnClosed(object? sender, EventArgs e)
+    {
+        if (_windowSource is null) return;
+        if (_ocrCancelHotKeyRegistered)
+        {
+            UnregisterHotKey(_windowSource.Handle, OcrCancelHotKeyId);
+            _ocrCancelHotKeyRegistered = false;
+        }
+        _windowSource.RemoveHook(MainWindowMessageHook);
+        _windowSource = null;
+    }
+
+    private IntPtr MainWindowMessageHook(
+        IntPtr hwnd,
+        int message,
+        IntPtr wParam,
+        IntPtr lParam,
+        ref bool handled)
+    {
+        if (message == WmHotKey && wParam.ToInt32() == OcrCancelHotKeyId)
+        {
+            var messageText = _activeOcrMode == OcrScanMode.FullScan
+                ? "正在取消 OCR 全量扫描…（Ctrl+Shift+F12）"
+                : "正在取消 OCR 扫描…（Ctrl+Shift+F12）";
+            RequestOcrCancellation(messageText);
+            handled = true;
+        }
+        return IntPtr.Zero;
+    }
+
+    private void RequestOcrCancellation(string message)
+    {
+        if (_ocrCancellation is null) return;
+        _ocrCancellation.Cancel();
+        OcrScanButton.IsEnabled = false;
+        OcrFullScanButton.IsEnabled = false;
+        OcrNavigationDebugButton.IsEnabled = false;
+        HintText.Text = message;
+        NativeOcrDiagnostics.Write("OCR cancellation requested");
+    }
+
     private async void OcrScan_OnClick(object sender, RoutedEventArgs e)
     {
         if (_ocrCancellation is not null)
         {
-            _ocrCancellation.Cancel();
-            OcrScanButton.IsEnabled = false;
-            OcrFullScanButton.IsEnabled = false;
-            ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.Cancelling, "正在取消 OCR 扫描…");
+            RequestOcrCancellation("正在取消 OCR 扫描…");
             return;
         }
 
@@ -550,6 +612,7 @@ public partial class MainWindow : Window
         }
 
         _ocrCancellation = new CancellationTokenSource();
+        _activeOcrMode = OcrScanMode.CurrentCategory;
         OcrScanButton.Content = "取消 OCR";
         OcrFullScanButton.IsEnabled = false;
         ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.Preparing, "正在检测游戏窗口并扫描当前页面…");
@@ -627,10 +690,10 @@ public partial class MainWindow : Window
 
                 if (scan.Window is null || page == 80) break;
                 ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.ScrollingCategory,
-                    $"正在滚动成就列表…", page: page, matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
-                var scrollAccepted = await capture.ScrollAsync(scan.Window, scrollLength: -160, scrollTimes: 15, cancellationToken: _ocrCancellation.Token);
-                NativeOcrDiagnostics.Write($"OCR page={page} scrollAccepted={scrollAccepted}");
-                if (!scrollAccepted)
+                    $"正在拖动成就列表…", page: page, matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
+                var dragAccepted = await capture.DragScrollAsync(scan.Window, dragPixels: OcrListDragPixels, cancellationToken: _ocrCancellation.Token);
+                NativeOcrDiagnostics.Write($"OCR page={page} dragAccepted={dragAccepted}");
+                if (!dragAccepted)
                 {
                     ShowOcrError("Windows 拒绝了模拟鼠标输入。请确保游戏和工具使用相同权限运行，且当前桌面未被锁定。", "无法控制游戏");
                     return;
@@ -686,6 +749,7 @@ public partial class MainWindow : Window
             WindowState = previousState;
             _ocrCancellation?.Dispose();
             _ocrCancellation = null;
+            _activeOcrMode = null;
             OcrScanButton.Content = "OCR 自动扫描当前分类";
             OcrFullScanButton.IsEnabled = true;
             OcrScanButton.IsEnabled = true;
@@ -696,9 +760,7 @@ public partial class MainWindow : Window
     {
         if (_ocrCancellation is not null)
         {
-            _ocrCancellation.Cancel();
-            OcrNavigationDebugButton.IsEnabled = false;
-            HintText.Text = "正在取消分类切换测试…";
+            RequestOcrCancellation("正在取消分类切换测试…");
             return;
         }
 
@@ -717,6 +779,7 @@ public partial class MainWindow : Window
         }
 
         _ocrCancellation = new CancellationTokenSource();
+        _activeOcrMode = OcrScanMode.CurrentCategory;
         OcrNavigationDebugButton.Content = "取消分类测试";
         OcrScanButton.IsEnabled = false;
         OcrFullScanButton.IsEnabled = false;
@@ -734,8 +797,10 @@ public partial class MainWindow : Window
             navigationClient.EnableDetection(detectionModel);
             navigationClient.EnableClassifier(classifierModel);
             using var navigationReader = new NativeOcrTextReader(navigationClient);
+            var secondaryNavigationReader = new RegionOcrTextReader(navigationReader, 0.145, 0.18, 0.31, 0.95);
             var capture = new WindowsGameWindowCapture();
             var navigationService = new SinglePageOcrScanService(capture, navigationReader);
+            var secondaryNavigationService = new SinglePageOcrScanService(capture, secondaryNavigationReader);
             var initialWindow = await capture.TryFindGameWindowAsync(gameProcessNames, minimumWidth: 800, minimumHeight: 600, cancellationToken: _ocrCancellation.Token);
             if (initialWindow is null)
             {
@@ -744,6 +809,9 @@ public partial class MainWindow : Window
             }
 
             var primaryYPercentages = new[] { 0.1778, 0.2981, 0.4343, 0.5537 };
+            var workspaceSnapshot = _workspace.GetSnapshot();
+            var rows = workspaceSnapshot.Rows;
+            var categories = workspaceSnapshot.Categories;
             var currentWindow = initialWindow;
             var primarySucceeded = 0;
             var primarySkipped = 0;
@@ -789,20 +857,23 @@ public partial class MainWindow : Window
                 }
 
                 primarySucceeded++;
+                var knownSecondaryNames = FindKnownSecondaryNames(rows, primaryName, categories);
                 var visited = new HashSet<string>(StringComparer.Ordinal);
-                var lastVisibleSignature = string.Empty;
-                var noChangeRounds = 0;
-                for (var secondaryRound = 0; secondaryRound < 64 && noChangeRounds < 3; secondaryRound++)
+                for (var secondaryRound = 0; secondaryRound < 64; secondaryRound++)
                 {
                     _ocrCancellation.Token.ThrowIfCancellationRequested();
-                    var tabScan = await navigationService.ScanAsync(gameProcessNames, 1920, 1080, _ocrCancellation.Token);
+                    var tabScan = await secondaryNavigationService.ScanAsync(gameProcessNames, 1920, 1080, _ocrCancellation.Token);
                     if (!tabScan.IsSuccess)
                     {
                         failures.Add($"一级 {primaryName}：二级分类 OCR 失败（{tabScan.Error?.Message ?? "未知错误"}）");
                         break;
                     }
                     currentWindow = tabScan.Window ?? currentWindow;
-                    var visibleTabs = FindVisibleSecondaryTabs(tabScan.Lines, currentWindow.ClientWidth, currentWindow.ClientHeight);
+                    var visibleTabs = FindVisibleSecondaryTabs(
+                        tabScan.Lines,
+                        currentWindow.ClientWidth,
+                        currentWindow.ClientHeight,
+                        knownSecondaryNames);
                     var visibleSignature = BuildNavigationSignature(visibleTabs);
                     var foundNew = false;
                     foreach (var tab in visibleTabs)
@@ -811,10 +882,10 @@ public partial class MainWindow : Window
                         var key = AchievementOcrMatcher.NormalizeName(tab.Name);
                         if (!visited.Add(key)) continue;
                         foundNew = true;
-                        var secondaryX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
+                        var secondaryX = tab.ClientX;
                         HintText.Text = $"DEBUG：点击二级分类 {primaryName} / {tab.Name}（已发现 {visited.Count} 个）";
                         var clicked = await capture.ClickAsync(currentWindow, secondaryX, tab.ClientY, _ocrCancellation.Token);
-                        NativeOcrDiagnostics.Write($"OCR navigation debug secondary={primaryName}/{tab.Name} clicked={clicked} client={secondaryX},{tab.ClientY}");
+                        NativeOcrDiagnostics.Write($"OCR navigation debug secondary={primaryName}/{tab.Name} clicked={clicked} client={secondaryX},{tab.ClientY} textCenter={tab.ClientX},{tab.ClientY}");
                         if (!clicked)
                         {
                             secondaryFailed++;
@@ -825,21 +896,17 @@ public partial class MainWindow : Window
                         await Task.Delay(500, _ocrCancellation.Token);
                     }
 
-                    if (visibleTabs.Count == 0 || (!foundNew && string.Equals(visibleSignature, lastVisibleSignature, StringComparison.Ordinal)))
+                    NativeOcrDiagnostics.Write($"OCR navigation debug secondary-round={secondaryRound + 1} visible={visibleTabs.Count} foundNew={foundNew} visited={visited.Count} signature={visibleSignature}");
+                    if (visibleTabs.Count == 0 || !foundNew)
                     {
-                        noChangeRounds++;
+                        NativeOcrDiagnostics.Write($"OCR navigation debug secondary-stop reason=no-new-tabs round={secondaryRound + 1} visited={visited.Count}");
+                        break;
                     }
-                    else
-                    {
-                        noChangeRounds = 0;
-                    }
-                    lastVisibleSignature = visibleSignature;
-                    if (noChangeRounds >= 3) break;
 
                     var scrollX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
-                    var scrollY = (int)(currentWindow.ClientHeight * ((0.1796 + 1.0) / 2));
-                    HintText.Text = $"DEBUG：滚动二级分类列表 {primaryName}（无变化 {noChangeRounds}/3）";
-                    if (!await capture.ScrollAtAsync(currentWindow, scrollX, scrollY, -160, SecondaryNavigationScrollTimes, _ocrCancellation.Token))
+                    var scrollY = (int)(currentWindow.ClientHeight * 0.78);
+                    HintText.Text = $"DEBUG：拖动二级分类列表 {primaryName}（已发现 {visited.Count} 个）";
+                    if (!await capture.DragScrollAtAsync(currentWindow, scrollX, scrollY, SecondaryNavigationDragPixels, _ocrCancellation.Token))
                     {
                         failures.Add($"一级 {primaryName}：二级分类列表滚动失败");
                         break;
@@ -881,6 +948,7 @@ public partial class MainWindow : Window
             WindowState = previousState;
             _ocrCancellation?.Dispose();
             _ocrCancellation = null;
+            _activeOcrMode = null;
             OcrNavigationDebugButton.Content = "DEBUG：测试分类切换";
             OcrNavigationDebugButton.IsEnabled = true;
             OcrFullScanButton.IsEnabled = true;
@@ -892,9 +960,7 @@ public partial class MainWindow : Window
     {
         if (_ocrCancellation is not null)
         {
-            _ocrCancellation.Cancel();
-            OcrFullScanButton.IsEnabled = false;
-            ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.Cancelling, "正在取消 OCR 全量扫描…");
+            RequestOcrCancellation("正在取消 OCR 全量扫描…");
             return;
         }
 
@@ -914,6 +980,7 @@ public partial class MainWindow : Window
         }
 
         _ocrCancellation = new CancellationTokenSource();
+        _activeOcrMode = OcrScanMode.FullScan;
         OcrFullScanButton.Content = "取消 OCR";
         OcrScanButton.IsEnabled = false;
         ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.Preparing, "正在准备 OCR 全量扫描…");
@@ -932,8 +999,10 @@ public partial class MainWindow : Window
             navigationClient.EnableDetection(detectionModel);
             navigationClient.EnableClassifier(classifierModel);
             using var navigationReader = new NativeOcrTextReader(navigationClient);
+            var secondaryNavigationReader = new RegionOcrTextReader(navigationReader, 0.145, 0.18, 0.31, 0.95);
             var capture = new WindowsGameWindowCapture();
             var navigationService = new SinglePageOcrScanService(capture, navigationReader);
+            var secondaryNavigationService = new SinglePageOcrScanService(capture, secondaryNavigationReader);
             var achievementService = new SinglePageOcrScanService(capture, rowReader);
             ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.FindingGameWindow, "正在检测游戏窗口…");
             var initialWindow = await capture.TryFindGameWindowAsync(gameProcessNames, minimumWidth: 800, minimumHeight: 600, cancellationToken: _ocrCancellation.Token);
@@ -943,7 +1012,9 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var rows = _workspace.Query(new AchievementQuery()).Rows;
+            var workspaceSnapshot = _workspace.GetSnapshot();
+            var rows = workspaceSnapshot.Rows;
+            var categories = workspaceSnapshot.Categories;
             var primaryYPercentages = new[] { 0.1778, 0.2981, 0.4343, 0.5537 };
             var mergedCandidates = new Dictionary<AchievementId, OcrAchievementCandidate>();
             var mergedUnmatched = new Dictionary<string, OcrUnmatchedText>(StringComparer.Ordinal);
@@ -988,24 +1059,27 @@ public partial class MainWindow : Window
                     continue;
                 }
 
+                var knownSecondaryNames = FindKnownSecondaryNames(rows, primaryName, categories);
                 var visited = new HashSet<string>(StringComparer.Ordinal);
-                var lastVisibleSignature = string.Empty;
-                var noChangeRounds = 0;
-                for (var secondaryRound = 0; secondaryRound < 64 && noChangeRounds < 3; secondaryRound++)
+                for (var secondaryRound = 0; secondaryRound < 64; secondaryRound++)
                 {
                     _ocrCancellation.Token.ThrowIfCancellationRequested();
                     ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.DiscoveringSecondaryCategories,
                         $"正在发现{primaryName}下的二级分类…",
                         primaryName: primaryName, visitedCount: primaryIndex, totalCount: primaryYPercentages.Length,
                         matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
-                    var tabScan = await navigationService.ScanAsync(gameProcessNames, 1920, 1080, _ocrCancellation.Token);
+                    var tabScan = await secondaryNavigationService.ScanAsync(gameProcessNames, 1920, 1080, _ocrCancellation.Token);
                     if (!tabScan.IsSuccess)
                     {
                         AddScanWarning(mergedUnmatched, primaryName, tabScan.Error?.Message ?? "二级分类识别失败");
                         break;
                     }
                     currentWindow = tabScan.Window ?? currentWindow;
-                    var visibleTabs = FindVisibleSecondaryTabs(tabScan.Lines, currentWindow.ClientWidth, currentWindow.ClientHeight);
+                    var visibleTabs = FindVisibleSecondaryTabs(
+                        tabScan.Lines,
+                        currentWindow.ClientWidth,
+                        currentWindow.ClientHeight,
+                        knownSecondaryNames);
                     var visibleSignature = BuildNavigationSignature(visibleTabs);
                     var foundNew = false;
                     foreach (var tab in visibleTabs)
@@ -1014,14 +1088,16 @@ public partial class MainWindow : Window
                         var key = AchievementOcrMatcher.NormalizeName(tab.Name);
                         if (!visited.Add(key)) continue;
                         foundNew = true;
-                        var secondaryX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
+                        var secondaryX = tab.ClientX;
                         ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.ScanningCategory,
                             $"正在扫描：{primaryName} / {tab.Name}（已发现 {visited.Count} 个）",
                             primaryName: primaryName, secondaryName: tab.Name, visitedCount: primaryIndex,
                             totalCount: primaryYPercentages.Length, matchedCount: mergedCandidates.Count,
                             unmatchedCount: mergedUnmatched.Count);
                         HintText.Text = $"正在扫描：{primaryName} / {tab.Name}（已发现 {visited.Count} 个）";
-                        if (!await capture.ClickAsync(currentWindow, secondaryX, tab.ClientY, _ocrCancellation.Token))
+                        var clicked = await capture.ClickAsync(currentWindow, secondaryX, tab.ClientY, _ocrCancellation.Token);
+                        NativeOcrDiagnostics.Write($"OCR full secondary={primaryName}/{tab.Name} clicked={clicked} client={secondaryX},{tab.ClientY} textCenter={tab.ClientX},{tab.ClientY}");
+                        if (!clicked)
                         {
                             AddScanWarning(mergedUnmatched, $"{primaryName}/{tab.Name}", "二级分类点击失败");
                             continue;
@@ -1039,25 +1115,21 @@ public partial class MainWindow : Window
                             _ocrCancellation.Token);
                     }
 
-                    if (visibleTabs.Count == 0 || (!foundNew && string.Equals(visibleSignature, lastVisibleSignature, StringComparison.Ordinal)))
+                    NativeOcrDiagnostics.Write($"OCR full secondary-round={secondaryRound + 1} visible={visibleTabs.Count} foundNew={foundNew} visited={visited.Count} signature={visibleSignature}");
+                    if (visibleTabs.Count == 0 || !foundNew)
                     {
-                        noChangeRounds++;
+                        NativeOcrDiagnostics.Write($"OCR full secondary-stop reason=no-new-tabs round={secondaryRound + 1} visited={visited.Count}");
+                        break;
                     }
-                    else
-                    {
-                        noChangeRounds = 0;
-                    }
-                    lastVisibleSignature = visibleSignature;
-                    if (noChangeRounds >= 3) break;
 
                     var scrollX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
-                    var scrollY = (int)(currentWindow.ClientHeight * ((0.1796 + 1.0) / 2));
+                    var scrollY = (int)(currentWindow.ClientHeight * 0.78);
                     ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.ScrollingCategory,
-                        $"正在滚动二级分类列表：{primaryName}（无变化 {noChangeRounds}/3）",
+                        $"正在拖动二级分类列表：{primaryName}（已发现 {visited.Count} 个）",
                         primaryName: primaryName, visitedCount: primaryIndex, totalCount: primaryYPercentages.Length,
                         matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
-                    HintText.Text = $"正在滚动二级分类列表：{primaryName}（无变化 {noChangeRounds}/3）";
-                    if (!await capture.ScrollAtAsync(currentWindow, scrollX, scrollY, -160, SecondaryNavigationScrollTimes, _ocrCancellation.Token))
+                    HintText.Text = $"正在拖动二级分类列表：{primaryName}（已发现 {visited.Count} 个）";
+                    if (!await capture.DragScrollAtAsync(currentWindow, scrollX, scrollY, SecondaryNavigationDragPixels, _ocrCancellation.Token))
                     {
                         AddScanWarning(mergedUnmatched, primaryName, "二级分类列表滚动失败");
                         break;
@@ -1114,6 +1186,7 @@ public partial class MainWindow : Window
             WindowState = previousState;
             _ocrCancellation?.Dispose();
             _ocrCancellation = null;
+            _activeOcrMode = null;
             OcrFullScanButton.Content = "OCR 全量扫描所有分类";
             OcrFullScanButton.IsEnabled = true;
             OcrScanButton.IsEnabled = true;
@@ -1172,10 +1245,10 @@ public partial class MainWindow : Window
                 matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
             if (scan.Window is null || page == 80) break;
             ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.ScrollingCategory,
-                $"正在滚动：{primaryName} / {secondaryName}…",
+                $"正在拖动：{primaryName} / {secondaryName}…",
                 primaryName: primaryName, secondaryName: secondaryName, page: page,
                 matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
-            if (!await capture.ScrollAsync(scan.Window, -160, 15, cancellationToken))
+            if (!await capture.DragScrollAsync(scan.Window, dragPixels: OcrListDragPixels, cancellationToken))
             {
                 AddScanWarning(mergedUnmatched, $"{primaryName}/{secondaryName}", "成就列表滚动失败");
                 return new OcrCategoryScanStats(pages, lines, false);
@@ -1200,26 +1273,64 @@ public partial class MainWindow : Window
             .Select(line => line.Text.Trim()));
     }
 
+    private static IReadOnlySet<string> FindKnownSecondaryNames(
+        IReadOnlyList<AchievementRow> rows,
+        string primaryName,
+        CategoryCatalog? categories = null)
+    {
+        var firstNames = rows
+            .Select(row => row.FirstCategory)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var canonicalPrimary = AchievementOcrMatcher.MatchKnownText(primaryName, firstNames, out _);
+        if (canonicalPrimary is null) return new HashSet<string>(StringComparer.Ordinal);
+        var normalizedPrimary = AchievementOcrMatcher.NormalizeName(canonicalPrimary);
+        var names = rows
+            .Where(row => string.Equals(
+                AchievementOcrMatcher.NormalizeName(row.FirstCategory),
+                normalizedPrimary,
+                StringComparison.Ordinal))
+            .Select(row => row.SecondCategory)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.Ordinal);
+        if (categories?.SecondCategories.TryGetValue(canonicalPrimary, out var configured) == true)
+        {
+            names.UnionWith(configured.Keys);
+        }
+        return names;
+    }
+
     private static IReadOnlyList<NavigationTab> FindVisibleSecondaryTabs(
         IReadOnlyList<OcrTextLine> lines,
         int width,
-        int height)
+        int height,
+        IReadOnlySet<string>? knownNames = null)
     {
-        var x1 = width * 0.1005;
-        var y1 = height * 0.1796;
-        var x2 = width * 0.3479;
-        var y2 = height;
+        // The tab labels occupy the inner text column in the left panel. Keep
+        // icons, completion percentages, the panel edge, and the lower HUD out
+        // of the navigation OCR region.
+        var x1 = width * 0.145;
+        var y1 = height * 0.18;
+        var x2 = width * 0.31;
+        var y2 = height * 0.95;
         var matches = new Dictionary<string, NavigationTab>(StringComparer.Ordinal);
         foreach (var line in lines)
         {
             if (!IsLineInRegion(line, x1, y1, x2, y2)) continue;
             var centerX = line.Points.Average(point => point.X);
-            if (centerX < width * 0.18) continue;
             var text = line.Text.Trim();
             if (IsCompletionPercentage(text)) continue;
-            var normalized = AchievementOcrMatcher.NormalizeName(text);
+            var canonicalText = text;
+            if (knownNames is { Count: > 0 })
+            {
+                canonicalText = CanonicalizeSecondaryTabName(text, knownNames) ?? string.Empty;
+                if (canonicalText.Length == 0) continue;
+            }
+            var normalized = AchievementOcrMatcher.NormalizeName(canonicalText);
             if (normalized.Length < 2) continue;
-            var tab = new NavigationTab(text, (int)Math.Round(LineCenterY(line)));
+            NativeOcrDiagnostics.Write($"OCR secondary line raw={text} canonical={canonicalText} center={centerX:0},{LineCenterY(line):0}");
+            var tab = new NavigationTab(canonicalText, (int)Math.Round(centerX), (int)Math.Round(LineCenterY(line)));
             if (!matches.TryGetValue(normalized, out var existing) || tab.ClientY < existing.ClientY)
             {
                 matches[normalized] = tab;
@@ -1228,6 +1339,38 @@ public partial class MainWindow : Window
         var result = matches.Values.OrderBy(tab => tab.ClientY).ToArray();
         NativeOcrDiagnostics.Write($"OCR secondary visible={result.Length} names=[{string.Join(",", result.Select(tab => tab.Name))}]");
         return result;
+    }
+
+    private static string? CanonicalizeSecondaryTabName(
+        string text,
+        IReadOnlySet<string> knownNames)
+    {
+        var normalizedText = AchievementOcrMatcher.NormalizeName(text);
+        var exact = knownNames.FirstOrDefault(name =>
+            string.Equals(AchievementOcrMatcher.NormalizeName(name), normalizedText, StringComparison.Ordinal));
+        if (exact is not null) return exact;
+
+        var matched = AchievementOcrMatcher.MatchKnownText(text, knownNames, out _);
+        if (matched is null) return null;
+
+        if (TryGetTrailingChineseOrdinal(normalizedText, out var rawOrdinal) &&
+            TryGetTrailingChineseOrdinal(AchievementOcrMatcher.NormalizeName(matched), out var matchedOrdinal) &&
+            rawOrdinal != matchedOrdinal)
+        {
+            // OCR can confuse the one-stroke 一 and two-stroke 二. Do not turn
+            // an explicit ordinal into a different known tab: preserving the
+            // raw label keeps its row coordinate aligned with the actual UI.
+            NativeOcrDiagnostics.Write($"OCR secondary preserve-ordinal raw={text} fuzzy={matched}");
+            return text;
+        }
+
+        return matched;
+    }
+
+    private static bool TryGetTrailingChineseOrdinal(string value, out char ordinal)
+    {
+        ordinal = value.Length == 0 ? '\0' : value[^1];
+        return ordinal is '一' or '二' or '三' or '四' or '五' or '六' or '七' or '八' or '九' or '十';
     }
 
     private static string BuildNavigationSignature(IReadOnlyList<NavigationTab> tabs) =>
@@ -1273,7 +1416,7 @@ public partial class MainWindow : Window
         NativeOcrDiagnostics.Write($"OCR warning scope={scope} reason={reason}");
     }
 
-    private sealed record NavigationTab(string Name, int ClientY);
+    private sealed record NavigationTab(string Name, int ClientX, int ClientY);
 
     private sealed record OcrCategoryScanStats(int Pages, int Lines, bool IsSuccess);
 
@@ -1422,8 +1565,22 @@ public partial class MainWindow : Window
         _isLightTheme = light;
         ThemeButton.Content = light ? "深色主题" : "浅色主题";
         var colors = light
-            ? new Dictionary<string, string> { ["WindowBrush"] = "#F5F8F7", ["PanelBrush"] = "#FFFFFF", ["PanelAltBrush"] = "#E8F0EE", ["BorderBrush"] = "#C3D4D0", ["TextBrush"] = "#19302D", ["MutedTextBrush"] = "#5A7470", ["InputBrush"] = "#FFFFFF", ["RowBorderBrush"] = "#D7E2DF", ["SelectionBrush"] = "#B8E8DF", ["ErrorBrush"] = "#A52714" }
-            : new Dictionary<string, string> { ["WindowBrush"] = "#182124", ["PanelBrush"] = "#222E32", ["PanelAltBrush"] = "#29383D", ["BorderBrush"] = "#3A5055", ["TextBrush"] = "#E8F2F0", ["MutedTextBrush"] = "#9BB3AF", ["InputBrush"] = "#172225", ["RowBorderBrush"] = "#304247", ["SelectionBrush"] = "#285A5A", ["ErrorBrush"] = "#FF9A8D" };
+            ? new Dictionary<string, string>
+            {
+                ["WindowBrush"] = "#F5F8F7", ["PanelBrush"] = "#FFFFFF", ["PanelAltBrush"] = "#E8F0EE",
+                ["BorderBrush"] = "#C3D4D0", ["TextBrush"] = "#19302D", ["MutedTextBrush"] = "#5A7470",
+                ["InputBrush"] = "#FFFFFF", ["RowBorderBrush"] = "#D7E2DF", ["SelectionBrush"] = "#B8E8DF",
+                ["ErrorBrush"] = "#A52714", ["CompletedStatusBrush"] = "#087F6A", ["IncompleteStatusBrush"] = "#9A6B00",
+                ["UnavailableStatusBrush"] = "#B13B2F", ["OccupiedStatusBrush"] = "#6D4BC0"
+            }
+            : new Dictionary<string, string>
+            {
+                ["WindowBrush"] = "#182124", ["PanelBrush"] = "#222E32", ["PanelAltBrush"] = "#29383D",
+                ["BorderBrush"] = "#3A5055", ["TextBrush"] = "#E8F2F0", ["MutedTextBrush"] = "#9BB3AF",
+                ["InputBrush"] = "#172225", ["RowBorderBrush"] = "#304247", ["SelectionBrush"] = "#285A5A",
+                ["ErrorBrush"] = "#FF9A8D", ["CompletedStatusBrush"] = "#42D8C2", ["IncompleteStatusBrush"] = "#E8C56C",
+                ["UnavailableStatusBrush"] = "#FF9A8D", ["OccupiedStatusBrush"] = "#B9A3FF"
+            };
         foreach (var pair in colors)
         {
             Application.Current.Resources[pair.Key] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(pair.Value));
