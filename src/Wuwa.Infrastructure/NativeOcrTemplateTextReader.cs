@@ -59,6 +59,7 @@ public sealed class NativeOcrTemplateTextReader : IOcrTextReader
             var nameLine = AddRecognizedCrop(lines, frame, icon.X, icon.Y, NameDx, NameDy, NameWidth, NameHeight, "name", OcrTextKind.AchievementName);
             if (nameLine is not null && BuiltInAchievementRules.IsWangRiJinzhouOcrName(nameLine.Text))
             {
+                NativeOcrDiagnostics.Write($"TemplateReader special-name text={nameLine.Text}");
                 AddRecognizedCrop(lines, frame, icon.X, icon.Y, DescriptionDx, DescriptionDy, DescriptionWidth, DescriptionHeight, "description", OcrTextKind.AchievementDescription);
             }
             AddRecognizedCrop(lines, frame, icon.X, icon.Y, StatusDx, StatusDy, StatusWidth, StatusHeight, "status", OcrTextKind.AchievementStatus);

@@ -34,6 +34,7 @@ public sealed class OcrMatchingTests
     public void CreatePreview_MapsSharedWangRiJinzhouTitleByDescription()
     {
         const string groupId = BuiltInAchievementRules.WangRiJinzhouGroupId;
+        Assert.IsTrue(BuiltInAchievementRules.IsWangRiJinzhouOcrName("日之音・今m]"));
         var rows = new[]
         {
             WangRow("10100001", "Ⅰ", "向陈皮交付30个声匣。", 1, groupId),

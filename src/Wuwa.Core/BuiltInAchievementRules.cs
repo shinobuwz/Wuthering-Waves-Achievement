@@ -41,7 +41,16 @@ public static class BuiltInAchievementRules
     public static string GetOcrName(AchievementRow achievement) =>
         IsWangRiJinzhou(achievement) ? WangRiJinzhouOcrName : achievement.Name;
 
-    public static bool IsWangRiJinzhouOcrName(string text) =>
-        !string.IsNullOrWhiteSpace(text) &&
-        AchievementOcrMatcher.MatchKnownText(text, [WangRiJinzhouOcrName], out _) is not null;
+    public static bool IsWangRiJinzhouOcrName(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var normalized = AchievementOcrMatcher.NormalizeName(text);
+        if (normalized.Contains("日之音", StringComparison.Ordinal) &&
+            normalized.Contains('今'))
+        {
+            return true;
+        }
+
+        return AchievementOcrMatcher.MatchKnownText(text, [WangRiJinzhouOcrName], out _) is not null;
+    }
 }
