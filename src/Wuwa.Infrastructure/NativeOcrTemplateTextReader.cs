@@ -12,6 +12,10 @@ public sealed class NativeOcrTemplateTextReader : IOcrTextReader
     private const int NameDy = -39;
     private const int NameWidth = 503;
     private const int NameHeight = 40;
+    private const int DescriptionDx = 122;
+    private const int DescriptionDy = 3;
+    private const int DescriptionWidth = 700;
+    private const int DescriptionHeight = 40;
     private const int StatusDx = 878;
     private const int StatusDy = 15;
     private const int StatusWidth = 163;
@@ -47,20 +51,24 @@ public sealed class NativeOcrTemplateTextReader : IOcrTextReader
             _templateDirectory);
         NativeOcrDiagnostics.Write($"TemplateReader icons={icons.Count} templateDir={_templateDirectory}");
 
-        var lines = new List<OcrTextLine>(icons.Count * 2);
+        var lines = new List<OcrTextLine>(icons.Count * 3);
         foreach (var icon in icons)
         {
             cancellationToken.ThrowIfCancellationRequested();
             NativeOcrDiagnostics.Write($"TemplateReader icon x={icon.X} y={icon.Y} label={icon.Label} confidence={icon.Confidence:F3}");
-            AddRecognizedCrop(lines, frame, icon.X, icon.Y, NameDx, NameDy, NameWidth, NameHeight, "name");
-            AddRecognizedCrop(lines, frame, icon.X, icon.Y, StatusDx, StatusDy, StatusWidth, StatusHeight, "status");
+            var nameLine = AddRecognizedCrop(lines, frame, icon.X, icon.Y, NameDx, NameDy, NameWidth, NameHeight, "name", OcrTextKind.AchievementName);
+            if (nameLine is not null && BuiltInAchievementRules.IsWangRiJinzhouOcrName(nameLine.Text))
+            {
+                AddRecognizedCrop(lines, frame, icon.X, icon.Y, DescriptionDx, DescriptionDy, DescriptionWidth, DescriptionHeight, "description", OcrTextKind.AchievementDescription);
+            }
+            AddRecognizedCrop(lines, frame, icon.X, icon.Y, StatusDx, StatusDy, StatusWidth, StatusHeight, "status", OcrTextKind.AchievementStatus);
         }
 
         NativeOcrDiagnostics.Write($"TemplateReader lines={lines.Count}");
         return lines;
     }
 
-    private void AddRecognizedCrop(
+    private OcrTextLine? AddRecognizedCrop(
         ICollection<OcrTextLine> lines,
         OcrImageFrame frame,
         int iconX,
@@ -69,15 +77,16 @@ public sealed class NativeOcrTemplateTextReader : IOcrTextReader
         int offsetY,
         int cropWidth,
         int cropHeight,
-        string cropKind)
+        string cropKind,
+        OcrTextKind textKind)
     {
         var crop = Crop(frame, iconX + offsetX, iconY + offsetY, cropWidth, cropHeight, out var x, out var y, out var actualWidth, out var actualHeight);
-        if (crop is null) return;
+        if (crop is null) return null;
 
         var result = _client.RecognizeBgrClahe(crop, actualWidth, actualHeight, actualWidth * 3);
         NativeOcrDiagnostics.Write($"TemplateReader crop={cropKind} x={x} y={y} size={actualWidth}x{actualHeight} text={result.Text} score={result.Score:F3}");
-        if (string.IsNullOrWhiteSpace(result.Text)) return;
-        lines.Add(new OcrTextLine(
+        if (string.IsNullOrWhiteSpace(result.Text)) return null;
+        var line = new OcrTextLine(
             [
                 new OcrPoint(x, y),
                 new OcrPoint(x + actualWidth, y),
@@ -85,7 +94,10 @@ public sealed class NativeOcrTemplateTextReader : IOcrTextReader
                 new OcrPoint(x, y + actualHeight)
             ],
             result.Text.Trim(),
-            result.Score));
+            result.Score,
+            textKind);
+        lines.Add(line);
+        return line;
     }
 
     private static byte[]? Crop(

@@ -8,6 +8,30 @@ namespace Wuwa.Tests;
 public sealed class AchievementWorkspaceTests
 {
     [TestMethod]
+    public async Task BuiltInWangRiJinzhouRowsAreGroupedAndWikiSyncRetainsTheOverride()
+    {
+        var achievements = new[]
+        {
+            Achievement("10100001", 1, name: "往日之音·今州 Ⅰ", description: "向陈皮交付30个声匣。"),
+            Achievement("10100002", 2, name: "往日之音·今州 Ⅱ", description: "向陈皮交付60个声匣。"),
+            Achievement("10100003", 3, name: "往日之音·今州 Ⅲ", description: "向陈皮交付115个声匣。")
+        };
+        var workspace = CreateWorkspace(achievements);
+
+        var opened = await workspace.OpenAsync();
+        Assert.IsTrue(opened.IsSuccess);
+        Assert.IsTrue(opened.Snapshot.Rows.All(row => row.GroupId == BuiltInAchievementRules.WangRiJinzhouGroupId));
+
+        var remote = achievements
+            .Select(item => item with { GroupId = "wiki-should-not-win" })
+            .ToArray();
+        var synced = await workspace.SyncWikiAsync(new FixedWikiSource(remote));
+
+        Assert.IsTrue(synced.IsSuccess, synced.Error?.Message);
+        Assert.IsTrue(synced.Snapshot.Rows.All(row => row.GroupId == BuiltInAchievementRules.WangRiJinzhouGroupId));
+    }
+
+    [TestMethod]
     public async Task OpenAndQuery_ReturnRowsAndStatisticsFromTheSameRevision()
     {
         var workspace = CreateWorkspace(
@@ -454,5 +478,11 @@ public sealed class AchievementWorkspaceTests
         {
             Assert.AreEqual(item.Status, result.Snapshot.Rows.Single(row => row.Id == item.Id).Status);
         }
+    }
+
+    private sealed class FixedWikiSource(IReadOnlyList<Achievement> achievements) : IWikiAchievementSource
+    {
+        public Task<WikiFetchResult> FetchAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new WikiFetchResult(true, achievements));
     }
 }

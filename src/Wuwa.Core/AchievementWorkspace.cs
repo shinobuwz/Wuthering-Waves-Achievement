@@ -34,7 +34,8 @@ public sealed partial class AchievementWorkspace
         {
             try
             {
-                var library = await _librarySource.LoadAsync(cancellationToken).ConfigureAwait(false);
+                var library = BuiltInAchievementRules.Apply(
+                    await _librarySource.LoadAsync(cancellationToken).ConfigureAwait(false));
                 var state = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
                 if (state is null)
                 {

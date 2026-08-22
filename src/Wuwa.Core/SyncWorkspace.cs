@@ -28,7 +28,8 @@ public sealed partial class AchievementWorkspace
             WikiFetchResult remote;
             try
             {
-                remote = await wikiSource.FetchAsync(cancellationToken).ConfigureAwait(false);
+                remote = BuiltInAchievementRules.Apply(
+                    await wikiSource.FetchAsync(cancellationToken).ConfigureAwait(false));
             }
             catch (OperationCanceledException)
             {

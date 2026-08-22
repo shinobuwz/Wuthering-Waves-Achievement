@@ -44,9 +44,44 @@ public static partial class AchievementOcrMatcher
             .ToArray();
         var candidates = new List<OcrAchievementCandidate>();
         var unmatched = new List<OcrUnmatchedText>();
+        var consumedLineIndexes = new HashSet<int>();
+        var wangRiJinzhouRows = achievements
+            .Where(BuiltInAchievementRules.IsWangRiJinzhou)
+            .OrderBy(row => row.AbsoluteOrder)
+            .ToArray();
 
-        foreach (var line in lines)
+        // The game displays one shared title for these three progression rows.
+        // Resolve only this built-in exception from its nearby description; all
+        // other OCR matching continues through the existing name-only path.
+        for (var index = 0; index < lines.Count; index++)
         {
+            var line = lines[index];
+            if (ParseStatus(line.Text) is not null || string.IsNullOrWhiteSpace(line.Text) ||
+                !BuiltInAchievementRules.IsWangRiJinzhouOcrName(line.Text)) continue;
+
+            consumedLineIndexes.Add(index);
+            var descriptionMatch = FindWangRiJinzhouDescription(index, line, lines, wangRiJinzhouRows, consumedLineIndexes);
+            if (descriptionMatch is null)
+            {
+                unmatched.Add(new OcrUnmatchedText(line.Text, "往日之音·今州未匹配到成就描述", line.Score));
+                continue;
+            }
+
+            consumedLineIndexes.Add(descriptionMatch.Value.Index);
+            var status = FindNearestStatus(line, statusLines);
+            candidates.Add(new OcrAchievementCandidate(
+                descriptionMatch.Value.Row.Id,
+                descriptionMatch.Value.Row.LegacyCode,
+                descriptionMatch.Value.Row.Name,
+                line.Text,
+                descriptionMatch.Value.Confidence,
+                status.Status,
+                status.Text));
+        }
+
+        foreach (var (index, line) in lines.Select((line, index) => (index, line)))
+        {
+            if (consumedLineIndexes.Contains(index)) continue;
             if (ParseStatus(line.Text) is not null || string.IsNullOrWhiteSpace(line.Text)) continue;
             var match = Match(line.Text, achievements);
             if (match.Row is null)
@@ -121,6 +156,42 @@ public static partial class AchievementOcrMatcher
         return best.Distance <= Math.Max(best.Length * MaximumDistanceRatio, 0)
             ? best.Name
             : null;
+    }
+
+    private static (AchievementRow Row, double Confidence, int Index)? FindWangRiJinzhouDescription(
+        int titleIndex,
+        OcrTextLine titleLine,
+        IReadOnlyList<OcrTextLine> lines,
+        IReadOnlyList<AchievementRow> rows,
+        IReadOnlySet<int> consumedLineIndexes)
+    {
+        if (rows.Count == 0 || titleLine.Points.Count == 0) return null;
+        MatchKnownText(titleLine.Text, [BuiltInAchievementRules.GetOcrName(rows[0])], out var titleConfidence);
+        var titleCenter = titleLine.Points.Average(point => point.Y);
+        (AchievementRow Row, double Confidence, int Index, double Distance)? best = null;
+
+        for (var index = 0; index < lines.Count; index++)
+        {
+            if (index == titleIndex || consumedLineIndexes.Contains(index)) continue;
+            var line = lines[index];
+            if (line.Points.Count == 0 || string.IsNullOrWhiteSpace(line.Text) || ParseStatus(line.Text) is not null) continue;
+            if (line.Kind is not OcrTextKind.Unknown and not OcrTextKind.AchievementDescription) continue;
+
+            var distance = Math.Abs(line.Points.Average(point => point.Y) - titleCenter);
+            if (distance > 90) continue;
+            foreach (var row in rows)
+            {
+                if (MatchKnownText(line.Text, [row.Description], out var descriptionConfidence) is null) continue;
+                var confidence = titleConfidence * 0.35 + descriptionConfidence * 0.65;
+                if (best is null || confidence > best.Value.Confidence ||
+                    confidence == best.Value.Confidence && distance < best.Value.Distance)
+                {
+                    best = (row, confidence, index, distance);
+                }
+            }
+        }
+
+        return best is null ? null : (best.Value.Row, best.Value.Confidence, best.Value.Index);
     }
 
     private static (AchievementRow? Row, double Confidence, bool IsAmbiguous) Match(

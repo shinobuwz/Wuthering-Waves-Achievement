@@ -52,10 +52,19 @@ public sealed record GameWindowScreenBounds(
 
 public sealed record OcrPoint(float X, float Y);
 
+public enum OcrTextKind
+{
+    Unknown,
+    AchievementName,
+    AchievementDescription,
+    AchievementStatus
+}
+
 public sealed record OcrTextLine(
     IReadOnlyList<OcrPoint> Points,
     string Text,
-    float Score);
+    float Score,
+    OcrTextKind Kind = OcrTextKind.Unknown);
 
 public interface IGameWindowCapture
 {

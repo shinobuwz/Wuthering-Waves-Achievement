@@ -31,6 +31,31 @@ public sealed class OcrMatchingTests
     }
 
     [TestMethod]
+    public void CreatePreview_MapsSharedWangRiJinzhouTitleByDescription()
+    {
+        const string groupId = BuiltInAchievementRules.WangRiJinzhouGroupId;
+        var rows = new[]
+        {
+            WangRow("10100001", "Ⅰ", "向陈皮交付30个声匣。", 1, groupId),
+            WangRow("10100002", "Ⅱ", "向陈皮交付60个声匣。", 2, groupId),
+            WangRow("10100003", "Ⅲ", "向陈皮交付115个声匣。", 3, groupId)
+        };
+        var lines = new[]
+        {
+            Line("往日之音·今州", 100, 0.98f, OcrTextKind.AchievementName),
+            Line("向陈皮交付60个声匣。", 130, 0.94f, OcrTextKind.AchievementDescription),
+            Line("2026/08/12", 112, 0.99f, OcrTextKind.AchievementStatus)
+        };
+
+        var preview = AchievementOcrMatcher.CreatePreview(lines, rows);
+
+        Assert.AreEqual(1, preview.Candidates.Count);
+        Assert.AreEqual("10100002", preview.Candidates[0].LegacyCode);
+        Assert.AreEqual(ProgressStatus.Completed, preview.Candidates[0].ProposedStatus);
+        Assert.AreEqual(0, preview.Unmatched.Count);
+    }
+
+    [TestMethod]
     public void MatchKnownText_UsesNameNormalizationAndDistanceThreshold()
     {
         var matched = AchievementOcrMatcher.MatchKnownText("猫咪・寻宝]", ["猫咪·寻宝", "昨日今州"], out var confidence);
@@ -98,11 +123,14 @@ public sealed class OcrMatchingTests
     private static OcrAchievementCandidate Candidate(Achievement item, ProgressStatus status) =>
         new(item.Id, item.LegacyCode, item.Name, item.Name, 1.0, status, status.ToChinese());
 
-    private static OcrTextLine Line(string text, float y, float score) =>
-        new([new OcrPoint(0, y), new OcrPoint(100, y), new OcrPoint(100, y + 10), new OcrPoint(0, y + 10)], text, score);
+    private static OcrTextLine Line(string text, float y, float score, OcrTextKind kind = OcrTextKind.Unknown) =>
+        new([new OcrPoint(0, y), new OcrPoint(100, y), new OcrPoint(100, y + 10), new OcrPoint(0, y + 10)], text, score, kind);
 
     private static AchievementRow Row(string code, string name, int order) =>
         new(AchievementId.FromLegacyCode(code), code, order, "1.0", "探索", "今州", name, "", "5", false, null, ProgressStatus.Incomplete);
+
+    private static AchievementRow WangRow(string code, string ordinal, string description, int order, string groupId) =>
+        new(AchievementId.FromLegacyCode(code), code, order, "1.0", "索拉漫行", "索拉的大地·瑝珑", $"往日之音·今州 {ordinal}", description, "星声*5", false, groupId, ProgressStatus.Incomplete);
 
     private static Achievement Achievement(string code, int order, string name) =>
         new(AchievementId.FromLegacyCode(code), code, order, "1.0", "探索", "今州", name, "", "5", false);
