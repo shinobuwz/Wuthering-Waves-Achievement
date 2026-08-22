@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Wuwa.Core\Wuwa.Core.csproj" />
     <ProjectReference Include="..\Wuwa.Infrastructure\Wuwa.Infrastructure.csproj" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
   </ItemGroup>
 
   <PropertyGroup>

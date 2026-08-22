@@ -1,0 +1,17 @@
+<Window x:Class="Wuwa.App.MapOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="鸣潮游戏地图"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="True"
+        Topmost="True"
+        WindowStartupLocation="Manual"
+        Background="Black"
+        UseLayoutRounding="True">
+    <Grid Background="Black">
+        <wv2:WebView2 x:Name="MapBrowser" />
+    </Grid>
+</Window>

@@ -24,8 +24,13 @@ public partial class MainWindow : Window
     private const int SecondaryNavigationDragPixels = OcrListDragPixels;
     private const int OcrCancelHotKeyId = 0x5741;
     private const uint OcrCancelHotKeyModifiers = 0x0002 | 0x0004; // CTRL + SHIFT
+    private const int MapHotKeyId = 0x5742;
+    private const uint MapHotKeyAltModifiers = 0x0001 | 0x4000; // ALT + MOD_NOREPEAT
+    private const uint MapHotKeyFallbackModifiers = 0x0001 | 0x0002 | 0x4000; // CTRL + ALT + MOD_NOREPEAT
     private const uint VirtualKeyF12 = 0x7B;
+    private const uint VirtualKeyM = 0x4D;
     private const int WmHotKey = 0x0312;
+    private static readonly string[] MapGameProcessNames = ["Client-Win64-Shipping.exe", "Wuthering Waves.exe"];
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -42,6 +47,13 @@ public partial class MainWindow : Window
     private OcrScanMode? _activeOcrMode;
     private HwndSource? _windowSource;
     private bool _ocrCancelHotKeyRegistered;
+    private bool _mapHotKeyRegistered;
+    private string _mapHotKeyLabel = "未注册";
+    private MapOverlayWindow? _mapOverlay;
+    private WindowsGameWindowCapture? _mapCapture;
+    private GameWindowCandidate? _mapGameWindow;
+    private DispatcherTimer? _mapTrackingTimer;
+    private bool _mapToggleInProgress;
     private bool _isLightTheme;
 
     public MainWindow(AchievementWorkspace workspace)
@@ -445,15 +457,52 @@ public partial class MainWindow : Window
             OcrCancelHotKeyModifiers,
             VirtualKeyF12);
         NativeOcrDiagnostics.Write($"OCR cancel hotkey registered={_ocrCancelHotKeyRegistered} shortcut=Ctrl+Shift+F12");
+
+        _mapHotKeyRegistered = RegisterHotKey(
+            _windowSource.Handle,
+            MapHotKeyId,
+            MapHotKeyAltModifiers,
+            VirtualKeyM);
+        if (_mapHotKeyRegistered)
+        {
+            _mapHotKeyLabel = "Alt+M";
+        }
+        else
+        {
+            _mapHotKeyRegistered = RegisterHotKey(
+                _windowSource.Handle,
+                MapHotKeyId,
+                MapHotKeyFallbackModifiers,
+                VirtualKeyM);
+            _mapHotKeyLabel = _mapHotKeyRegistered ? "Ctrl+Alt+M" : "不可用";
+        }
+        MapShortcutText.Text = $"地图快捷键：{_mapHotKeyLabel}";
+        NativeOcrDiagnostics.Write($"Map hotkey registered={_mapHotKeyRegistered} shortcut={_mapHotKeyLabel}");
     }
 
     private void MainWindow_OnClosed(object? sender, EventArgs e)
     {
+        _mapTrackingTimer?.Stop();
+        _mapTrackingTimer = null;
+        if (_mapOverlay is not null)
+        {
+            _mapOverlay.HideRequested -= MapOverlay_OnHideRequested;
+            _mapOverlay.Close();
+            _mapOverlay = null;
+        }
+        _mapGameWindow = null;
+        _mapCapture = null;
+
         if (_windowSource is null) return;
         if (_ocrCancelHotKeyRegistered)
         {
             UnregisterHotKey(_windowSource.Handle, OcrCancelHotKeyId);
             _ocrCancelHotKeyRegistered = false;
+        }
+        if (_mapHotKeyRegistered)
+        {
+            UnregisterHotKey(_windowSource.Handle, MapHotKeyId);
+            _mapHotKeyRegistered = false;
         }
         _windowSource.RemoveHook(MainWindowMessageHook);
         _windowSource = null;
@@ -466,12 +515,22 @@ public partial class MainWindow : Window
         IntPtr lParam,
         ref bool handled)
     {
-        if (message == WmHotKey && wParam.ToInt32() == OcrCancelHotKeyId)
+        if (message != WmHotKey)
+        {
+            return IntPtr.Zero;
+        }
+
+        if (wParam.ToInt32() == OcrCancelHotKeyId)
         {
             var messageText = _activeOcrMode == OcrScanMode.FullScan
                 ? "正在取消 OCR 全量扫描…（Ctrl+Shift+F12）"
                 : "正在取消 OCR 扫描…（Ctrl+Shift+F12）";
             RequestOcrCancellation(messageText);
+            handled = true;
+        }
+        else if (wParam.ToInt32() == MapHotKeyId)
+        {
+            _ = ToggleMapOverlayAsync();
             handled = true;
         }
         return IntPtr.Zero;
@@ -486,6 +545,169 @@ public partial class MainWindow : Window
         OcrNavigationDebugButton.IsEnabled = false;
         HintText.Text = message;
         NativeOcrDiagnostics.Write("OCR cancellation requested");
+    }
+
+    private async void MapOverlay_OnClick(object sender, RoutedEventArgs e)
+    {
+        await ToggleMapOverlayAsync();
+    }
+
+    private async Task ToggleMapOverlayAsync()
+    {
+        if (_mapToggleInProgress)
+        {
+            return;
+        }
+
+        _mapToggleInProgress = true;
+        try
+        {
+            if (_mapOverlay?.IsVisible == true)
+            {
+                HideMapOverlay(restoreGameFocus: true);
+                return;
+            }
+
+            var capture = _mapCapture ??= new WindowsGameWindowCapture();
+            HintText.Text = "正在查找《鸣潮》游戏窗口…";
+            var gameWindow = await capture.TryFindGameWindowAsync(
+                MapGameProcessNames,
+                minimumWidth: 800,
+                minimumHeight: 600);
+            if (gameWindow is null)
+            {
+                ShowMapError("未找到可覆盖的《鸣潮》窗口。请先启动游戏，并确认游戏处于可见、未最小化状态。", "找不到游戏窗口");
+                return;
+            }
+
+            if (!capture.TryGetClientBounds(gameWindow, out var bounds))
+            {
+                ShowMapError("无法取得游戏客户区位置。请将《鸣潮》切换到无边框/窗口化全屏后重试。", "无法定位游戏窗口");
+                return;
+            }
+
+            _mapGameWindow = gameWindow;
+            var overlay = _mapOverlay;
+            if (overlay is null)
+            {
+                overlay = new MapOverlayWindow();
+                overlay.HideRequested += MapOverlay_OnHideRequested;
+                overlay.Closed += MapOverlay_OnClosed;
+                _mapOverlay = overlay;
+            }
+
+            overlay.ApplyClientBounds(bounds);
+            if (!overlay.IsVisible)
+            {
+                overlay.Show();
+            }
+
+            try
+            {
+                await overlay.InitializeBrowserAsync();
+            }
+            catch (MapOverlayUnavailableException exception)
+            {
+                NativeOcrDiagnostics.Write($"Map overlay WebView2 initialization failed: {exception}");
+                overlay.Close();
+                ShowMapError(exception.Message, "地图浏览器不可用");
+                return;
+            }
+
+            overlay.ApplyClientBounds(bounds);
+            StartMapTracking();
+            MapOverlayButton.Content = "隐藏游戏地图";
+            HintText.Text = $"游戏地图已打开 · {_mapHotKeyLabel} 或 Esc 隐藏";
+            ErrorText.Text = string.Empty;
+            NativeOcrDiagnostics.Write($"Map overlay shown handle=0x{gameWindow.Handle.ToInt64():X} client={bounds.Left},{bounds.Top},{bounds.Width}x{bounds.Height}");
+        }
+        catch (Exception exception)
+        {
+            NativeOcrDiagnostics.Write($"Map overlay failed: {exception}");
+            ShowMapError($"打开游戏地图失败：{exception.Message}", "打开游戏地图失败");
+        }
+        finally
+        {
+            _mapToggleInProgress = false;
+        }
+    }
+
+    private void StartMapTracking()
+    {
+        if (_mapTrackingTimer is null)
+        {
+            _mapTrackingTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(200)
+            };
+            _mapTrackingTimer.Tick += MapTrackingTimer_OnTick;
+        }
+        _mapTrackingTimer.Start();
+    }
+
+    private void MapTrackingTimer_OnTick(object? sender, EventArgs e)
+    {
+        if (_mapOverlay?.IsVisible != true || _mapCapture is null || _mapGameWindow is null)
+        {
+            _mapTrackingTimer?.Stop();
+            return;
+        }
+
+        if (!_mapCapture.TryGetClientBounds(_mapGameWindow, out var bounds))
+        {
+            HideMapOverlay(restoreGameFocus: false);
+            return;
+        }
+
+        var overlayHandle = new WindowInteropHelper(_mapOverlay).Handle;
+        var gameIsForeground = _mapCapture.IsForegroundWindow(_mapGameWindow.Handle);
+        var overlayIsForeground = overlayHandle != IntPtr.Zero && _mapCapture.IsForegroundWindow(overlayHandle);
+        if (!gameIsForeground && !overlayIsForeground)
+        {
+            HideMapOverlay(restoreGameFocus: false);
+            return;
+        }
+
+        _mapOverlay.ApplyClientBounds(bounds);
+    }
+
+    private void MapOverlay_OnHideRequested(object? sender, EventArgs e)
+    {
+        HideMapOverlay(restoreGameFocus: true);
+    }
+
+    private void MapOverlay_OnClosed(object? sender, EventArgs e)
+    {
+        if (sender is MapOverlayWindow overlay)
+        {
+            overlay.HideRequested -= MapOverlay_OnHideRequested;
+            overlay.Closed -= MapOverlay_OnClosed;
+        }
+        _mapTrackingTimer?.Stop();
+        _mapOverlay = null;
+        _mapGameWindow = null;
+        MapOverlayButton.Content = "打开游戏地图";
+    }
+
+    private void HideMapOverlay(bool restoreGameFocus)
+    {
+        _mapTrackingTimer?.Stop();
+        if (_mapOverlay?.IsVisible == true)
+        {
+            _mapOverlay.Hide();
+        }
+        MapOverlayButton.Content = "打开游戏地图";
+        HintText.Text = "游戏地图已隐藏。";
+        if (restoreGameFocus && _mapCapture is not null && _mapGameWindow is not null)
+        {
+            _mapCapture.TryActivateWindow(_mapGameWindow);
+        }
+    }
+
+    private void ShowMapError(string message, string title)
+    {
+        ShowError(message);
+        MessageBox.Show(this, message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private async void OcrScan_OnClick(object sender, RoutedEventArgs e)

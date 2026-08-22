@@ -45,6 +45,54 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         return Task.Run(() => TryFindGameWindow(normalized, minimumWidth, minimumHeight, cancellationToken), cancellationToken);
     }
 
+    /// <summary>Reads the current visible client rectangle in physical screen pixels.</summary>
+    public bool TryGetClientBounds(GameWindowCandidate window, out GameWindowClientBounds bounds)
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Game-window capture currently supports Windows only.");
+        if (window.Handle == 0) throw new ArgumentException("A valid window handle is required.", nameof(window));
+
+        bounds = default!;
+        if (!NativeMethods.IsWindow(window.Handle) ||
+            !NativeMethods.IsWindowVisible(window.Handle) ||
+            NativeMethods.IsIconic(window.Handle) ||
+            !NativeMethods.GetClientRect(window.Handle, out var client))
+        {
+            return false;
+        }
+
+        var width = client.Right - client.Left;
+        var height = client.Bottom - client.Top;
+        if (width <= 0 || height <= 0)
+        {
+            return false;
+        }
+
+        var origin = new NativePoint { X = 0, Y = 0 };
+        if (!NativeMethods.ClientToScreen(window.Handle, ref origin))
+        {
+            return false;
+        }
+
+        bounds = new GameWindowClientBounds(window.Handle, origin.X, origin.Y, width, height);
+        return true;
+    }
+
+    /// <summary>Returns whether the supplied top-level window is the current foreground window.</summary>
+    public bool IsForegroundWindow(nint handle)
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Game-window capture currently supports Windows only.");
+        return handle != 0 && NativeMethods.GetForegroundWindow() == handle;
+    }
+
+    /// <summary>Restores and activates a game window after the interactive overlay is hidden.</summary>
+    public bool TryActivateWindow(GameWindowCandidate window)
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Game-window capture currently supports Windows only.");
+        if (window.Handle == 0 || !NativeMethods.IsWindow(window.Handle)) return false;
+        NativeMethods.ShowWindow(window.Handle, NativeMethods.ShowWindowRestore);
+        return NativeMethods.SetForegroundWindow(window.Handle);
+    }
+
     public Task<OcrImageFrame> CaptureClientAsync(
         GameWindowCandidate window,
         int? expectedWidth = null,
@@ -567,6 +615,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool IsWindowVisible(IntPtr handle);
         [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool IsIconic(IntPtr handle);
         [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool IsWindow(IntPtr handle);
+        [LibraryImport("user32.dll")] internal static partial IntPtr GetForegroundWindow();
         [LibraryImport("user32.dll", SetLastError = true)] internal static partial uint GetWindowThreadProcessId(IntPtr handle, out uint processId);
         internal const uint InputMouse = 0;
         internal const uint MouseEventMove = 0x0001;
