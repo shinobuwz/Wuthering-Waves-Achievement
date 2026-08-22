@@ -101,7 +101,10 @@
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                            <TextBlock Text="追踪" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,7" />
+                            <Grid Margin="0,0,0,7">
+                                <TextBlock Text="追踪" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Button x:Name="TrackingHelpButton" AutomationProperties.AutomationId="TrackingHelpButton" Content="?" Tag="tracking" ToolTip="查看追踪区域说明" Click="ActionHelp_OnClick" Width="24" MinWidth="24" Height="24" MinHeight="24" Padding="0" Margin="0" HorizontalAlignment="Right" />
+                            </Grid>
                             <WrapPanel>
                                 <Button x:Name="TrackSelectedButton" AutomationProperties.AutomationId="TrackSelectedButton" Content="追踪选中成就" Click="TrackSelected_OnClick" />
                                 <Button x:Name="UntrackSelectedButton" AutomationProperties.AutomationId="UntrackSelectedButton" Content="取消追踪选中" ToolTip="取消当前选中成就的追踪，不改变完成状态" Click="UntrackSelected_OnClick" />
@@ -111,7 +114,10 @@
                         <Border Grid.Column="1" Width="1" Background="{DynamicResource BorderBrush}" />
 
                         <StackPanel Grid.Column="2" Margin="12,0,12,0">
-                            <TextBlock Text="OCR 扫描" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,7" />
+                            <Grid Margin="0,0,0,7">
+                                <TextBlock Text="OCR 扫描" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Button x:Name="OcrHelpButton" AutomationProperties.AutomationId="OcrHelpButton" Content="?" Tag="ocr" ToolTip="查看 OCR 区域说明" Click="ActionHelp_OnClick" Width="24" MinWidth="24" Height="24" MinHeight="24" Padding="0" Margin="0" HorizontalAlignment="Right" />
+                            </Grid>
                             <WrapPanel>
                                 <Button x:Name="OcrScanButton" AutomationProperties.AutomationId="OcrScanButton" Content="自动扫描当前分类" Click="OcrScan_OnClick" />
                                 <Button x:Name="OcrFullScanButton" AutomationProperties.AutomationId="OcrFullScanButton" Content="全量扫描所有分类" Click="OcrFullScan_OnClick" />
@@ -122,7 +128,10 @@
                         <Border Grid.Column="3" Width="1" Background="{DynamicResource BorderBrush}" />
 
                         <StackPanel Grid.Column="4" Margin="12,0,12,0">
-                            <TextBlock Text="数据管理" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,7" />
+                            <Grid Margin="0,0,0,7">
+                                <TextBlock Text="数据管理" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Button x:Name="DataHelpButton" AutomationProperties.AutomationId="DataHelpButton" Content="?" Tag="data" ToolTip="查看数据管理区域说明" Click="ActionHelp_OnClick" Width="24" MinWidth="24" Height="24" MinHeight="24" Padding="0" Margin="0" HorizontalAlignment="Right" />
+                            </Grid>
                             <WrapPanel>
                                 <Button AutomationProperties.AutomationId="LegacyImportButton" Content="导入旧版进度" Click="ImportLegacy_OnClick" />
                                 <Button AutomationProperties.AutomationId="ExchangeImportButton" Content="导入 JSON/Excel" Click="Import_OnClick" />
@@ -133,7 +142,10 @@
                         <Border Grid.Column="5" Width="1" Background="{DynamicResource BorderBrush}" />
 
                         <StackPanel Grid.Column="6" Margin="12,0,0,0">
-                            <TextBlock Text="外观与系统" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,7" />
+                            <Grid Margin="0,0,0,7">
+                                <TextBlock Text="外观与系统" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Button x:Name="SystemHelpButton" AutomationProperties.AutomationId="SystemHelpButton" Content="?" Tag="system" ToolTip="查看外观与系统区域说明" Click="ActionHelp_OnClick" Width="24" MinWidth="24" Height="24" MinHeight="24" Padding="0" Margin="0" HorizontalAlignment="Right" />
+                            </Grid>
                             <WrapPanel>
                                 <Button x:Name="MapOverlayButton" AutomationProperties.AutomationId="MapOverlayButton" Content="打开游戏地图" ToolTip="在《鸣潮》无边框/窗口化全屏上覆盖 Kuro 地图" Click="MapOverlay_OnClick" />
                                 <TextBlock x:Name="MapShortcutText" Text="地图快捷键：注册中" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
