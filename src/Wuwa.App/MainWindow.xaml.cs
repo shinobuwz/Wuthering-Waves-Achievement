@@ -173,6 +173,28 @@ public partial class MainWindow : Window
             _ => null
         });
 
+    private void ActionHelp_OnClick(object sender, RoutedEventArgs e)
+    {
+        var section = (sender as FrameworkElement)?.Tag?.ToString();
+        var (title, message) = section switch
+        {
+            "tracking" => (
+                "追踪区域",
+                "追踪选中成就：将列表中选中的未完成成就加入追踪。\n取消追踪选中：取消当前选中成就的追踪，不改变完成状态。\n打开追踪浮窗：打开置顶追踪窗口，可在游戏旁查看追踪项目。"),
+            "ocr" => (
+                "OCR 扫描区域",
+                "自动扫描当前分类：识别当前打开分类中的成就。\n全量扫描所有分类：自动切换分类并扫描全部成就。\n自动校验未完成成就：逐条搜索未完成成就，识别右侧结果后批量确认写入。\n取消：Ctrl+Shift+F12。强制中止：Ctrl+Alt+F12。"),
+            "data" => (
+                "数据管理区域",
+                "导入旧版进度：导入旧版本工具生成的进度文件。\n导入 JSON/Excel：从 JSON 或 Excel 恢复成就数据。\n导出 JSON/Excel：备份当前成就和进度。\n同步 Wiki：从 Wiki 获取最新成就数据并合并。"),
+            "system" => (
+                "外观与系统区域",
+                $"打开游戏地图：在游戏窗口上覆盖 Kuro 地图，可使用 {_mapHotKeyLabel} 切换。\n浅色主题：切换浅色和深色界面。\n检查更新：检查 GitHub 最新发布版本，不会自动安装。"),
+            _ => ("功能说明", "暂无说明。")
+        };
+        MessageBox.Show(this, message, title, MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
     private async void TrackSelected_OnClick(object sender, RoutedEventArgs e)
     {
         var selected = AchievementGrid.SelectedItems
