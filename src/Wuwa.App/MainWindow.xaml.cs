@@ -6,7 +6,10 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using System.Diagnostics;
+using System.ComponentModel;
 using System.IO;
+using System.Security;
+using System.Runtime.InteropServices;
 using Wuwa.Core;
 using Wuwa.Infrastructure;
 
@@ -22,6 +25,7 @@ public partial class MainWindow : Window
     private WorkspaceView? _view;
     private bool _initializingFilters;
     private CancellationTokenSource? _ocrCancellation;
+    private OcrScanWindow? _ocrScanWindow;
     private bool _isLightTheme;
 
     public MainWindow(AchievementWorkspace workspace)
@@ -96,6 +100,7 @@ public partial class MainWindow : Window
         UnavailableText.Text = _view.Statistics.Unavailable.ToString();
         HiddenText.Text = _view.Statistics.Hidden.ToString();
         RateText.Text = $"{_view.Statistics.CompletionRatePercent:0.0}%";
+        FilterSummaryText.Text = $"显示 {_view.Rows.Count} 条";
         HintText.Text = $"显示 {_view.Rows.Count} 条 · 双击切换完成状态 · 右键设置状态";
         ErrorText.Text = string.Empty;
     }
@@ -185,7 +190,13 @@ public partial class MainWindow : Window
         RefreshView();
     }
 
-    private void SearchBox_OnTextChanged(object sender, TextChangedEventArgs e) => RefreshView();
+    private void SearchBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        RefreshView();
+    }
 
     private void Filter_OnChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -210,6 +221,209 @@ public partial class MainWindow : Window
         RefreshView();
     }
 
+    private void ConveneLink_OnClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var logPath = FindConveneLogPath();
+            if (logPath is null)
+            {
+                var dialog = new OpenFileDialog
+                {
+                    Title = "选择鸣潮 Client.log",
+                    Filter = "Client.log|Client.log|日志文件 (*.log)|*.log|所有文件 (*.*)|*.*",
+                    CheckFileExists = true,
+                    Multiselect = false,
+                    FileName = "Client.log"
+                };
+                if (dialog.ShowDialog(this) != true)
+                {
+                    return;
+                }
+
+                logPath = dialog.FileName;
+            }
+
+            var link = ConveneLinkExtractor.Extract(ReadSharedFile(logPath));
+            if (string.IsNullOrWhiteSpace(link))
+            {
+                const string message = "未找到唤取记录链接。\n\n请先在游戏内手动打开“唤取记录”，点击翻页或切换到历史记录，等待记录加载完成后再重试。";
+                ShowError(message.Replace("\n\n", " "));
+                MessageBox.Show(this, message, "无法获取唤取链接", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            SetClipboardWithRetry(link);
+            ErrorText.Text = string.Empty;
+            HintText.Text = "已获取并复制唤取链接，有效期约 1 小时。";
+            MessageBox.Show(this, "唤取链接已复制到剪贴板。\n\n链接通常有效期约 1 小时。", "获取成功", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception exception)
+        {
+            var message = $"获取唤取链接失败：{exception.Message}";
+            ShowError(message);
+            MessageBox.Show(this, message, "获取唤取链接失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void ConveneHelp_OnClick(object sender, RoutedEventArgs e)
+    {
+        MessageBox.Show(
+            this,
+            "获取唤取链接前，请先在游戏内完成以下操作：\n\n1. 打开“唤取记录”界面。\n2. 点击翻页，或切换到任意历史记录页。\n3. 等待记录加载完成后，回到这里点击“获取唤取链接”。\n\n链接会从 Client.log 中读取，并复制到剪贴板。",
+            "获取唤取链接说明",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private static void SetClipboardWithRetry(string text)
+    {
+        ExternalException? lastException = null;
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                Clipboard.SetText(text);
+                return;
+            }
+            catch (ExternalException exception)
+            {
+                lastException = exception;
+                Thread.Sleep(80);
+            }
+        }
+
+        // WPF's clipboard wrapper can lose a race with overlays, game clients, or
+        // clipboard managers. clip.exe performs the same operation through the
+        // Windows shell and is a reliable fallback for this short-lived text.
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = Path.Combine(Environment.SystemDirectory, "clip.exe"),
+                    UseShellExecute = false,
+                    RedirectStandardInput = true,
+                    CreateNoWindow = true
+                }
+            };
+            if (!process.Start())
+            {
+                throw new InvalidOperationException("无法启动 Windows 剪贴板工具。");
+            }
+
+            process.StandardInput.Write(text);
+            process.StandardInput.Close();
+            if (!process.WaitForExit(2000) || process.ExitCode != 0)
+            {
+                throw new InvalidOperationException("Windows 剪贴板工具执行失败。");
+            }
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or Win32Exception or ExternalException)
+        {
+            throw lastException ?? new ExternalException($"无法写入系统剪贴板：{exception.Message}");
+        }
+    }
+
+    private static byte[] ReadSharedFile(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        return buffer.ToArray();
+    }
+
+    private static string? FindConveneLogPath()
+    {
+        const string uninstallKey = @"SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\KRInstall Wuthering Waves";
+        var registryCandidates = new List<string>();
+
+        foreach (var view in new[] { RegistryView.Registry32, RegistryView.Registry64 })
+        {
+            try
+            {
+                using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+                using var key = baseKey.OpenSubKey(uninstallKey);
+                if (key is null)
+                {
+                    continue;
+                }
+
+                foreach (var valueName in new[] { "wwGamePath", "InstallPath" })
+                {
+                    if (key.GetValue(valueName) is string value && !string.IsNullOrWhiteSpace(value))
+                    {
+                        registryCandidates.Add(value);
+                    }
+                }
+            }
+            catch (SecurityException)
+            {
+                // Registry access is optional; the file picker remains available.
+            }
+            catch (IOException)
+            {
+                // Registry access is optional; the file picker remains available.
+            }
+        }
+
+        foreach (var candidate in registryCandidates)
+        {
+            var logPath = ResolveConveneLogPath(candidate);
+            if (logPath is not null)
+            {
+                return logPath;
+            }
+        }
+
+        foreach (var drive in DriveInfo.GetDrives().Where(drive => drive.IsReady))
+        {
+            foreach (var candidate in new[]
+            {
+                Path.Combine(drive.RootDirectory.FullName, "Wuthering Waves Game"),
+                Path.Combine(drive.RootDirectory.FullName, "Wuthering Waves", "Wuthering Waves Game"),
+                Path.Combine(drive.RootDirectory.FullName, "Program Files", "Epic Games", "WutheringWavesj3oFh"),
+                Path.Combine(drive.RootDirectory.FullName, "Program Files", "Epic Games", "WutheringWavesj3oFh", "Wuthering Waves Game")
+            })
+            {
+                var logPath = ResolveConveneLogPath(candidate);
+                if (logPath is not null)
+                {
+                    return logPath;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ResolveConveneLogPath(string candidate)
+    {
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            return null;
+        }
+
+        var normalized = candidate.Trim().Trim('"');
+        var candidates = new[]
+        {
+            normalized,
+            Path.Combine(normalized, "Wuthering Waves Game")
+        };
+
+        foreach (var root in candidates)
+        {
+            var logPath = Path.Combine(root, "Client", "Saved", "Logs", "Client.log");
+            if (File.Exists(logPath))
+            {
+                return logPath;
+            }
+        }
+
+        return null;
+    }
+
     private async void OcrScan_OnClick(object sender, RoutedEventArgs e)
     {
         if (_ocrCancellation is not null)
@@ -217,7 +431,7 @@ public partial class MainWindow : Window
             _ocrCancellation.Cancel();
             OcrScanButton.IsEnabled = false;
             OcrFullScanButton.IsEnabled = false;
-            HintText.Text = "正在取消 OCR 扫描…";
+            ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.Cancelling, "正在取消 OCR 扫描…");
             return;
         }
 
@@ -225,7 +439,7 @@ public partial class MainWindow : Window
         if (ocrAssets is null)
         {
             NativeOcrDiagnostics.Write("OCR start failed: assets not found");
-            ShowOcrError("原生 OCR 组件尚未部署。开发环境请先运行 scripts/build-native-ocr.ps1；发布环境请安装包含 ocr/ 资产的发布包。", "OCR 组件缺失");
+            ShowOcrError("当前程序目录未找到内置 OCR 组件。请使用包含 ocr/ 目录的 Native 发布包运行；如果是源码开发环境，请先构建 Native OCR 资源后重新生成 Release 输出。", "OCR 组件缺失");
             return;
         }
 
@@ -249,9 +463,10 @@ public partial class MainWindow : Window
         }
 
         _ocrCancellation = new CancellationTokenSource();
+        _ocrScanWindow = OpenOcrScanWindow(OcrScanMode.CurrentCategory);
         OcrScanButton.Content = "取消 OCR";
         OcrFullScanButton.IsEnabled = false;
-        HintText.Text = "正在检测游戏窗口并扫描当前页面…";
+        ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.Preparing, "正在检测游戏窗口并扫描当前页面…");
         ErrorText.Text = string.Empty;
         var previousState = WindowState;
         try
@@ -259,6 +474,7 @@ public partial class MainWindow : Window
             using var client = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.0f));
             var reader = new NativeOcrTemplateTextReader(client, templateDirectory);
             var capture = new WindowsGameWindowCapture();
+            ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.FindingGameWindow, "正在检测游戏窗口…");
             var initialWindow = await capture.TryFindGameWindowAsync(gameProcessNames, minimumWidth: 800, minimumHeight: 600, cancellationToken: _ocrCancellation.Token);
             if (initialWindow is null)
             {
@@ -275,12 +491,15 @@ public partial class MainWindow : Window
             var detectedLineCount = 0;
             OcrScanPreview? preview = null;
 
+            _ocrScanWindow?.PrepareForGame();
             WindowState = WindowState.Minimized;
             await Task.Delay(350, _ocrCancellation.Token);
             for (var page = 1; page <= 80; page++)
             {
                 NativeOcrDiagnostics.Write($"OCR page={page} mergedCandidates={mergedCandidates.Count} seenIds={seenIds.Count}");
-                HintText.Text = $"正在扫描当前分类第 {page} 页，已识别 {mergedCandidates.Count} 条…请勿操作游戏窗口。";
+                ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.ScanningCurrentCategory,
+                    $"正在扫描当前分类第 {page} 页，已识别 {mergedCandidates.Count} 条…请勿操作游戏窗口。",
+                    page: page, matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
                 var scan = await service.ScanAsync(
                     gameProcessNames,
                     expectedWidth: 1920,
@@ -317,8 +536,13 @@ public partial class MainWindow : Window
                     mergedUnmatched.TryAdd(key, unmatched);
                 }
                 seenIds.UnionWith(pageIds);
+                ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.ScanningCurrentCategory,
+                    $"第 {page} 页识别完成，已识别 {mergedCandidates.Count} 条。",
+                    page: page, matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
 
                 if (scan.Window is null || page == 80) break;
+                ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.ScrollingCategory,
+                    $"正在滚动成就列表…", page: page, matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
                 var scrollAccepted = await capture.ScrollAsync(scan.Window, scrollLength: -160, scrollTimes: 15, cancellationToken: _ocrCancellation.Token);
                 NativeOcrDiagnostics.Write($"OCR page={page} scrollAccepted={scrollAccepted}");
                 if (!scrollAccepted)
@@ -338,6 +562,7 @@ public partial class MainWindow : Window
                 ShowOcrError($"OCR 扫描完成，但没有匹配到成就。扫描 {scannedPages} 页，检测到 {detectedLineCount} 条文字，未匹配 {mergedPreview.Unmatched.Count} 条。请确认游戏当前打开的是成就列表。", "OCR 扫描结果");
                 return;
             }
+            _ocrScanWindow?.MarkCompleted($"当前分类扫描完成：扫描 {scannedPages} 页，匹配 {mergedPreview.Candidates.Count} 条，未匹配 {mergedPreview.Unmatched.Count} 条。请在接下来的预览中确认结果。");
             var previewWindow = new OcrPreviewWindow(mergedPreview) { Owner = this };
             if (previewWindow.ShowDialog() != true || previewWindow.AcceptedPreview is null)
             {
@@ -374,8 +599,22 @@ public partial class MainWindow : Window
         }
         finally
         {
+            var wasCancelled = _ocrCancellation?.IsCancellationRequested == true;
+            var scanWindow = _ocrScanWindow;
+            if (scanWindow is not null && !scanWindow.IsFinished)
+            {
+                if (wasCancelled)
+                {
+                    scanWindow.MarkCancelled();
+                }
+                else
+                {
+                    scanWindow.MarkFailed(string.IsNullOrWhiteSpace(ErrorText.Text) ? "OCR 扫描未完成，请查看错误信息。" : ErrorText.Text);
+                }
+            }
+            _ocrScanWindow = null;
             WindowState = previousState;
-            _ocrCancellation.Dispose();
+            _ocrCancellation?.Dispose();
             _ocrCancellation = null;
             OcrScanButton.Content = "OCR 自动扫描当前分类";
             OcrFullScanButton.IsEnabled = true;
@@ -585,7 +824,7 @@ public partial class MainWindow : Window
         {
             _ocrCancellation.Cancel();
             OcrFullScanButton.IsEnabled = false;
-            HintText.Text = "正在取消 OCR 全量扫描…";
+            ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.Cancelling, "正在取消 OCR 全量扫描…");
             return;
         }
 
@@ -593,7 +832,7 @@ public partial class MainWindow : Window
         var templateDirectory = FindOcrTemplateDirectory();
         if (ocrAssets is null || templateDirectory is null)
         {
-            ShowOcrError("原生 OCR 组件或成就图标模板尚未部署。请先构建 native OCR 资源。", "OCR 组件缺失");
+            ShowOcrError("当前程序目录未找到内置 OCR 组件或成就图标模板。请使用包含 ocr/ 和 resources/ocr_templates/ 的 Native 发布包运行。", "OCR 组件缺失");
             return;
         }
 
@@ -605,9 +844,10 @@ public partial class MainWindow : Window
         }
 
         _ocrCancellation = new CancellationTokenSource();
+        _ocrScanWindow = OpenOcrScanWindow(OcrScanMode.FullScan);
         OcrFullScanButton.Content = "取消 OCR";
         OcrScanButton.IsEnabled = false;
-        HintText.Text = "正在准备 OCR 全量扫描…";
+        ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.Preparing, "正在准备 OCR 全量扫描…");
         ErrorText.Text = string.Empty;
         var previousState = WindowState;
         try
@@ -626,6 +866,7 @@ public partial class MainWindow : Window
             var capture = new WindowsGameWindowCapture();
             var navigationService = new SinglePageOcrScanService(capture, navigationReader);
             var achievementService = new SinglePageOcrScanService(capture, rowReader);
+            ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.FindingGameWindow, "正在检测游戏窗口…");
             var initialWindow = await capture.TryFindGameWindowAsync(gameProcessNames, minimumWidth: 800, minimumHeight: 600, cancellationToken: _ocrCancellation.Token);
             if (initialWindow is null)
             {
@@ -639,6 +880,7 @@ public partial class MainWindow : Window
             var mergedUnmatched = new Dictionary<string, OcrUnmatchedText>(StringComparer.Ordinal);
             var currentWindow = initialWindow;
 
+            _ocrScanWindow?.PrepareForGame();
             WindowState = WindowState.Minimized;
             await Task.Delay(350, _ocrCancellation.Token);
 
@@ -652,6 +894,10 @@ public partial class MainWindow : Window
                 var switched = false;
                 for (var attempt = 0; attempt < 3 && !switched; attempt++)
                 {
+                    ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.SwitchingPrimaryCategory,
+                        $"正在切换{primarySlotName}（{attempt + 1}/3）",
+                        primaryName: primarySlotName, visitedCount: primaryIndex, totalCount: primaryYPercentages.Length,
+                        matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
                     HintText.Text = $"正在切换{primarySlotName}（{attempt + 1}/3）";
                     if (!await capture.ClickAsync(currentWindow, primaryX, primaryY, _ocrCancellation.Token)) break;
                     await Task.Delay(800, _ocrCancellation.Token);
@@ -680,6 +926,10 @@ public partial class MainWindow : Window
                 for (var secondaryRound = 0; secondaryRound < 64 && noChangeRounds < 3; secondaryRound++)
                 {
                     _ocrCancellation.Token.ThrowIfCancellationRequested();
+                    ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.DiscoveringSecondaryCategories,
+                        $"正在发现{primaryName}下的二级分类…",
+                        primaryName: primaryName, visitedCount: primaryIndex, totalCount: primaryYPercentages.Length,
+                        matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
                     var tabScan = await navigationService.ScanAsync(gameProcessNames, 1920, 1080, _ocrCancellation.Token);
                     if (!tabScan.IsSuccess)
                     {
@@ -697,6 +947,11 @@ public partial class MainWindow : Window
                         if (!visited.Add(key)) continue;
                         foundNew = true;
                         var secondaryX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
+                        ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.ScanningCategory,
+                            $"正在扫描：{primaryName} / {tab.Name}（已发现 {visited.Count} 个）",
+                            primaryName: primaryName, secondaryName: tab.Name, visitedCount: primaryIndex,
+                            totalCount: primaryYPercentages.Length, matchedCount: mergedCandidates.Count,
+                            unmatchedCount: mergedUnmatched.Count);
                         HintText.Text = $"正在扫描：{primaryName} / {tab.Name}（已发现 {visited.Count} 个）";
                         if (!await capture.ClickAsync(currentWindow, secondaryX, tab.ClientY, _ocrCancellation.Token))
                         {
@@ -729,6 +984,10 @@ public partial class MainWindow : Window
 
                     var scrollX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
                     var scrollY = (int)(currentWindow.ClientHeight * ((0.1796 + 1.0) / 2));
+                    ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.ScrollingCategory,
+                        $"正在滚动二级分类列表：{primaryName}（无变化 {noChangeRounds}/3）",
+                        primaryName: primaryName, visitedCount: primaryIndex, totalCount: primaryYPercentages.Length,
+                        matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
                     HintText.Text = $"正在滚动二级分类列表：{primaryName}（无变化 {noChangeRounds}/3）";
                     if (!await capture.ScrollAtAsync(currentWindow, scrollX, scrollY, -160, SecondaryNavigationScrollTimes, _ocrCancellation.Token))
                     {
@@ -748,6 +1007,7 @@ public partial class MainWindow : Window
                 ShowOcrError("OCR 全量扫描没有匹配到成就。请确认游戏处于成就页面，并检查 native-ocr.log。", "OCR 扫描结果");
                 return;
             }
+            _ocrScanWindow?.MarkCompleted($"全量扫描完成：匹配 {mergedPreview.Candidates.Count} 条，未匹配 {mergedPreview.Unmatched.Count} 条，警告 {mergedUnmatched.Count} 条。请在接下来的预览中确认结果。");
             var previewWindow = new OcrPreviewWindow(mergedPreview) { Owner = this };
             if (previewWindow.ShowDialog() != true || previewWindow.AcceptedPreview is null)
             {
@@ -784,6 +1044,20 @@ public partial class MainWindow : Window
         }
         finally
         {
+            var wasCancelled = _ocrCancellation?.IsCancellationRequested == true;
+            var scanWindow = _ocrScanWindow;
+            if (scanWindow is not null && !scanWindow.IsFinished)
+            {
+                if (wasCancelled)
+                {
+                    scanWindow.MarkCancelled("OCR 全量扫描已取消，当前进度未改变。");
+                }
+                else
+                {
+                    scanWindow.MarkFailed(string.IsNullOrWhiteSpace(ErrorText.Text) ? "OCR 全量扫描未完成，请查看错误信息。" : ErrorText.Text);
+                }
+            }
+            _ocrScanWindow = null;
             WindowState = previousState;
             _ocrCancellation?.Dispose();
             _ocrCancellation = null;
@@ -810,6 +1084,10 @@ public partial class MainWindow : Window
         for (var page = 1; page <= 80; page++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.ScanningCategory,
+                $"正在扫描：{primaryName} / {secondaryName} · 第 {page} 页 · 已识别 {mergedCandidates.Count} 条",
+                primaryName: primaryName, secondaryName: secondaryName, page: page,
+                matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
             HintText.Text = $"正在扫描：{primaryName} / {secondaryName} · 第 {page} 页 · 已识别 {mergedCandidates.Count} 条";
             var scan = await service.ScanAsync(gameProcessNames, 1920, 1080, cancellationToken);
             if (!scan.IsSuccess)
@@ -835,7 +1113,15 @@ public partial class MainWindow : Window
                 mergedUnmatched.TryAdd($"{primaryName}/{secondaryName}/{unmatched.Text}\u001f{unmatched.Reason}", unmatched);
             }
             seenIds.UnionWith(pageIds);
+            ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.ScanningCategory,
+                $"{primaryName} / {secondaryName} 第 {page} 页识别完成。",
+                primaryName: primaryName, secondaryName: secondaryName, page: page,
+                matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
             if (scan.Window is null || page == 80) break;
+            ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.ScrollingCategory,
+                $"正在滚动：{primaryName} / {secondaryName}…",
+                primaryName: primaryName, secondaryName: secondaryName, page: page,
+                matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
             if (!await capture.ScrollAsync(scan.Window, -160, 15, cancellationToken))
             {
                 AddScanWarning(mergedUnmatched, $"{primaryName}/{secondaryName}", "成就列表滚动失败");
@@ -911,8 +1197,47 @@ public partial class MainWindow : Window
     private static double LineCenterY(OcrTextLine line) =>
         line.Points.Count == 0 ? double.MaxValue : line.Points.Average(point => point.Y);
 
-    private static void AddScanWarning(IDictionary<string, OcrUnmatchedText> warnings, string scope, string reason) =>
-        warnings.TryAdd($"warning:{scope}:{reason}", new OcrUnmatchedText($"[{scope}]", reason, 0));
+    private OcrScanWindow OpenOcrScanWindow(OcrScanMode mode)
+    {
+        var window = new OcrScanWindow(mode);
+        window.CancelRequested += (_, _) => _ocrCancellation?.Cancel();
+        window.Show();
+        window.Activate();
+        return window;
+    }
+
+    private void ReportOcrProgress(
+        OcrScanMode mode,
+        OcrScanPhase phase,
+        string message,
+        string primaryName = "",
+        string secondaryName = "",
+        int page = 0,
+        int visitedCount = 0,
+        int? totalCount = null,
+        int matchedCount = 0,
+        int unmatchedCount = 0)
+    {
+        HintText.Text = message;
+        _ocrScanWindow?.Report(new OcrScanProgress(
+            mode,
+            phase,
+            message,
+            primaryName,
+            secondaryName,
+            page,
+            visitedCount,
+            totalCount,
+            matchedCount,
+            unmatchedCount,
+            _ocrScanWindow.Warnings.Count));
+    }
+
+    private void AddScanWarning(IDictionary<string, OcrUnmatchedText> warnings, string scope, string reason)
+    {
+        if (!warnings.TryAdd($"warning:{scope}:{reason}", new OcrUnmatchedText($"[{scope}]", reason, 0))) return;
+        _ocrScanWindow?.AddWarning($"{scope}：{reason}");
+    }
 
     private sealed record NavigationTab(string Name, int ClientY);
 

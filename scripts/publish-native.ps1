@@ -35,9 +35,11 @@ function Invoke-Checked([string]$Command, [string[]]$Arguments) {
 
 Push-Location $nativeRoot
 try {
-    $expectedSdk = (Get-Content (Join-Path $nativeRoot 'global.json') -Raw | ConvertFrom-Json).sdk.version
-    $actualSdk = (& dotnet --version).Trim()
-    if ($LASTEXITCODE -ne 0 -or $actualSdk -ne $expectedSdk) { throw "Expected .NET SDK $expectedSdk but resolved $actualSdk." }
+    $expectedSdkText = (Get-Content (Join-Path $nativeRoot 'global.json') -Raw | ConvertFrom-Json).sdk.version
+    $expectedSdk = [Version]$expectedSdkText
+    $actualSdkText = (& dotnet --version).Trim()
+    $actualSdk = [Version]$actualSdkText
+    if ($LASTEXITCODE -ne 0 -or $actualSdk -lt $expectedSdk) { throw "Expected .NET SDK $expectedSdkText or a compatible newer SDK, but resolved $actualSdkText." }
     if (-not [Environment]::Is64BitOperatingSystem) { throw 'A 64-bit Windows host is required.' }
 
     & (Join-Path $PSScriptRoot 'build-native-ocr.ps1') -Configuration $Configuration
