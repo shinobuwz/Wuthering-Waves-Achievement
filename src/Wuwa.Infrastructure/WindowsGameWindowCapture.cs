@@ -14,6 +14,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
     // The achievement list occupies the middle/right part of the 1920×1080 game client.
     // Use client coordinates so window placement and multi-monitor desktop centers do not change the target.
     private const double AchievementListScrollXRatio = 0.62;
+    private const int DragReleaseHoldMilliseconds = 300;
 
     public Task<GameWindowCandidate> FindGameWindowAsync(
         IReadOnlyCollection<string> processNames,
@@ -134,7 +135,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
 
     public Task<bool> DragScrollAsync(
         GameWindowCandidate window,
-        int dragPixels = -600,
+        int dragPixels = -480,
         CancellationToken cancellationToken = default)
     {
         ValidateDragArguments(window, dragPixels);
@@ -148,7 +149,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         GameWindowCandidate window,
         int clientX,
         int clientY,
-        int dragPixels = -600,
+        int dragPixels = -480,
         CancellationToken cancellationToken = default)
     {
         ValidateDragArguments(window, dragPixels);
@@ -493,6 +494,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
                 if (!NativeMethods.SetCursorPos(point.X, point.Y)) return false;
                 Thread.Sleep(15);
             }
+            HoldDragBeforeRelease(cancellationToken);
             return true;
         }
         finally
@@ -584,6 +586,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
                 }
                 Thread.Sleep(15);
             }
+            HoldDragBeforeRelease(cancellationToken);
             return true;
         }
         finally
@@ -598,6 +601,14 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
                 var upSent = NativeMethods.SendInput(1, new[] { buttonUp }, size);
                 NativeOcrDiagnostics.Write($"SendInput drag left-up requested=1 sent={upSent}");
             }
+        }
+    }
+
+    private static void HoldDragBeforeRelease(CancellationToken cancellationToken)
+    {
+        if (cancellationToken.WaitHandle.WaitOne(DragReleaseHoldMilliseconds))
+        {
+            throw new OperationCanceledException(cancellationToken);
         }
     }
 

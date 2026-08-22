@@ -22,7 +22,7 @@ public partial class MainWindow : Window
 {
     // A negative drag moves the list content upward, advancing to lower rows.
     // Keep the movement below the client height so each OCR pass can overlap rows.
-    private const int OcrListDragPixels = -600;
+    private const int OcrListDragPixels = -550;
     private const int SecondaryNavigationDragPixels = OcrListDragPixels;
     // Ratios are based on the 1920×1080 achievement screen in the reference UI.
     // Keeping them relative to the client makes window placement and DPI scaling irrelevant.
