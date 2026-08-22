@@ -20,19 +20,6 @@ public enum OcrScanPhase
     Failed
 }
 
-public sealed record OcrScanProgress(
-    OcrScanMode Mode,
-    OcrScanPhase Phase,
-    string Message,
-    string PrimaryCategory,
-    string SecondaryCategory,
-    int Page,
-    int VisitedCategoryCount,
-    int? TotalCategoryCount,
-    int MatchedCount,
-    int UnmatchedCount,
-    int WarningCount);
-
 public sealed record OcrImageFrame(
     byte[] BgrPixels,
     int Width,

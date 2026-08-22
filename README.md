@@ -53,11 +53,19 @@ Visual Studio 用户打开根目录的 `WutheringWavesAchievement.sln`，启动�
 
 ## Native OCR 构建
 
+Debug 配置会在需要时自动调用 C++ OCR 构建脚本，并把最新 OCR DLL、运行库和模型复制到 Debug 输出目录：
+
+```powershell
+dotnet build WutheringWavesAchievement.sln -c Debug
+```
+
+如果需要手动构建或发布 Release OCR：
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/build-native-ocr.ps1 -Configuration Release
 ```
 
-Native OCR 使用 C++20、ONNX Runtime、OpenCV 和稳定 C ABI；WPF 侧通过 `Wuwa.Infrastructure` 调用 OCR、窗口捕获和游戏输入，并通过预览确认后写入 Native 工作区。
+如需跳过 Debug 的自动 OCR 构建，可传入 `-p:BuildNativeOcr=false`。Native OCR 使用 C++20、ONNX Runtime、OpenCV 和稳定 C ABI；WPF 侧通过 `Wuwa.Infrastructure` 调用 OCR、窗口捕获和游戏输入，并通过预览确认后写入 Native 工作区。
 
 ## 测试与验证
 

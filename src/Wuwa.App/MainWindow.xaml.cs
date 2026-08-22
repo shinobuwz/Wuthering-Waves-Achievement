@@ -25,7 +25,6 @@ public partial class MainWindow : Window
     private WorkspaceView? _view;
     private bool _initializingFilters;
     private CancellationTokenSource? _ocrCancellation;
-    private OcrScanWindow? _ocrScanWindow;
     private bool _isLightTheme;
 
     public MainWindow(AchievementWorkspace workspace)
@@ -463,7 +462,6 @@ public partial class MainWindow : Window
         }
 
         _ocrCancellation = new CancellationTokenSource();
-        _ocrScanWindow = OpenOcrScanWindow(OcrScanMode.CurrentCategory);
         OcrScanButton.Content = "取消 OCR";
         OcrFullScanButton.IsEnabled = false;
         ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.Preparing, "正在检测游戏窗口并扫描当前页面…");
@@ -491,7 +489,6 @@ public partial class MainWindow : Window
             var detectedLineCount = 0;
             OcrScanPreview? preview = null;
 
-            _ocrScanWindow?.PrepareForGame();
             WindowState = WindowState.Minimized;
             await Task.Delay(350, _ocrCancellation.Token);
             for (var page = 1; page <= 80; page++)
@@ -562,7 +559,6 @@ public partial class MainWindow : Window
                 ShowOcrError($"OCR 扫描完成，但没有匹配到成就。扫描 {scannedPages} 页，检测到 {detectedLineCount} 条文字，未匹配 {mergedPreview.Unmatched.Count} 条。请确认游戏当前打开的是成就列表。", "OCR 扫描结果");
                 return;
             }
-            _ocrScanWindow?.MarkCompleted($"当前分类扫描完成：扫描 {scannedPages} 页，匹配 {mergedPreview.Candidates.Count} 条，未匹配 {mergedPreview.Unmatched.Count} 条。请在接下来的预览中确认结果。");
             var previewWindow = new OcrPreviewWindow(mergedPreview) { Owner = this };
             if (previewWindow.ShowDialog() != true || previewWindow.AcceptedPreview is null)
             {
@@ -599,20 +595,6 @@ public partial class MainWindow : Window
         }
         finally
         {
-            var wasCancelled = _ocrCancellation?.IsCancellationRequested == true;
-            var scanWindow = _ocrScanWindow;
-            if (scanWindow is not null && !scanWindow.IsFinished)
-            {
-                if (wasCancelled)
-                {
-                    scanWindow.MarkCancelled();
-                }
-                else
-                {
-                    scanWindow.MarkFailed(string.IsNullOrWhiteSpace(ErrorText.Text) ? "OCR 扫描未完成，请查看错误信息。" : ErrorText.Text);
-                }
-            }
-            _ocrScanWindow = null;
             WindowState = previousState;
             _ocrCancellation?.Dispose();
             _ocrCancellation = null;
@@ -844,7 +826,6 @@ public partial class MainWindow : Window
         }
 
         _ocrCancellation = new CancellationTokenSource();
-        _ocrScanWindow = OpenOcrScanWindow(OcrScanMode.FullScan);
         OcrFullScanButton.Content = "取消 OCR";
         OcrScanButton.IsEnabled = false;
         ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.Preparing, "正在准备 OCR 全量扫描…");
@@ -880,7 +861,6 @@ public partial class MainWindow : Window
             var mergedUnmatched = new Dictionary<string, OcrUnmatchedText>(StringComparer.Ordinal);
             var currentWindow = initialWindow;
 
-            _ocrScanWindow?.PrepareForGame();
             WindowState = WindowState.Minimized;
             await Task.Delay(350, _ocrCancellation.Token);
 
@@ -1007,7 +987,6 @@ public partial class MainWindow : Window
                 ShowOcrError("OCR 全量扫描没有匹配到成就。请确认游戏处于成就页面，并检查 native-ocr.log。", "OCR 扫描结果");
                 return;
             }
-            _ocrScanWindow?.MarkCompleted($"全量扫描完成：匹配 {mergedPreview.Candidates.Count} 条，未匹配 {mergedPreview.Unmatched.Count} 条，警告 {mergedUnmatched.Count} 条。请在接下来的预览中确认结果。");
             var previewWindow = new OcrPreviewWindow(mergedPreview) { Owner = this };
             if (previewWindow.ShowDialog() != true || previewWindow.AcceptedPreview is null)
             {
@@ -1044,20 +1023,6 @@ public partial class MainWindow : Window
         }
         finally
         {
-            var wasCancelled = _ocrCancellation?.IsCancellationRequested == true;
-            var scanWindow = _ocrScanWindow;
-            if (scanWindow is not null && !scanWindow.IsFinished)
-            {
-                if (wasCancelled)
-                {
-                    scanWindow.MarkCancelled("OCR 全量扫描已取消，当前进度未改变。");
-                }
-                else
-                {
-                    scanWindow.MarkFailed(string.IsNullOrWhiteSpace(ErrorText.Text) ? "OCR 全量扫描未完成，请查看错误信息。" : ErrorText.Text);
-                }
-            }
-            _ocrScanWindow = null;
             WindowState = previousState;
             _ocrCancellation?.Dispose();
             _ocrCancellation = null;
@@ -1197,15 +1162,6 @@ public partial class MainWindow : Window
     private static double LineCenterY(OcrTextLine line) =>
         line.Points.Count == 0 ? double.MaxValue : line.Points.Average(point => point.Y);
 
-    private OcrScanWindow OpenOcrScanWindow(OcrScanMode mode)
-    {
-        var window = new OcrScanWindow(mode);
-        window.CancelRequested += (_, _) => _ocrCancellation?.Cancel();
-        window.Show();
-        window.Activate();
-        return window;
-    }
-
     private void ReportOcrProgress(
         OcrScanMode mode,
         OcrScanPhase phase,
@@ -1219,24 +1175,14 @@ public partial class MainWindow : Window
         int unmatchedCount = 0)
     {
         HintText.Text = message;
-        _ocrScanWindow?.Report(new OcrScanProgress(
-            mode,
-            phase,
-            message,
-            primaryName,
-            secondaryName,
-            page,
-            visitedCount,
-            totalCount,
-            matchedCount,
-            unmatchedCount,
-            _ocrScanWindow.Warnings.Count));
+        NativeOcrDiagnostics.Write($"OCR progress mode={mode} phase={phase} page={page} primary={primaryName} secondary={secondaryName} matched={matchedCount} unmatched={unmatchedCount} message={message}");
     }
 
     private void AddScanWarning(IDictionary<string, OcrUnmatchedText> warnings, string scope, string reason)
     {
         if (!warnings.TryAdd($"warning:{scope}:{reason}", new OcrUnmatchedText($"[{scope}]", reason, 0))) return;
-        _ocrScanWindow?.AddWarning($"{scope}：{reason}");
+        HintText.Text = $"{scope}：{reason}";
+        NativeOcrDiagnostics.Write($"OCR warning scope={scope} reason={reason}");
     }
 
     private sealed record NavigationTab(string Name, int ClientY);

@@ -11,6 +11,10 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
 {
     private const int Srccopy = 0x00CC0020;
     private const int DibRgbColors = 0;
+    // The achievement list occupies the middle/right part of the 1920×1080 game client.
+    // Use client coordinates so window placement and multi-monitor desktop centers do not change the target.
+    private const double AchievementListScrollXRatio = 0.62;
+    private const double AchievementListScrollYRatio = 0.62;
 
     public Task<GameWindowCandidate> FindGameWindowAsync(
         IReadOnlyCollection<string> processNames,
@@ -60,8 +64,10 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         CancellationToken cancellationToken = default)
     {
         ValidateScrollArguments(window, scrollLength, scrollTimes);
-        NativeOcrDiagnostics.Write($"Scroll requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} desktop-center length={scrollLength} times={scrollTimes}");
-        return Task.Run(() => ScrollWindow(window, 0, 0, scrollLength, scrollTimes, cancellationToken, useDesktopCenter: true), cancellationToken);
+        var clientX = (int)Math.Round(window.ClientWidth * AchievementListScrollXRatio);
+        var clientY = (int)Math.Round(window.ClientHeight * AchievementListScrollYRatio);
+        NativeOcrDiagnostics.Write($"Scroll requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} achievement-list client={clientX},{clientY} length={scrollLength} times={scrollTimes}");
+        return Task.Run(() => ScrollWindow(window, clientX, clientY, scrollLength, scrollTimes, cancellationToken, useDesktopCenter: false), cancellationToken);
     }
 
     public Task<bool> ScrollAtAsync(
@@ -290,25 +296,18 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
     private static bool TryMouseEventScroll(NativePoint screenCenter, int scrollLength, int scrollTimes, CancellationToken cancellationToken)
     {
         var positioned = NativeMethods.SetCursorPos(screenCenter.X, screenCenter.Y);
-        if (positioned)
+        if (!positioned)
         {
-            Thread.Sleep(100);
-            NativeMethods.MouseEvent(NativeMethods.MouseEventLeftDown, 0, 0, 0, UIntPtr.Zero);
-            NativeMethods.MouseEvent(NativeMethods.MouseEventLeftUp, 0, 0, 0, UIntPtr.Zero);
-            Thread.Sleep(300);
-        }
-        else
-        {
-            // Some fullscreen renderers clip/reject SetCursorPos.
-            // Use a native input move fallback, then emit
-            // wheel events through mouse_event
-            // rather than a batched SendInput array.
-            NativeOcrDiagnostics.Write("Scroll mouse_event SetCursorPos=false; using SendInput focus fallback");
-            if (!TrySendInputFocus(screenCenter, cancellationToken)) return false;
+            // Some fullscreen renderers reject SetCursorPos. Return false so the
+            // caller uses the SendInput path, which can position the pointer with
+            // absolute input without clicking an achievement row.
+            NativeOcrDiagnostics.Write("Scroll mouse_event SetCursorPos=false; falling back to SendInput");
+            return false;
         }
 
-        // Use the configured raw wheel data directly as mouse_event.dwData;
-        // do not multiply it by WHEEL_DELTA a second time.
+        Thread.Sleep(100);
+        // Do not click before scrolling: the point can be inside an achievement row.
+        // Focus is provided by the foreground window and the pointer hover position.
         var wheelData = scrollLength;
         for (var index = 0; index < scrollTimes; index++)
         {
@@ -317,7 +316,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
             Thread.Sleep(100);
         }
 
-        NativeOcrDiagnostics.Write($"Scroll mouse_event positioned={positioned} wheel={wheelData} count={scrollTimes} interval=100ms");
+        NativeOcrDiagnostics.Write($"Scroll method=mouse_event positioned=true wheel={wheelData} count={scrollTimes} interval=100ms");
         return true;
     }
 
@@ -374,42 +373,29 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         var absoluteY = Math.Clamp((screenCenter.Y - virtualTop) * 65535 / (virtualHeight - 1), 0, 65535);
         // Use the configured raw dwData value rather than multiplying by WHEEL_DELTA.
         var wheelData = scrollLength;
-        // Move to the requested point, click once to give
-        // the game UI pointer focus, wait for the click to be processed, then wheel.
-        var focusInputs = new[]
+        // Position the pointer without clicking. Clicking the list center can select
+        // an achievement instead of merely giving the scroll container focus.
+        var moveInput = new NativeInput
         {
-            new NativeInput
+            Type = NativeMethods.InputMouse,
+            Mouse = new NativeMouseInput
             {
-                Type = NativeMethods.InputMouse,
-                Mouse = new NativeMouseInput
-                {
-                    Dx = absoluteX,
-                    Dy = absoluteY,
-                    Flags = NativeMethods.MouseEventMove | NativeMethods.MouseEventAbsolute | NativeMethods.MouseEventVirtualDesk
-                }
-            },
-            new NativeInput
-            {
-                Type = NativeMethods.InputMouse,
-                Mouse = new NativeMouseInput { Flags = NativeMethods.MouseEventLeftDown }
-            },
-            new NativeInput
-            {
-                Type = NativeMethods.InputMouse,
-                Mouse = new NativeMouseInput { Flags = NativeMethods.MouseEventLeftUp }
+                Dx = absoluteX,
+                Dy = absoluteY,
+                Flags = NativeMethods.MouseEventMove | NativeMethods.MouseEventAbsolute | NativeMethods.MouseEventVirtualDesk
             }
         };
-        var focusSent = NativeMethods.SendInput((uint)focusInputs.Length, focusInputs, Marshal.SizeOf<NativeInput>());
-        NativeOcrDiagnostics.Write($"SendInput focus requested={focusInputs.Length} sent={focusSent} size={Marshal.SizeOf<NativeInput>()} absolute={absoluteX},{absoluteY}");
-        if (focusSent != (uint)focusInputs.Length) return false;
+        var moveSent = NativeMethods.SendInput(1, new[] { moveInput }, Marshal.SizeOf<NativeInput>());
+        NativeOcrDiagnostics.Write($"SendInput pointer move requested=1 sent={moveSent} size={Marshal.SizeOf<NativeInput>()} absolute={absoluteX},{absoluteY}");
+        if (moveSent != 1) return false;
 
         Thread.Sleep(250);
         cancellationToken.ThrowIfCancellationRequested();
-        var wheelInputs = new NativeInput[scrollTimes];
-        for (var index = 0; index < wheelInputs.Length; index++)
+        var wheelSent = 0U;
+        for (var index = 0; index < scrollTimes; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            wheelInputs[index] = new NativeInput
+            var wheelInput = new NativeInput
             {
                 Type = NativeMethods.InputMouse,
                 Mouse = new NativeMouseInput
@@ -418,11 +404,14 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
                     Flags = NativeMethods.MouseEventWheel
                 }
             };
+            var sent = NativeMethods.SendInput(1, new[] { wheelInput }, Marshal.SizeOf<NativeInput>());
+            wheelSent += sent;
+            if (sent != 1) return false;
+            Thread.Sleep(100);
         }
 
-        var wheelSent = NativeMethods.SendInput((uint)wheelInputs.Length, wheelInputs, Marshal.SizeOf<NativeInput>());
-        NativeOcrDiagnostics.Write($"SendInput wheel requested={wheelInputs.Length} sent={wheelSent}");
-        return wheelSent == (uint)wheelInputs.Length;
+        NativeOcrDiagnostics.Write($"SendInput wheel requested={scrollTimes} sent={wheelSent} interval=100ms");
+        return wheelSent == (uint)scrollTimes;
     }
 
     private static OcrImageFrame CaptureClient(

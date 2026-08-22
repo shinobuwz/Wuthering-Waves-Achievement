@@ -12,8 +12,20 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
-    <NativeOcrBuildDirectory>$(MSBuildProjectDirectory)\..\..\ocr\build\$(Configuration)</NativeOcrBuildDirectory>
+    <NativeOcrBuildRoot>$(MSBuildProjectDirectory)\..\..\ocr\build</NativeOcrBuildRoot>
+    <NativeOcrBuildDirectory Condition="Exists('$(NativeOcrBuildRoot)\$(Configuration)\Wuwa.Ocr.Native.dll')">$(NativeOcrBuildRoot)\$(Configuration)</NativeOcrBuildDirectory>
+    <!-- Debug can use the latest compiled Release OCR engine when a separate Debug C++ build is absent. -->
+    <NativeOcrBuildDirectory Condition="'$(NativeOcrBuildDirectory)' == '' and Exists('$(NativeOcrBuildRoot)\Release\Wuwa.Ocr.Native.dll')">$(NativeOcrBuildRoot)\Release</NativeOcrBuildDirectory>
     <NativeOcrModelDirectory>$(MSBuildProjectDirectory)\..\..\models\ppocrv5</NativeOcrModelDirectory>
+    <!-- Debug builds compile the latest C++ OCR automatically; pass -p:BuildNativeOcr=false to opt out. -->
+    <BuildNativeOcr Condition="'$(BuildNativeOcr)' == '' and '$(Configuration)' == 'Debug'">true</BuildNativeOcr>
+    <BuildNativeOcr Condition="'$(BuildNativeOcr)' == ''">false</BuildNativeOcr>
+    <NativeOcrRequestedBuildDirectory>$(NativeOcrBuildRoot)\$(Configuration)</NativeOcrRequestedBuildDirectory>
+    <NativeOcrRequestedOpenCvDll Condition="'$(Configuration)' == 'Debug'">opencv_world4120d.dll</NativeOcrRequestedOpenCvDll>
+    <NativeOcrRequestedOpenCvDll Condition="'$(NativeOcrRequestedOpenCvDll)' == ''">opencv_world4120.dll</NativeOcrRequestedOpenCvDll>
+    <NativeOcrOpenCvDll Condition="Exists('$(NativeOcrBuildDirectory)\opencv_world4120d.dll')">opencv_world4120d.dll</NativeOcrOpenCvDll>
+    <NativeOcrOpenCvDll Condition="'$(NativeOcrOpenCvDll)' == '' and Exists('$(NativeOcrBuildDirectory)\opencv_world4120.dll')">opencv_world4120.dll</NativeOcrOpenCvDll>
+    <NativeOcrOpenCvDll Condition="'$(NativeOcrOpenCvDll)' == ''">$(NativeOcrRequestedOpenCvDll)</NativeOcrOpenCvDll>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,12 +40,42 @@
     <Content Include="$(NativeOcrBuildDirectory)\Wuwa.Ocr.Native.dll" Link="ocr\Wuwa.Ocr.Native.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(NativeOcrBuildDirectory)\onnxruntime.dll" Link="ocr\onnxruntime.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(NativeOcrBuildDirectory)\onnxruntime_providers_shared.dll" Link="ocr\onnxruntime_providers_shared.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="$(NativeOcrBuildDirectory)\opencv_world4120.dll" Link="ocr\opencv_world4120.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NativeOcrBuildDirectory)\$(NativeOcrOpenCvDll)" Link="ocr\$(NativeOcrOpenCvDll)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(NativeOcrModelDirectory)\det\det.onnx" Link="ocr\models\ppocrv5\det\det.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(NativeOcrModelDirectory)\rec\rec.onnx" Link="ocr\models\ppocrv5\rec\rec.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(NativeOcrModelDirectory)\cls\cls.onnx" Link="ocr\models\ppocrv5\cls\cls.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(NativeOcrModelDirectory)\ppocrv5_dict.txt" Link="ocr\models\ppocrv5\ppocrv5_dict.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\ocr\THIRD_PARTY.md" Link="ocr\THIRD_PARTY.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <ItemGroup>
+    <NativeOcrBuildInputs Include="..\..\ocr\CMakeLists.txt;..\..\ocr\include\**\*;..\..\ocr\src\**\*;..\..\ocr\third_party\**\*;..\..\models\ppocrv5\**\*;..\..\scripts\build-native-ocr.ps1" />
+  </ItemGroup>
+
+  <Target Name="BuildNativeOcrBeforeDebugBuild"
+          BeforeTargets="Build"
+          Condition="'$(BuildNativeOcr)' == 'true' and '$(Configuration)' == 'Debug'"
+          Inputs="@(NativeOcrBuildInputs)"
+          Outputs="$(NativeOcrRequestedBuildDirectory)\Wuwa.Ocr.Native.dll">
+    <Message Importance="High" Text="Building Native OCR for Debug from the latest C++ sources..." />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\build-native-ocr.ps1&quot; -Configuration Debug -SkipTests" />
+  </Target>
+
+  <Target Name="CopyNativeOcrAssetsToOutput"
+          AfterTargets="Build"
+          Condition="Exists('$(NativeOcrRequestedBuildDirectory)\Wuwa.Ocr.Native.dll') Or Exists('$(NativeOcrBuildDirectory)\Wuwa.Ocr.Native.dll')">
+    <PropertyGroup>
+      <NativeOcrEffectiveBuildDirectory Condition="'$(Configuration)' == 'Debug' and Exists('$(NativeOcrRequestedBuildDirectory)\Wuwa.Ocr.Native.dll')">$(NativeOcrRequestedBuildDirectory)</NativeOcrEffectiveBuildDirectory>
+      <NativeOcrEffectiveBuildDirectory Condition="'$(NativeOcrEffectiveBuildDirectory)' == ''">$(NativeOcrBuildDirectory)</NativeOcrEffectiveBuildDirectory>
+    </PropertyGroup>
+    <Message Importance="High" Text="Copying Native OCR assets from $(NativeOcrEffectiveBuildDirectory)" />
+    <MakeDir Directories="$(TargetDir)ocr;$(TargetDir)ocr\models\ppocrv5\det;$(TargetDir)ocr\models\ppocrv5\rec;$(TargetDir)ocr\models\ppocrv5\cls" />
+    <Copy SourceFiles="$(NativeOcrEffectiveBuildDirectory)\Wuwa.Ocr.Native.dll;$(NativeOcrEffectiveBuildDirectory)\onnxruntime.dll;$(NativeOcrEffectiveBuildDirectory)\onnxruntime_providers_shared.dll;$(NativeOcrEffectiveBuildDirectory)\$(NativeOcrOpenCvDll)" DestinationFolder="$(TargetDir)ocr" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(NativeOcrModelDirectory)\det\det.onnx" DestinationFiles="$(TargetDir)ocr\models\ppocrv5\det\det.onnx" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(NativeOcrModelDirectory)\rec\rec.onnx" DestinationFiles="$(TargetDir)ocr\models\ppocrv5\rec\rec.onnx" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(NativeOcrModelDirectory)\cls\cls.onnx" DestinationFiles="$(TargetDir)ocr\models\ppocrv5\cls\cls.onnx" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(NativeOcrModelDirectory)\ppocrv5_dict.txt" DestinationFiles="$(TargetDir)ocr\models\ppocrv5\ppocrv5_dict.txt" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="..\..\ocr\THIRD_PARTY.md" DestinationFiles="$(TargetDir)ocr\THIRD_PARTY.md" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>
