@@ -52,7 +52,7 @@ try {
 
     $temporaryOutput = Join-Path ([System.IO.Path]::GetTempPath()) ("wuwa-native-publish-" + [Guid]::NewGuid().ToString('N'))
     New-Item $temporaryOutput -ItemType Directory | Out-Null
-    Invoke-Checked 'dotnet' @('publish', 'src/Wuwa.App/Wuwa.App.csproj', '-c', $Configuration, '-r', $RuntimeIdentifier, '--self-contained', 'true', '-p:PublishSingleFile=true', '--no-restore', '-o', $temporaryOutput)
+    Invoke-Checked 'dotnet' @('publish', 'src/Wuwa.App/Wuwa.App.csproj', '-c', $Configuration, '-r', $RuntimeIdentifier, '--self-contained', 'true', '-p:PublishSingleFile=true', '-p:EnableCompressionInSingleFile=true', '--no-restore', '-o', $temporaryOutput)
 
     $ocrOutput = Join-Path $nativeRoot "ocr/build/$Configuration"
     $packageOcrRoot = Join-Path $temporaryOutput 'ocr'
