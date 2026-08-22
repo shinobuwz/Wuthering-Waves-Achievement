@@ -3,13 +3,16 @@ namespace Wuwa.Core;
 public enum OcrScanMode
 {
     CurrentCategory,
-    FullScan
+    FullScan,
+    SearchSync
 }
 
 public enum OcrScanPhase
 {
     Preparing,
     FindingGameWindow,
+    SearchingAchievement,
+    ClearingSearch,
     ScanningCurrentCategory,
     SwitchingPrimaryCategory,
     DiscoveringSecondaryCategories,
@@ -40,6 +43,12 @@ public sealed record GameWindowCandidate(
     string Title,
     int ClientWidth,
     int ClientHeight);
+
+public sealed record GameWindowScreenBounds(
+    int X,
+    int Y,
+    int Width,
+    int Height);
 
 public sealed record OcrPoint(float X, float Y);
 

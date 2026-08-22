@@ -56,6 +56,34 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         return Task.Run(() => CaptureClient(window, expectedWidth, expectedHeight, cancellationToken), cancellationToken);
     }
 
+    public bool TryGetClientScreenBounds(
+        GameWindowCandidate window,
+        out GameWindowScreenBounds bounds)
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Game-window capture currently supports Windows only.");
+        if (window.Handle == 0) throw new ArgumentException("A valid window handle is required.", nameof(window));
+        bounds = default!;
+        if (!NativeMethods.IsWindow(window.Handle) || !NativeMethods.GetClientRect(window.Handle, out var client))
+        {
+            NativeOcrDiagnostics.Write($"ClientScreenBounds failed handle=0x{window.Handle.ToInt64():X}");
+            return false;
+        }
+
+        var origin = new NativePoint();
+        if (!NativeMethods.ClientToScreen(window.Handle, ref origin))
+        {
+            NativeOcrDiagnostics.Write($"ClientScreenBounds ClientToScreen failed handle=0x{window.Handle.ToInt64():X}");
+            return false;
+        }
+
+        var width = client.Right - client.Left;
+        var height = client.Bottom - client.Top;
+        if (width <= 0 || height <= 0) return false;
+        bounds = new GameWindowScreenBounds(origin.X, origin.Y, width, height);
+        NativeOcrDiagnostics.Write($"ClientScreenBounds handle=0x{window.Handle.ToInt64():X} bounds={origin.X},{origin.Y},{width}x{height}");
+        return true;
+    }
+
     public Task<bool> DragScrollAsync(
         GameWindowCandidate window,
         int dragPixels = -600,
@@ -90,6 +118,25 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         if (window.Handle == 0) throw new ArgumentException("A valid window handle is required.", nameof(window));
         NativeOcrDiagnostics.Write($"Click requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} client={clientX},{clientY}");
         return Task.Run(() => ClickWindow(window, clientX, clientY, cancellationToken), cancellationToken);
+    }
+
+    /// <summary>
+    /// Focuses a game text field, selects its current contents, and pastes Unicode
+    /// text from the Windows clipboard. This keeps text entry inside the same
+    /// foreground-window and integrity-level checks as the existing mouse automation.
+    /// </summary>
+    public Task<bool> ReplaceTextAsync(
+        GameWindowCandidate window,
+        int clientX,
+        int clientY,
+        string text,
+        CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Game-window input currently supports Windows only.");
+        if (window.Handle == 0) throw new ArgumentException("A valid window handle is required.", nameof(window));
+        if (text is null) throw new ArgumentNullException(nameof(text));
+        NativeOcrDiagnostics.Write($"ReplaceText requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} client={clientX},{clientY} length={text.Length} method=clipboard-paste");
+        return Task.Run(() => ReplaceText(window, clientX, clientY, text, cancellationToken), cancellationToken);
     }
 
     private static void ValidateDragArguments(GameWindowCandidate window, int dragPixels)
@@ -215,6 +262,112 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         NativeOcrDiagnostics.Write($"Click method=SendInput foreground={foreground} positioned=false screen={point.X},{point.Y} result={focused}");
         return focused;
     }
+
+    private static bool ReplaceText(
+        GameWindowCandidate window,
+        int clientX,
+        int clientY,
+        string text,
+        CancellationToken cancellationToken)
+    {
+        // The game's text field accepts clipboard paste reliably, while
+        // KEYEVENTF_UNICODE input is reported as sent by Windows but is ignored
+        // by the game's Slate/IME text widget for Chinese achievement names.
+        if (!SetClipboardUnicodeText(text)) return false;
+        if (!ClickWindow(window, clientX, clientY, cancellationToken)) return false;
+        Thread.Sleep(120);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!SendKeyChord(NativeMethods.VirtualKeyA, cancellationToken)) return false;
+        Thread.Sleep(100);
+        if (!SendKeyChord(NativeMethods.VirtualKeyV, cancellationToken)) return false;
+        Thread.Sleep(220);
+        cancellationToken.ThrowIfCancellationRequested();
+        NativeOcrDiagnostics.Write($"ReplaceText paste completed text={text}");
+        return true;
+    }
+
+    private static bool SendKeyChord(ushort key, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var inputs = new[]
+        {
+            CreateKeyInput(NativeMethods.VirtualKeyControl, 0),
+            CreateKeyInput(key, 0),
+            CreateKeyInput(key, NativeMethods.KeyboardEventKeyUp),
+            CreateKeyInput(NativeMethods.VirtualKeyControl, NativeMethods.KeyboardEventKeyUp)
+        };
+        var sent = NativeMethods.SendKeyboardInput(
+            (uint)inputs.Length,
+            inputs,
+            Marshal.SizeOf<NativeKeyboardInput>());
+        NativeOcrDiagnostics.Write($"ReplaceText keychord key=0x{key:X2} requested={inputs.Length} sent={sent}");
+        return sent == (uint)inputs.Length;
+    }
+
+    private static bool SetClipboardUnicodeText(string text)
+    {
+        var data = Encoding.Unicode.GetBytes(text + '\0');
+        for (var attempt = 1; attempt <= 5; attempt++)
+        {
+            if (NativeMethods.OpenClipboard(IntPtr.Zero))
+            {
+                IntPtr allocation = IntPtr.Zero;
+                try
+                {
+                    if (!NativeMethods.EmptyClipboard())
+                    {
+                        NativeOcrDiagnostics.Write($"Clipboard EmptyClipboard failed attempt={attempt}");
+                        return false;
+                    }
+
+                    allocation = NativeMethods.GlobalAlloc(NativeMethods.GlobalMemoryMoveable, (UIntPtr)data.Length);
+                    if (allocation == IntPtr.Zero) return false;
+                    var target = NativeMethods.GlobalLock(allocation);
+                    if (target == IntPtr.Zero) return false;
+                    try
+                    {
+                        Marshal.Copy(data, 0, target, data.Length);
+                    }
+                    finally
+                    {
+                        NativeMethods.GlobalUnlock(allocation);
+                    }
+
+                    if (NativeMethods.SetClipboardData(NativeMethods.ClipboardUnicodeText, allocation) == IntPtr.Zero)
+                    {
+                        NativeOcrDiagnostics.Write($"Clipboard SetClipboardData failed attempt={attempt}");
+                        return false;
+                    }
+
+                    allocation = IntPtr.Zero;
+                    NativeOcrDiagnostics.Write($"Clipboard Unicode text set length={text.Length} attempt={attempt}");
+                    return true;
+                }
+                finally
+                {
+                    if (allocation != IntPtr.Zero) NativeMethods.GlobalFree(allocation);
+                    NativeMethods.CloseClipboard();
+                }
+            }
+
+            Thread.Sleep(60);
+        }
+
+        NativeOcrDiagnostics.Write("Clipboard OpenClipboard failed after retries");
+        return false;
+    }
+
+    private static NativeKeyboardInput CreateKeyInput(ushort virtualKey, uint flags) =>
+        new()
+        {
+            Type = NativeMethods.InputKeyboard,
+            Keyboard = new NativeKeyboardInputData
+            {
+                VirtualKey = virtualKey,
+                Flags = flags
+            }
+        };
 
     private static bool DragWindow(
         GameWindowCandidate window,
@@ -525,6 +678,23 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         public NativeMouseInput Mouse;
     }
 
+    [StructLayout(LayoutKind.Explicit, Size = 40)]
+    private struct NativeKeyboardInput
+    {
+        [FieldOffset(0)] public uint Type;
+        [FieldOffset(8)] public NativeKeyboardInputData Keyboard;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeKeyboardInputData
+    {
+        public ushort VirtualKey;
+        public ushort ScanCode;
+        public uint Flags;
+        public uint Time;
+        public UIntPtr ExtraInfo;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeMouseInput
     {
@@ -569,6 +739,13 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool IsWindow(IntPtr handle);
         [LibraryImport("user32.dll", SetLastError = true)] internal static partial uint GetWindowThreadProcessId(IntPtr handle, out uint processId);
         internal const uint InputMouse = 0;
+        internal const uint InputKeyboard = 1;
+        internal const uint KeyboardEventKeyUp = 0x0002;
+        internal const ushort VirtualKeyControl = 0x11;
+        internal const ushort VirtualKeyA = 0x41;
+        internal const ushort VirtualKeyV = 0x56;
+        internal const uint GlobalMemoryMoveable = 0x0002;
+        internal const uint ClipboardUnicodeText = 13;
         internal const uint MouseEventMove = 0x0001;
         internal const uint MouseEventLeftDown = 0x0002;
         internal const uint MouseEventLeftUp = 0x0004;
@@ -589,6 +766,15 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         [LibraryImport("user32.dll")] internal static partial int GetSystemMetrics(int index);
         [DllImport("user32.dll", EntryPoint = "mouse_event", SetLastError = true)] internal static extern void MouseEvent(uint flags, uint dx, uint dy, int data, UIntPtr extraInfo);
         [DllImport("user32.dll", SetLastError = true)] internal static extern uint SendInput(uint count, [In] NativeInput[] inputs, int size);
+        [DllImport("user32.dll", SetLastError = true, EntryPoint = "SendInput")] internal static extern uint SendKeyboardInput(uint count, [In] NativeKeyboardInput[] inputs, int size);
+        [LibraryImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool OpenClipboard(IntPtr owner);
+        [LibraryImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool CloseClipboard();
+        [LibraryImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool EmptyClipboard();
+        [LibraryImport("user32.dll", SetLastError = true)] internal static partial IntPtr SetClipboardData(uint format, IntPtr memory);
+        [LibraryImport("kernel32.dll", SetLastError = true)] internal static partial IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
+        [LibraryImport("kernel32.dll", SetLastError = true)] internal static partial IntPtr GlobalLock(IntPtr memory);
+        [LibraryImport("kernel32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool GlobalUnlock(IntPtr memory);
+        [LibraryImport("kernel32.dll", SetLastError = true)] internal static partial IntPtr GlobalFree(IntPtr memory);
         [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool PostMessage(IntPtr handle, uint message, UIntPtr wParam, IntPtr lParam);
         [LibraryImport("user32.dll", EntryPoint = "GetWindowTextLengthW")] internal static partial int GetWindowTextLength(IntPtr handle);
         [DllImport("user32.dll", EntryPoint = "GetWindowTextW", CharSet = CharSet.Unicode)] internal static extern int GetWindowText(IntPtr handle, StringBuilder text, int maximumCount);
