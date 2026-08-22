@@ -3,7 +3,7 @@
 - [x] [01 — Native workspace tracer](tasks/01-native-workspace-tracer.md)
   - **Blocked by:** None
   - **Acceptance evidence:** WPF loads 958 shipped rows through `AchievementWorkspace`; query/status/statistics/group contracts pass; Release build and UI launch/capture pass.
-  - **Verification:** `dotnet test`, `dotnet build -c Release`, `native/scripts/verify-ui.ps1`.
+  - **Verification:** `dotnet test`, `dotnet build -c Release`, `scripts/verify-ui.ps1`.
 
 - [x] [02 — Transactional state and legacy import](tasks/02-transactional-state-and-legacy-import.md)
   - **Blocked by:** 01
@@ -13,7 +13,7 @@
 - [x] [03 — Anonymous Wiki reconciliation](tasks/03-anonymous-wiki-reconciliation.md)
   - **Blocked by:** 02
   - **Acceptance evidence:** HTTP/business/schema validation, normalized bootstrap identity retention, ambiguity quarantine, no-mutation failures, equivalent-content revision suppression and isolated live Wiki probe pass.
-  - **Verification:** Wiki fixtures plus `native/scripts/verify-wiki-live.ps1`.
+  - **Verification:** Wiki fixtures plus `scripts/verify-wiki-live.ps1`.
   - **Residual:** Wiki response caching remains non-authoritative/deferred; correctness does not depend on it.
 
 - [x] [04 — JSON and Excel exchange](tasks/04-json-excel-exchange.md)
@@ -25,7 +25,7 @@
   - **Blocked by:** 01, 02
   - **Completed:** Both themes, secure/trusted update URL and cache fixtures, target-size control reachability, and four nonblank screenshots.
   - **Remaining user acceptance/verification:** Subjective visual/taste review plus end-to-end UI Automation for filter/status/stat/theme/error scenarios and hands-on keyboard/DPI/loading/empty/error workflow acceptance.
-  - **Verification:** `native/scripts/verify-ui.ps1`; screenshots under ignored `native/artifacts/ui/`.
+  - **Verification:** `scripts/verify-ui.ps1`; screenshots under ignored `artifacts/ui/`.
 
 - [x] [06 — Side-by-side native release](tasks/06-side-by-side-native-release.md)
   - **Blocked by:** 03, 04, 05 automated portion

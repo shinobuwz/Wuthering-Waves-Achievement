@@ -22,7 +22,7 @@ OCR 既可能误识别名称，也可能把状态行配错、漏掉不可见条�
 
 ## 验证
 
-回读 `native/src/Wuwa.Core/OcrMatching.cs`、`OcrScanContracts.cs` 和 `AchievementWorkspace.ApplyOcrPreviewAsync`，确认 duplicate/ambiguous candidate、confirmation、completed downgrade 和 cancellation 分支。运行 `native/tests/Wuwa.Tests/OcrMatchingTests.cs` 的 `ApplyOcrPreview_RequiresConfirmationAndCommitsOneRevisionWithoutDowngrade`、`OcrScanServiceTests.cs` 的 cancellation/failure tests；Legacy 侧检查 `core/ocr_tab.py` 的 preview/save 流程。
+回读 `src/Wuwa.Core/OcrMatching.cs`、`OcrScanContracts.cs` 和 `AchievementWorkspace.ApplyOcrPreviewAsync`，确认 duplicate/ambiguous candidate、confirmation、completed downgrade 和 cancellation 分支。运行 `tests/Wuwa.Tests/OcrMatchingTests.cs` 的 `ApplyOcrPreview_RequiresConfirmationAndCommitsOneRevisionWithoutDowngrade`、`OcrScanServiceTests.cs` 的 cancellation/failure tests；Native 侧检查 OCR preview/apply 流程。
 
 ## 重审条件
 

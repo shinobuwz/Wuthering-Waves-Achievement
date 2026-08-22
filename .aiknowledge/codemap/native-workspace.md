@@ -6,11 +6,11 @@
 
 ## Entry points
 
-- `native/src/Wuwa.App/MainWindow.xaml`、`MainWindow.xaml.cs`：WPF 表格、筛选、状态命令、主题、交换和 OCR 界面；通过工作区调用领域行为。
-- `native/src/Wuwa.Core/AchievementWorkspace.cs`：打开、查询、统计、状态转换、旧版导入、交换、Wiki 同步和 OCR 预览合并的最高公共入口。
-- `native/src/Wuwa.Core/Models.cs`、`Contracts.cs`、`ExchangeContracts.cs`、`SyncContracts.cs`：成就身份、ProgressStatus、WorkspaceState/Snapshot、适配器契约和结构化错误。
-- `native/src/Wuwa.Infrastructure/Persistence.cs`：generation、manifest、commit marker、恢复和保留策略；同目录还包含 shipped library、旧版、Wiki、交换和 Win32 适配器。
-- Tests/runtime：`native/tests/Wuwa.Tests/`；`dotnet test native/WutheringWavesAchievement.sln -c Release`；发布/便携 smoke 见 `native/scripts/publish-native.ps1` 和 `verify-portable-lifecycle.ps1`。
+- `src/Wuwa.App/MainWindow.xaml`、`MainWindow.xaml.cs`：WPF 表格、筛选、状态命令、主题、交换和 OCR 界面；通过工作区调用领域行为。
+- `src/Wuwa.Core/AchievementWorkspace.cs`：打开、查询、统计、状态转换、旧版导入、交换、Wiki 同步和 OCR 预览合并的最高公共入口。
+- `src/Wuwa.Core/Models.cs`、`Contracts.cs`、`ExchangeContracts.cs`、`SyncContracts.cs`：成就身份、ProgressStatus、WorkspaceState/Snapshot、适配器契约和结构化错误。
+- `src/Wuwa.Infrastructure/Persistence.cs`：generation、manifest、commit marker、恢复和保留策略；同目录还包含 shipped library、旧版、Wiki、交换和 Win32 适配器。
+- Tests/runtime：`tests/Wuwa.Tests/`；`dotnet test WutheringWavesAchievement.sln -c Release`；发布/便携 smoke 见 `scripts/publish-native.ps1` 和 `verify-portable-lifecycle.ps1`。
 
 ## Boundaries
 
@@ -21,8 +21,8 @@
 
 ## Read next
 
-- 先读 `native/src/Wuwa.Core/Models.cs`、`Contracts.cs`，建立身份/状态/快照语义。
-- 修改工作区行为时读 `AchievementWorkspace.cs` 的全部 partial 文件和 `native/tests/Wuwa.Tests/AchievementWorkspaceTests.cs`。
+- 先读 `src/Wuwa.Core/Models.cs`、`Contracts.cs`，建立身份/状态/快照语义。
+- 修改工作区行为时读 `AchievementWorkspace.cs` 的全部 partial 文件和 `tests/Wuwa.Tests/AchievementWorkspaceTests.cs`。
 - 修改持久化或迁移时读 `Persistence.cs`、`LegacyProfileSources.cs`、`PersistenceAndMigrationTests.cs`。
 - 修改远端同步/交换时读 `SyncWorkspace.cs`、`WikiSources.cs`、`AchievementExchangeFactory.cs` 和 `WikiExchangeUpdateTests.cs`。
 - `verified_against: commit:94aeb30`

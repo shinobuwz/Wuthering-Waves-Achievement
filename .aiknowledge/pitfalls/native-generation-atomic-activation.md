@@ -22,7 +22,7 @@
 
 ## 验证
 
-回读 `native/src/Wuwa.Infrastructure/Persistence.cs` 的 temporary directory、candidate validation、manifest replacement、commit marker 和 recovery 分支。运行 `native/tests/Wuwa.Tests/PersistenceAndMigrationTests.cs` 中的 pre-commit/post-commit fault injection、malformed generation recovery、uncommitted orphan 和 retention tests，以及 `AchievementWorkspaceTests.JsonStore_RoundTripsStatusAndRetainsGenerations`。
+回读 `src/Wuwa.Infrastructure/Persistence.cs` 的 temporary directory、candidate validation、manifest replacement、commit marker 和 recovery 分支。运行 `tests/Wuwa.Tests/PersistenceAndMigrationTests.cs` 中的 pre-commit/post-commit fault injection、malformed generation recovery、uncommitted orphan 和 retention tests，以及 `AchievementWorkspaceTests.JsonStore_RoundTripsStatusAndRetainsGenerations`。
 
 ## 重审条件
 

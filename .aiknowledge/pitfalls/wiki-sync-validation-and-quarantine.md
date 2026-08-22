@@ -22,7 +22,7 @@ Wiki 页面可能返回认证错误、截断内容、空模块、表格重建或
 
 ## 验证
 
-回读 `native/src/Wuwa.Infrastructure/WikiSources.cs` 的 response/schema parsing 和 `native/src/Wuwa.Core/SyncWorkspace.cs` 的 validation、match precedence、quarantine 与 tombstone 分支。运行 `native/tests/Wuwa.Tests/WikiExchangeUpdateTests.cs` 中的 malformed choice、business failure、ambiguous signature、bootstrap identity retention tests；真实探针只能用临时 `WUWA_NATIVE_DATA_ROOT` 运行 `native/scripts/verify-wiki-live.ps1`。
+回读 `src/Wuwa.Infrastructure/WikiSources.cs` 的 response/schema parsing 和 `src/Wuwa.Core/SyncWorkspace.cs` 的 validation、match precedence、quarantine 与 tombstone 分支。运行 `tests/Wuwa.Tests/WikiExchangeUpdateTests.cs` 中的 malformed choice、business failure、ambiguous signature、bootstrap identity retention tests；真实探针只能用临时 `WUWA_NATIVE_DATA_ROOT` 运行 `scripts/verify-wiki-live.ps1`。
 
 ## 重审条件
 

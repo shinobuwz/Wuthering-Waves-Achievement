@@ -3,7 +3,7 @@ using Wuwa.Core;
 namespace Wuwa.Infrastructure;
 
 /// <summary>
-/// Matches the Python OCR pipeline: locate achievement star icons first, then
+/// Matches the Native OCR pipeline: locate achievement star icons first, then
 /// recognize the name/status crops at fixed offsets from each icon.
 /// </summary>
 public sealed class NativeOcrTemplateTextReader : IOcrTextReader

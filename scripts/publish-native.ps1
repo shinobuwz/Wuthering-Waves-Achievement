@@ -9,8 +9,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$nativeRoot = Join-Path $repoRoot 'native'
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$nativeRoot = $repoRoot
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $nativeRoot "publish/$RuntimeIdentifier"
 } elseif (-not [System.IO.Path]::IsPathRooted($OutputDirectory)) {
@@ -64,10 +64,10 @@ try {
         if (-not (Test-Path $source)) { throw "Required native OCR file was not produced: $source" }
         Copy-Item $source $packageOcrRoot -Force
     }
-    Copy-Item (Join-Path $repoRoot 'onnxocr/models/ppocrv5/det/det.onnx') (Join-Path $modelTarget 'det/det.onnx') -Force
-    Copy-Item (Join-Path $repoRoot 'onnxocr/models/ppocrv5/rec/rec.onnx') (Join-Path $modelTarget 'rec/rec.onnx') -Force
-    Copy-Item (Join-Path $repoRoot 'onnxocr/models/ppocrv5/cls/cls.onnx') (Join-Path $modelTarget 'cls/cls.onnx') -Force
-    Copy-Item (Join-Path $repoRoot 'onnxocr/models/ppocrv5/ppocrv5_dict.txt') $modelTarget -Force
+    Copy-Item (Join-Path $repoRoot 'models/ppocrv5/det/det.onnx') (Join-Path $modelTarget 'det/det.onnx') -Force
+    Copy-Item (Join-Path $repoRoot 'models/ppocrv5/rec/rec.onnx') (Join-Path $modelTarget 'rec/rec.onnx') -Force
+    Copy-Item (Join-Path $repoRoot 'models/ppocrv5/cls/cls.onnx') (Join-Path $modelTarget 'cls/cls.onnx') -Force
+    Copy-Item (Join-Path $repoRoot 'models/ppocrv5/ppocrv5_dict.txt') $modelTarget -Force
     Copy-Item (Join-Path $nativeRoot 'ocr/THIRD_PARTY.md') $packageOcrRoot -Force
 
     foreach ($required in @('Wuwa.App.exe', 'resources/base_achievements.json', 'resources/category_config.json', 'resources/ocr_templates/icon_1star.png', 'resources/ocr_templates/icon_2star.png', 'resources/ocr_templates/icon_3star.png', 'ocr/Wuwa.Ocr.Native.dll')) {

@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Suggested Files:** `native/src/Wuwa.Infrastructure/Wiki/`, `native/src/Wuwa.Core/Sync/`, `native/tests/Wuwa.Tests/Wiki/`
+**Suggested Files:** `src/Wuwa.Infrastructure/Wiki/`, `src/Wuwa.Core/Sync/`, `tests/Wuwa.Tests/Wiki/`
 
 **Behavior Context:**
 

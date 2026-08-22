@@ -22,7 +22,7 @@ OCR、导入或界面直接修改一个成就组成员的状态表，留下互�
 
 ## 验证
 
-回读 `native/src/Wuwa.Core/AchievementWorkspace.cs` 的 `ApplyStatusTransition` 和统计计算，及 `native/src/Wuwa.Core/Models.cs` 的 `ProgressStatus`。运行 `native/tests/Wuwa.Tests/AchievementWorkspaceTests.cs` 中的成就组转换/统计测试、`AchievementIdentityTests.ProgressStatus_ExposesExactlyTheFourCanonicalLabels`，并检查 `native/src/Wuwa.Infrastructure/WikiSources.cs` 与 `scripts/mark_progression_chains.py` 的成就组元数据生成。
+回读 `src/Wuwa.Core/AchievementWorkspace.cs` 的 `ApplyStatusTransition` 和统计计算，及 `src/Wuwa.Core/Models.cs` 的 `ProgressStatus`。运行 `tests/Wuwa.Tests/AchievementWorkspaceTests.cs` 中的成就组转换/统计测试、`AchievementIdentityTests.ProgressStatus_ExposesExactlyTheFourCanonicalLabels`，并检查 `src/Wuwa.Infrastructure/WikiSources.cs` 与 `scripts/mark_progression_chains.py` 的成就组元数据生成。
 
 ## 重审条件
 

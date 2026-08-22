@@ -4,7 +4,7 @@
 
 **Blocked by:** 03, 04, 05
 
-**Suggested Files:** `native/global.json`, `native/Directory.Build.props`, `native/scripts/`, `README.md`, `docx/项目架构分析.md`
+**Suggested Files:** `global.json`, `Directory.Build.props`, `scripts/`, `README.md`, `docx/项目架构分析.md`
 
 **Behavior Context:**
 

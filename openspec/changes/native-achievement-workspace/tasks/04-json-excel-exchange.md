@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Suggested Files:** `native/src/Wuwa.Infrastructure/Exchange/`, `native/src/Wuwa.App/Views/`, `native/tests/Wuwa.Tests/Exchange/`, `native/tests/Wuwa.Tests/Fixtures/Exchange/`
+**Suggested Files:** `src/Wuwa.Infrastructure/Exchange/`, `src/Wuwa.App/Views/`, `tests/Wuwa.Tests/Exchange/`, `tests/Wuwa.Tests/Fixtures/Exchange/`
 
 **Behavior Context:**
 

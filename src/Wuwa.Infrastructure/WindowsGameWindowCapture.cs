@@ -230,14 +230,12 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
             return false;
         }
 
-        // Match Python's simulate_scroll exactly. pyautogui uses the legacy
-        // mouse_event path; SendInput is retained only as a cursor/click fallback
-        // when the game clips SetCursorPos.
-        // pyautogui uses the desktop
-        // centre (not the client centre), a real mouse click, and emits each
-        // scroll(-160) separately.  Its global PAUSE=0.1 also leaves about
-        // 100ms between wheel events; batching them in SendInput makes some
-        // games silently discard the whole burst.
+        // Use the legacy mouse_event path first because some game renderers accept
+        // individually timed wheel events more reliably than a batched SendInput sequence.
+        // SendInput remains a cursor/click fallback when the game clips SetCursorPos.
+        // The requested point is used to focus the game UI before scrolling;
+        // each wheel event is emitted separately with a short interval
+        // because some game renderers discard batched input.
         NativeMethods.ShowWindow(window.Handle, NativeMethods.ShowWindowRestore);
         var foreground = NativeMethods.SetForegroundWindow(window.Handle);
         Thread.Sleep(300);
@@ -301,16 +299,16 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         }
         else
         {
-            // Some fullscreen renderers clip/reject SetCursorPos.  Python's
-            // pyautogui still succeeds because its move/click path falls back
-            // to a native input move.  Use the same fallback, then emit the
-            // wheel events through mouse_event (not a batched SendInput array).
+            // Some fullscreen renderers clip/reject SetCursorPos.
+            // Use a native input move fallback, then emit
+            // wheel events through mouse_event
+            // rather than a batched SendInput array.
             NativeOcrDiagnostics.Write("Scroll mouse_event SetCursorPos=false; using SendInput focus fallback");
             if (!TrySendInputFocus(screenCenter, cancellationToken)) return false;
         }
 
-        // PyAutoGUI passes the configured clicks directly as mouse_event.dwData;
-        // it does not multiply by WHEEL_DELTA.  Keep -160 as -160.
+        // Use the configured raw wheel data directly as mouse_event.dwData;
+        // do not multiply it by WHEEL_DELTA a second time.
         var wheelData = scrollLength;
         for (var index = 0; index < scrollTimes; index++)
         {
@@ -374,9 +372,9 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
 
         var absoluteX = Math.Clamp((screenCenter.X - virtualLeft) * 65535 / (virtualWidth - 1), 0, 65535);
         var absoluteY = Math.Clamp((screenCenter.Y - virtualTop) * 65535 / (virtualHeight - 1), 0, 65535);
-        // Match Python's raw dwData value rather than multiplying by WHEEL_DELTA.
+        // Use the configured raw dwData value rather than multiplying by WHEEL_DELTA.
         var wheelData = scrollLength;
-        // Match the Python implementation: move to the center, click once to give
+        // Move to the requested point, click once to give
         // the game UI pointer focus, wait for the click to be processed, then wheel.
         var focusInputs = new[]
         {

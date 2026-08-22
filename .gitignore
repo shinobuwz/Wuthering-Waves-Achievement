@@ -154,8 +154,8 @@ Desktop.ini
 .pi-subagents/
 **/bin/
 **/obj/
-native/publish/
-native/artifacts/
+publish/
+artifacts/
 **/.vs/
 **/TestResults/
 

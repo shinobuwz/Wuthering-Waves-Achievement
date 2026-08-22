@@ -22,7 +22,7 @@ Native 启动后监视 `resources/user_progress_{uid}.json`，发现变化就自
 
 ## 验证
 
-回读 `native/src/Wuwa.Infrastructure/LegacyProfileSources.cs`、`native/src/Wuwa.Core/Contracts.cs` 中的只读接口和 `AchievementWorkspace.ImportLegacyProfileAsync`。运行 `native/tests/Wuwa.Tests/AchievementWorkspaceTests.cs` 与 `PersistenceAndMigrationTests.cs` 中的 `LegacySource_ReadsProfilesWithoutChangingLegacyFiles`、legacy discovery/unknown-code tests，并用复制出的 fixture 运行 `native/scripts/verify-portable-lifecycle.ps1`；不要把脚本指向正式用户文件。
+回读 `src/Wuwa.Infrastructure/LegacyProfileSources.cs`、`src/Wuwa.Core/Contracts.cs` 中的只读接口和 `AchievementWorkspace.ImportLegacyProfileAsync`。运行 `tests/Wuwa.Tests/AchievementWorkspaceTests.cs` 与 `PersistenceAndMigrationTests.cs` 中的 `LegacySource_ReadsProfilesWithoutChangingLegacyFiles`、legacy discovery/unknown-code tests，并用复制出的 fixture 运行 `scripts/verify-portable-lifecycle.ps1`；不要把脚本指向正式用户文件。
 
 ## 重审条件
 

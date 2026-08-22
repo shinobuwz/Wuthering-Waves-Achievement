@@ -1,154 +1,69 @@
 # 鸣潮成就管理器
 
-本仓库同时保留两个可并行运行的 Windows 桌面实现：
+本仓库目前只维护 **Native WPF/.NET 8 版本**。项目源码、Native OCR、模型和构建脚本均位于仓库根目录，不再使用额外的 `native/` 目录层级。
 
-- **Legacy Python/PySide6 版**：入口 `python main.py`，保留完整的自动 Tab 导航和全量 OCR 流程。
-- **Native WPF/.NET 8 版**：位于 [`native/`](native/README.md)，提供成就管理、事务化本地存储、只读旧版进度导入、匿名 Wiki 同步、JSON/TSV/XLSX 交换、明暗主题、更新检查和单页原生 OCR。
+Python/PySide6 版本及其打包脚本、OCR 运行时已移除，后续功能和 OCR 导航只在 Native 代码中实现。
 
-两个版本不会自动双向同步。Native 版只把 legacy 文件当作只读导入源，可变数据存放在 `%LocalAppData%\WutheringWavesAchievement`；覆盖升级或删除便携程序目录不会主动删除该数据目录。Python 版会一直保留到后续 native parity/cutover change 完成。
-
-## Native 版快速开始
+## 快速开始
 
 ```powershell
-dotnet restore native/WutheringWavesAchievement.sln
-dotnet test native/WutheringWavesAchievement.sln -c Release
-dotnet build native/WutheringWavesAchievement.sln -c Release
-powershell -ExecutionPolicy Bypass -File native/scripts/publish-native.ps1 -Configuration Release
+dotnet restore WutheringWavesAchievement.sln
+dotnet test WutheringWavesAchievement.sln -c Release
+dotnet build WutheringWavesAchievement.sln -c Release
+powershell -ExecutionPolicy Bypass -File scripts/publish-native.ps1 -Configuration Release
 ```
 
-发布目录为 `native/publish/win-x64/`。详见 [`native/README.md`](native/README.md)。
+Visual Studio 用户打开根目录的 `WutheringWavesAchievement.sln`，启动项目选择 `Wuwa.App`。
 
-## Legacy Python 版功能特性
-
-### 🎯 成就管理
-- **成就数据爬取**：无需登录，直接从在线 Wiki 获取最新成就数据
-- **进度追踪**：记录个人成就完成状态，支持已完成 / 未完成 / 暂不可获取三档
-- **分类浏览**：按一级 / 二级分类、版本、完成状态过滤
-- **快速搜索**：关键词实时过滤成就列表
-- **数据导入导出**：JSON 格式备份与恢复，建议每版本更新前先导出备份
-
-### 📷 OCR 自动扫描
-- **全量自动扫描**：自动遍历所有一级 / 二级 Tab，滚动扫描当前分类下的全部成就
-- **成就识别**：模板匹配定位图标，OCR 识别名称与完成状态
-- **模糊匹配**：Levenshtein 编辑距离 + 中点字符归一化，容忍 OCR 识别偏差
-- **防降级保护**：已完成状态不会被 OCR 结果覆盖为未完成
-- **结果预览**：扫描结果实时展示，OCR 原文与匹配名称不一致时高亮提示
-
-### 🎨 界面
-- **明暗主题**：一键切换
-- **自定义头像**：支持游戏内角色头像与立绘
-- **多用户**：为不同账号保存独立进度
-
-## 安装说明
-
-### 环境要求
-- Python 3.11+
-- Windows（OCR 扫描功能依赖 Win32 API）
-
-### 安装依赖
-```bash
-pip install -r requirements.txt
-```
-
-### 主要依赖
-| 依赖 | 用途 |
-|------|------|
-| PySide6 | GUI 框架 |
-| opencv-python | 图像处理 / 模板匹配 |
-| pyautogui | 鼠标模拟 / 滚轮控制 |
-| mss | 屏幕截图 |
-| onnxruntime | OCR 推理引擎 |
-| requests / beautifulsoup4 | 数据爬取 |
-
-## 使用说明
-
-### 启动
-```bash
-python main.py
-```
-
-### OCR 扫描
-
-OCR 扫描功能可自动识别游戏内成就界面，将完成状态同步到本地进度，无需手动逐条标记。
-
-#### 前置条件
-
-- 游戏分辨率设置为 **1920×1080**，窗口模式（非全屏）
-- 已通过「数据获取」标签页爬取最新成就数据
-- 进入游戏成就界面（默认停在任意一级分类即可）
-
-#### 操作步骤
-
-1. **启动工具**，切换到「OCR 扫描」标签页
-2. 点击「**检测游戏窗口**」，状态栏显示窗口位置和分辨率即为成功
-3. 点击「**开始扫描**」
-   - 工具主窗口自动最小化，避免遮挡游戏
-   - 自动按顺序切换全部 4 个一级分类（索拉漫行 → 铿锵刃鸣 → 长路留迹 → 诸音声轨）
-   - 每个一级分类下逐一切换所有二级 Tab（共约 33 个）
-   - 每个二级 Tab 内自动滚动直到成就列表底部
-4. 扫描过程中可随时点击「**停止扫描**」，已识别的结果不会丢失
-5. 扫描完成后，结果表格显示每条成就的编号、名称、完成状态及 OCR 原文
-   - OCR 原文与数据库名称**不一致时橙色高亮**，便于排查识别偏差
-6. 确认结果无误后，点击「**保存到用户进度**」将状态写入本地存档
-
-#### 工作原理
-
-```
-截图
-  └─ 模板匹配（1/2/3星图标）定位每条成就位置
-       └─ 裁剪名称区域 → CLAHE 对比度增强 → onnxocr 识别文字
-            └─ 中点字符归一化（・→·）
-                 └─ Levenshtein 编辑距离模糊匹配（阈值 40%）→ 匹配到数据库条目
-       └─ 裁剪状态区域 → OCR → 日期格式=已完成 / "进行中"=未完成
-  └─ 名称集合与上轮对比，完全重复则判定到底，停止滚动
-  └─ 切换下一个二级 Tab，重复上述流程
-```
-
-#### 注意事项
-
-- 扫描期间**不要操作鼠标或键盘**，工具会自动控制鼠标点击和滚轮
-- **已完成状态不会被降级**：若某条成就在本地已标记为已完成，即使 OCR 本次未识别到，也不会被改回未完成
-- 首次扫描耗时较长（OCR 模型加载约 10 秒，全量扫描视成就数量约需数分钟）
-- 若某条成就识别有误，可在保存后在「成就管理」标签页手动修正
-
-### 数据格式
-
-`resources/user_progress_{uid}.json`：
-```json
-{
-  "10100001": { "获取状态": "已完成" },
-  "10100002": { "获取状态": "未完成" }
-}
-```
+发布目录为 `publish/win-x64/`。
 
 ## 项目结构
 
-```
-├── main.py                    # 入口
-├── version.py                 # 版本号
-├── requirements.txt
-├── core/
-│   ├── main_window.py         # 主窗口
-│   ├── manage_tab.py          # 成就管理
-│   ├── crawl_tab.py           # 数据爬取
-│   ├── ocr_tab.py             # OCR 扫描
-│   ├── statistics_tab.py      # 统计图表
-│   ├── achievement_ocr.py     # OCR 核心（识别 / 匹配 / Tab 切换 / 全量扫描）
-│   ├── game_capture.py        # 窗口检测与截图
-│   ├── config.py              # 配置与数据管理
-│   └── ...                    # UI 组件
-├── onnxocr/                   # OCR 引擎（见致谢）
-└── resources/
-    ├── base_achievements.json # 成就数据库
-    ├── user_progress_*.json   # 用户进度
-    └── ocr_templates/         # 模板匹配图标
+```text
+├── src/
+│   ├── Wuwa.App/             # WPF 主程序
+│   ├── Wuwa.Core/             # 工作区、数据和业务逻辑
+│   └── Wuwa.Infrastructure/  # OCR、截图、输入、存储适配器
+├── ocr/                      # C++ Native OCR 和 C ABI
+├── models/ppocrv5/           # Native OCR 模型与字典
+├── tests/                    # .NET 测试
+├── scripts/                  # 构建、发布和验证脚本
+├── resources/                # 成就库、分类配置和 OCR 模板
+└── WutheringWavesAchievement.sln
 ```
 
-## 致谢
+## 当前功能
 
-- **[onnxocr](https://github.com/jingsongliujing/onnxocr)**：基于 PaddleOCR 转 ONNX 的轻量本地 OCR 引擎，用于成就名称识别
-- **原项目 [zsh19961226](https://github.com/zsh19961226)**：本项目基于其早期版本完全重构
+- 958 条成就数据加载、搜索、筛选、排序和虚拟化表格
+- 成就状态管理、成就组状态转换和统计
+- generation 事务化本地存储、故障恢复和原子激活
+- JSON、TSV、XLSX 导入导出
+- Kuro Wiki 数据同步与稳定身份匹配
+- Native PP-OCRv5 检测、分类、识别和 OCR 结果预览
+- 当前分类 OCR 扫描及全量分类 OCR 扫描入口
+- 深色/浅色主题和便携发布
 
-## 许可证
+## 数据位置
 
-本项目仅供学习与个人使用。
+- 随程序发布的只读资源：`resources/base_achievements.json`、`resources/category_config.json`、`resources/ocr_templates/`
+- Native 可变工作区：`%LocalAppData%\WutheringWavesAchievement`
+- Native OCR 诊断日志：`%LocalAppData%\WutheringWavesAchievement\native-ocr.log`
+
+仓库中保留的 `resources/config.json` 和 `resources/user_progress_{uid}.json` 仅作为旧数据的一次性、只读导入来源，不再对应一个可运行的 Python 应用。
+
+## Native OCR 构建
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build-native-ocr.ps1 -Configuration Release
+```
+
+Native OCR 使用 C++20、ONNX Runtime、OpenCV 和稳定 C ABI；WPF 侧通过 `Wuwa.Infrastructure` 调用 OCR、窗口捕获和游戏输入，并通过预览确认后写入 Native 工作区。
+
+## 测试与验证
+
+```powershell
+dotnet test WutheringWavesAchievement.sln -c Release
+dotnet build WutheringWavesAchievement.sln -c Release
+```
+
+真实 Windows 游戏窗口验证、UI 自动化和便携生命周期验证脚本位于 `scripts/`。

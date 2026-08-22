@@ -36,16 +36,16 @@
 
 ### Commands and results
 
-- `dotnet test native/WutheringWavesAchievement.sln -c Release --no-restore`：52 passed，3 skipped，0 failed。默认跳过项为需要显式环境的 native OCR integration、live Wiki 和 window capture smoke；其中 live Wiki 已单独执行。
-- `dotnet build native/WutheringWavesAchievement.sln -c Release --no-restore`：0 warnings，0 errors。
-- `powershell -ExecutionPolicy Bypass -File native/scripts/verify-wiki-live.ps1`：1 passed；使用临时 data root，两次真实匿名同步通过，第二次等价内容不推进 revision。
-- `powershell -ExecutionPolicy Bypass -File native/scripts/verify-ui.ps1`：UI Automation 找到主要操作控件，并生成四张非空截图：
+- `dotnet test WutheringWavesAchievement.sln -c Release --no-restore`：52 passed，3 skipped，0 failed。默认跳过项为需要显式环境的 native OCR integration、live Wiki 和 window capture smoke；其中 live Wiki 已单独执行。
+- `dotnet build WutheringWavesAchievement.sln -c Release --no-restore`：0 warnings，0 errors。
+- `powershell -ExecutionPolicy Bypass -File scripts/verify-wiki-live.ps1`：1 passed；使用临时 data root，两次真实匿名同步通过，第二次等价内容不推进 revision。
+- `powershell -ExecutionPolicy Bypass -File scripts/verify-ui.ps1`：UI Automation 找到主要操作控件，并生成四张非空截图：
   - `1080x700-dark.png` SHA-256 `ae8f537ed7d85d9f197b766a4b1d470e3ef773287a9088b1b81527dd59e69447`
   - `1080x700-light.png` SHA-256 `4ecaa5f00db1583d14b3229eaeb78864324ae12ab7a0a2ead8bdb32478c999c2`
   - `1440x900-dark.png` SHA-256 `fa913cff0b071e552582965624ee13b8389a627566b81d82424a7a2305eb1c63`
   - `1440x900-light.png` SHA-256 `3c9f8792ae812baa9dd30a91fd9ca87aedc092d85ff5fe8a25d47a3402f18b3c`
-- `powershell -ExecutionPolicy Bypass -File native/scripts/publish-native.ps1 -Configuration Release -SkipTests`：CMake/MSVC OCR build、CTest 2/2、self-contained `win-x64` publish、required/forbidden package checks 和 package manifest 通过。输出目录被限制在 `native/publish/`，使用 staged replacement。
-- `native/scripts/verify-portable-lifecycle.ps1`：同一发布包的 portable launch/relaunch、alternate-copy 启动、删除程序目录和重新部署状态保留模拟通过；不把它表述为不同版本升级测试。
+- `powershell -ExecutionPolicy Bypass -File scripts/publish-native.ps1 -Configuration Release -SkipTests`：CMake/MSVC OCR build、CTest 2/2、self-contained `win-x64` publish、required/forbidden package checks 和 package manifest 通过。输出目录被限制在 `publish/`，使用 staged replacement。
+- `scripts/verify-portable-lifecycle.ps1`：同一发布包的 portable launch/relaunch、alternate-copy 启动、删除程序目录和重新部署状态保留模拟通过；不把它表述为不同版本升级测试。
 - 同脚本使用复制的 legacy config/progress fixture：自动导入 profile metadata/已完成状态、legacy hash 不变、upgrade/uninstall/reinstall state retention 通过。
 - `git diff --check`：passed。
 

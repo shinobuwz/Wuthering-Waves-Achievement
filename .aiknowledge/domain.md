@@ -1,28 +1,20 @@
 # Domain Language
 
-## 旧版 Python 实现
+## Native 应用实现
 
-**Meaning**：以 `main.py` 为入口、基于 PySide6 的现有 Windows 桌面实现。它负责旧版配置与用户进度文件、成就管理页面、Wiki 数据获取，以及当前仍最完整的全局 OCR 分类导航和滚动扫描流程。
+**Meaning**：源码位于仓库根目录、由 WPF/.NET 8 构成的 Windows 原生应用，由 WPF 界面、`Wuwa.Core` 工作区领域层、`Wuwa.Infrastructure` 适配器和 C++ OCR 动态库组成。它是仓库唯一维护的应用运行时。
 
-**Avoid**：不要把“旧版 Python 实现”当成整个项目的唯一实现，也不要把它的 `编号` 文件格式直接当成原生版的永久身份模型。
+**Avoid**：不要把 Native 简化为 WPF 界面；`AchievementWorkspace` 才是管理、迁移、同步、交换、统计、状态变更和 OCR 结果合并的公共行为入口。
 
-**Relations**：它与原生版实现并行保留；原生版只能通过显式、只读的旧版档案导入读取配置与进度，项目不维护隐藏的监视同步或双向合并。
+**Relations**：界面通过 Core 工作区入口调用命令和查询，文件、HTTP、旧数据导入、Win32 捕获和 C ABI 由 Infrastructure 适配；可变状态存放在 `%LocalAppData%\\WutheringWavesAchievement`。
 
-## 原生版实现
+## Legacy 导入数据
 
-**Meaning**：位于 `native/` 的 Windows 原生 WPF/.NET 8 实现，由 WPF 界面、`Wuwa.Core` 工作区领域层、`Wuwa.Infrastructure` 适配器和可选的 C++ OCR 动态库组成。它在自己的状态边界内提供成就查询、状态变更、同步、交换和 OCR 预览合并。
+**Meaning**：仓库中保留的 `resources/config.json` 与 `resources/user_progress_{uid}.json` 是旧数据格式，仅作为 Native 的显式、只读、一次性迁移输入，不是另一套应用运行时。
 
-**Avoid**：不要把“原生版实现”简化为 WPF 界面；`AchievementWorkspace` 才是管理、迁移、同步、交换、统计和状态变更的公共行为入口。
+**Avoid**：不要修改 legacy 文件，不要把 legacy 文件当作 Native 当前状态，也不要建立后台监视或双向同步。
 
-**Relations**：界面通过 Core 工作区入口调用命令和查询，文件、HTTP、旧版档案、Win32 捕获和 C ABI 由 Infrastructure 适配；原生版的可变状态不写回 Python 资源目录。
-
-## 双版本并行运行
-
-**Meaning**：旧版 Python 和原生版两个桌面实现同时存在、各自可运行，并在最终切换完成前不删除旧实现。原生版对旧版文件执行显式的一次性导入；再次导入是需要确认的原生版状态替换操作。
-
-**Avoid**：不要把“双版本并行运行”解释成实时同步、自动合并或共享一个可变进度库。
-
-**Relations**：旧版文件是原生版的只读迁移输入；原生版状态存放在 `%LocalAppData%\\WutheringWavesAchievement` 的 generation 集合中。两边的后续变化不会自动传播。
+**Relations**：Native 导入后将兼容编号映射为 `AchievementId`，可变状态存放在 `%LocalAppData%\\WutheringWavesAchievement` 的 generation 集合中。
 
 ## 原生成就身份（`AchievementId`）
 
@@ -34,7 +26,7 @@
 
 ## 兼容编号（`LegacyCode`）
 
-**Meaning**：现有数据模型中的 `编号` 兼容字段。旧版 Python 实现用它关联用户进度；原生版保留它以支持旧版导入导出，但它不是原生版的不可变身份。
+**Meaning**：现有数据模型中的 `编号` 兼容字段。legacy 导入数据使用它关联用户进度；原生版保留它以支持兼容导入导出，但它不是原生版的不可变身份。
 
 **Avoid**：不要假设分类重排、旧版重新编码或 Wiki 新增记录后兼容编号永远稳定。
 
@@ -78,4 +70,4 @@
 
 **Avoid**：不要在扫描每一页时直接改写用户进度，不要把未知状态、未访问分类或取消产生的部分结果自动当成未完成。
 
-**Relations**：原生版 OCR 预览通过 `AchievementWorkspace.ApplyOcrPreviewAsync` 在显式确认后合并为一个新 revision，并默认阻止已完成状态被低置信度结果降级；旧版 Python 实现也遵循保存时的防降级规则。
+**Relations**：原生版 OCR 预览通过 `AchievementWorkspace.ApplyOcrPreviewAsync` 在显式确认后合并为一个新 revision，并默认阻止已完成状态被低置信度结果降级。

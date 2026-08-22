@@ -4,7 +4,7 @@
 
 **Blocked by:** 01, 02
 
-**Suggested Files:** `native/src/Wuwa.App/`, `native/src/Wuwa.Infrastructure/Updates/`, `native/tests/Wuwa.Tests/Ui/`
+**Suggested Files:** `src/Wuwa.App/`, `src/Wuwa.Infrastructure/Updates/`, `tests/Wuwa.Tests/Ui/`
 
 **Behavior Context:**
 

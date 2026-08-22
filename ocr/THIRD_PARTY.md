@@ -16,7 +16,7 @@
 - License: Apache-2.0
 - Source: https://github.com/opencv/opencv
 
-The SDK is downloaded to the user's local dependency cache by `native/scripts/build-native-ocr.ps1`; it is not committed to this repository.
+The SDK is downloaded to the user's local dependency cache by `scripts/build-native-ocr.ps1`; it is not committed to this repository.
 
 ## Clipper2
 
@@ -25,4 +25,4 @@ The SDK is downloaded to the user's local dependency cache by `native/scripts/bu
 - License: Boost Software License 1.0
 - Source: https://github.com/AngusJohnson/Clipper2
 
-The required C++ source is vendored under `native/ocr/third_party/clipper2`; its upstream license is included there.
+The required C++ source is vendored under `ocr/third_party/clipper2`; its upstream license is included there.

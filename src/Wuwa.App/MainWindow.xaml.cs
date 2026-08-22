@@ -225,7 +225,7 @@ public partial class MainWindow : Window
         if (ocrAssets is null)
         {
             NativeOcrDiagnostics.Write("OCR start failed: assets not found");
-            ShowOcrError("原生 OCR 组件尚未部署。开发环境请先运行 native/scripts/build-native-ocr.ps1；发布环境请安装包含 ocr/ 资产的发布包。", "OCR 组件缺失");
+            ShowOcrError("原生 OCR 组件尚未部署。开发环境请先运行 scripts/build-native-ocr.ps1；发布环境请安装包含 ocr/ 资产的发布包。", "OCR 组件缺失");
             return;
         }
 
@@ -396,7 +396,7 @@ public partial class MainWindow : Window
         var ocrAssets = FindOcrAssets();
         if (ocrAssets is null)
         {
-            ShowOcrError("原生 OCR 组件尚未部署。开发环境请先运行 native/scripts/build-native-ocr.ps1。", "OCR 组件缺失");
+            ShowOcrError("原生 OCR 组件尚未部署。开发环境请先运行 scripts/build-native-ocr.ps1。", "OCR 组件缺失");
             return;
         }
 
@@ -1192,8 +1192,8 @@ public partial class MainWindow : Window
         roots.Add(Path.Combine(AppContext.BaseDirectory, "ocr"));
         if (repositoryRoot is not null)
         {
-            roots.Add(Path.Combine(repositoryRoot, "native", "ocr", "build", "Debug"));
-            roots.Add(Path.Combine(repositoryRoot, "native", "ocr", "build", "Release"));
+            roots.Add(Path.Combine(repositoryRoot, "ocr", "build", "Debug"));
+            roots.Add(Path.Combine(repositoryRoot, "ocr", "build", "Release"));
         }
 
         foreach (var root in roots.Distinct(StringComparer.OrdinalIgnoreCase))
@@ -1201,7 +1201,7 @@ public partial class MainWindow : Window
             var modelRoots = new List<string>();
             if (!string.IsNullOrWhiteSpace(configuredModelRoot)) modelRoots.Add(Path.GetFullPath(configuredModelRoot));
             modelRoots.Add(Path.Combine(root, "models", "ppocrv5"));
-            if (repositoryRoot is not null) modelRoots.Add(Path.Combine(repositoryRoot, "onnxocr", "models", "ppocrv5"));
+            if (repositoryRoot is not null) modelRoots.Add(Path.Combine(repositoryRoot, "models", "ppocrv5"));
 
             foreach (var modelRoot in modelRoots.Distinct(StringComparer.OrdinalIgnoreCase))
             {
@@ -1223,8 +1223,8 @@ public partial class MainWindow : Window
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
         {
-            if (Directory.Exists(Path.Combine(directory.FullName, "native", "ocr")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "onnxocr", "models", "ppocrv5")))
+            if (Directory.Exists(Path.Combine(directory.FullName, "ocr")) &&
+                Directory.Exists(Path.Combine(directory.FullName, "models", "ppocrv5")))
             {
                 return directory.FullName;
             }

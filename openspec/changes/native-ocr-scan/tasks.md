@@ -5,7 +5,7 @@
 
 - [ ] **02 — Detector and classifier**
   - [x] Add OpenCV-based DB detector preprocessing/contours/rotated boxes, Clipper2 expansion, crop ordering, perspective transform, optional 0°/180° classifier, full-page C ABI, and real det/cls/rec model smoke.
-  - [ ] Add multi-crop batching and golden Python differential fixtures.
+  - [ ] Add multi-crop batching and golden Native differential fixtures.
 
 - [x] **03 — Native scan service**
   - Added process-name game-window discovery, client-area GDI capture to top-down BGR, current-page scan orchestration, cancellation/failure isolation, serialized native inference, and typed scan contracts independent of WPF.
@@ -13,7 +13,7 @@
 - [ ] **04 — Native full-scan navigation and matching** ([task doc](tasks/04-global-navigation-and-matching.md))
   - [x] Port achievement-name normalization, Levenshtein matching threshold, duplicate ambiguity quarantine, date/in-progress status parsing, and same-row status association.
   - [ ] Add the separate full-scan command while preserving current-category scanning.
-  - [ ] Port Python primary/secondary tab discovery, verified clicks, bounded tab scrolling, per-category page scanning, progress reporting, cancellation, and no-write-before-preview merge.
+  - [ ] Complete Native primary/secondary tab discovery, verified clicks, bounded tab scrolling, per-category page scanning, progress reporting, cancellation, and no-write-before-preview merge.
   - **Blocked by:** 03 is complete; no implementation blocker. **Environment prerequisite:** game and tool run at the same integrity level.
   - **Acceptance:** A manual run visibly changes primary tabs, secondary tabs, and achievement list pages, then produces one multi-category preview without mutating workspace state before confirmation.
   - **Verification:** Coordinator contract tests with fake navigation, native ABI tab-OCR smoke, and a Windows same-integrity manual full-scan smoke.
@@ -22,4 +22,4 @@
   - Added an OCR single-page command with cancel/minimize/restore lifecycle, immutable candidates, selectable preview, unmatched/unknown status feedback, and confirmed one-revision merge through `AchievementWorkspace`, including completed-status downgrade prevention.
 
 - [ ] **06 — Native OCR release verification**
-  - Package DLLs and models, run C++/managed tests, captured-image differential checks, leak/cancellation stress, self-contained publish, and side-by-side launch verification before considering Python OCR removal.
+  - Package DLLs and models, run C++/managed tests, captured-image differential checks, leak/cancellation stress, self-contained publish, and Native-only launch verification.

@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Suggested Files:** `native/src/Wuwa.Infrastructure/Persistence/`, `native/src/Wuwa.Core/Migration/`, `native/tests/Wuwa.Tests/Persistence/`, `native/tests/Wuwa.Tests/Fixtures/Legacy/`
+**Suggested Files:** `src/Wuwa.Infrastructure/Persistence/`, `src/Wuwa.Core/Migration/`, `tests/Wuwa.Tests/Persistence/`, `tests/Wuwa.Tests/Fixtures/Legacy/`
 
 **Behavior Context:**
 

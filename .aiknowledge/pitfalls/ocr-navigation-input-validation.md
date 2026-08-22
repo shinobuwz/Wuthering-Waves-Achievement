@@ -10,7 +10,7 @@
 
 ## 正例
 
-先按允许的进程名发现可见主窗口并验证客户区尺寸；输入前恢复/激活窗口并聚焦游戏。一级 Tab 点击后用 OCR 验证名称，二级 Tab 从当前画面发现并按已知分类名做受阈值约束的匹配，访问集合去重并在连续无新内容时有界停止。滚轮保留与 Python/游戏实际行为一致的事件间隔和必要 fallback；不能确认的分类记录为 warning 而不是伪造结果。
+先按允许的进程名发现可见主窗口并验证客户区尺寸；输入前恢复/激活窗口并聚焦游戏。一级 Tab 点击后用 OCR 验证名称，二级 Tab 从当前画面发现并按已知分类名做受阈值约束的匹配，访问集合去重并在连续无新内容时有界停止。滚轮或像素拖动必须与 Native/游戏实际行为一致，并保留必要 fallback；不能确认的分类记录为 warning 而不是伪造结果。
 
 ## 为什么不行
 
@@ -22,7 +22,7 @@
 
 ## 验证
 
-回读 `core/achievement_ocr.py`、`core/game_capture.py`、`resources/config.ini`，以及 `native/src/Wuwa.Infrastructure/WindowsGameWindowCapture.cs`、`native/src/Wuwa.App/MainWindow.xaml.cs` 的 capture/scroll 诊断。运行 `test_scroll.py`、`test_tab_switch.py` 进行真实窗口验证；Native 侧运行 `WindowsGameWindowCaptureSmokeTests`、`OcrScanServiceTests`，并按 `openspec/changes/native-ocr-scan/tasks/04-global-navigation-and-matching.md` 检查未完成的 full-scan acceptance。
+回读 `src/Wuwa.Infrastructure/WindowsGameWindowCapture.cs`、`src/Wuwa.App/MainWindow.xaml.cs` 和 `%LocalAppData%/WutheringWavesAchievement/native-ocr.log` 的 capture/scroll 诊断。Native 侧运行 `WindowsGameWindowCaptureSmokeTests`、`OcrScanServiceTests`，并按 `openspec/changes/native-ocr-scan/tasks/04-global-navigation-and-matching.md` 检查 full-scan acceptance。
 
 ## 重审条件
 

@@ -10,13 +10,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$ocrRoot = Join-Path $repoRoot 'native/ocr'
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$ocrRoot = Join-Path $repoRoot 'ocr'
 $buildRoot = Join-Path $ocrRoot 'build'
-$modelPath = Join-Path $repoRoot 'onnxocr/models/ppocrv5/rec/rec.onnx'
-$detectionModelPath = Join-Path $repoRoot 'onnxocr/models/ppocrv5/det/det.onnx'
-$classifierModelPath = Join-Path $repoRoot 'onnxocr/models/ppocrv5/cls/cls.onnx'
-$dictionaryPath = Join-Path $repoRoot 'onnxocr/models/ppocrv5/ppocrv5_dict.txt'
+$modelPath = Join-Path $repoRoot 'models/ppocrv5/rec/rec.onnx'
+$detectionModelPath = Join-Path $repoRoot 'models/ppocrv5/det/det.onnx'
+$classifierModelPath = Join-Path $repoRoot 'models/ppocrv5/cls/cls.onnx'
+$dictionaryPath = Join-Path $repoRoot 'models/ppocrv5/ppocrv5_dict.txt'
 $packageRoot = Join-Path $env:USERPROFILE ".nuget/packages/microsoft.ml.onnxruntime/$OnnxRuntimeVersion"
 $dependencyRoot = Join-Path $env:LOCALAPPDATA 'WuwaNativeDeps'
 $openCvArchive = Join-Path $dependencyRoot "opencv-$OpenCvVersion-windows.exe"

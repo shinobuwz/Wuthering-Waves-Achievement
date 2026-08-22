@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately
 
-**Suggested Files:** `native/WutheringWavesAchievement.sln`, `native/global.json`, `native/src/Wuwa.Core/`, `native/src/Wuwa.App/`, `native/tests/Wuwa.Tests/`
+**Suggested Files:** `WutheringWavesAchievement.sln`, `global.json`, `src/Wuwa.Core/`, `src/Wuwa.App/`, `tests/Wuwa.Tests/`
 
 **Behavior Context:**
 

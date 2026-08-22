@@ -1,6 +1,6 @@
 # Wuwa.Ocr.Native
 
-`Wuwa.Ocr.Native.dll` is the Windows x64 C++ OCR boundary for the native WPF application. It owns PP-OCRv5 DB detection and recognition preprocessing, ONNX Runtime inference, OpenCV image operations, Clipper2 expansion, perspective crops, CTC decoding, UTF-8 result lifetime, structured errors, and a stable C ABI. It reads the existing models and dictionary without modifying anything under `onnxocr/`.
+`Wuwa.Ocr.Native.dll` is the Windows x64 C++ OCR boundary for the native WPF application. It owns PP-OCRv5 DB detection and recognition preprocessing, ONNX Runtime inference, OpenCV image operations, Clipper2 expansion, perspective crops, CTC decoding, UTF-8 result lifetime, structured errors, and a stable C ABI. It reads the Native-owned models and dictionary under `models/ppocrv5/`.
 
 ## Toolchain
 
@@ -14,7 +14,7 @@
 ## Build and test
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File native/scripts/build-native-ocr.ps1 -Configuration Release
+powershell -ExecutionPolicy Bypass -File scripts/build-native-ocr.ps1 -Configuration Release
 ```
 
 The command builds the DLL and runs:
@@ -23,7 +23,7 @@ The command builds the DLL and runs:
 - real PP-OCRv5 `det.onnx`, `cls.onnx`, and `rec.onnx` session smoke using a synthetic BGR image;
 - DB bitmap/contour/unclip/perspective-crop execution on the blank smoke image.
 
-Outputs are written to `native/ocr/build/Release` and are intentionally ignored by Git.
+Outputs are written to `ocr/build/Release` and are intentionally ignored by Git.
 
 ## ABI
 
@@ -53,7 +53,7 @@ Implemented now:
 Still to implement in the same native DLL:
 
 - multi-crop recognition/classification batching;
-- captured-image Python/C++ differential fixtures;
+- captured-image Native differential fixtures;
 - game-window capture, scan orchestration, preview, cancellation, and workspace merge.
 
-The Python OCR remains available side-by-side until native scan parity is verified.
+Native is the only maintained OCR runtime; remaining work is verified through Native tests and Windows game smoke tests.

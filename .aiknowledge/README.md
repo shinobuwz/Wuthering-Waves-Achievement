@@ -16,7 +16,7 @@
 
 ## 当前项目边界
 
-仓库同时保留 Legacy Python/PySide6 和 Native WPF/.NET 8 Windows 实现。两者可以并行运行，但不构成自动双向同步；Native 通过显式、只读的 legacy profile 导入接入旧版数据。Python 版仍保留完整的全局 OCR 导航流程，Native 版逐步建立单页 OCR、工作区事务和后续全局扫描能力。
+仓库目前只维护 Native WPF/.NET 8 Windows 实现。仓库中保留的 legacy profile 文件仅作为显式、只读的一次性数据导入输入，不再对应可运行的 Python 应用；Native 负责工作区事务和全部 OCR 导航能力。
 
 ## 维护约束
 
@@ -27,8 +27,8 @@ Canonical body 不保存完整历史来源、旧变更列表、机器路径 scop
 Native 默认验证：
 
 ```powershell
-dotnet test native/WutheringWavesAchievement.sln -c Release
-dotnet build native/WutheringWavesAchievement.sln -c Release
+dotnet test WutheringWavesAchievement.sln -c Release
+dotnet build WutheringWavesAchievement.sln -c Release
 ```
 
-OCR/发布边界验证见 `native/scripts/` 下的独立脚本。Python OCR 的真实窗口验证使用 `test_scroll.py` 和 `test_tab_switch.py`，并要求 Windows 游戏窗口处于可见、预期分辨率和同等输入权限环境。
+OCR/发布边界验证见 `scripts/` 下的独立脚本，并要求 Windows 游戏窗口处于可见、预期分辨率和同等输入权限环境。
