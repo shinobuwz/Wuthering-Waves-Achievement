@@ -1278,7 +1278,7 @@ public partial class MainWindow : Window
             NativeOcrDiagnostics.Write($"OCR full finished candidates={mergedPreview.Candidates.Count} unmatched={mergedPreview.Unmatched.Count}");
             if (mergedPreview.Candidates.Count == 0)
             {
-                ShowOcrError("OCR 全量扫描没有匹配到成就。请确认游戏处于成就页面，并检查 native-ocr.log。", "OCR 扫描结果");
+                ShowOcrError("OCR 全量扫描没有匹配到成就。请确认游戏处于成就页面，并检查 log 目录中的 native-ocr-YYYY-MM-DD.log。", "OCR 扫描结果");
                 return;
             }
             var previewWindow = new OcrPreviewWindow(mergedPreview) { Owner = this };

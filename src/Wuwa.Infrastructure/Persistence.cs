@@ -40,7 +40,7 @@ public sealed class JsonAppDataStore : IAppDataStore
     internal JsonAppDataStore(string? rootDirectory, int retainedGenerations, IJsonStoreFaultInjector? faultInjector)
     {
         _root = string.IsNullOrWhiteSpace(rootDirectory)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WutheringWavesAchievement")
+            ? AppPaths.DataDirectory
             : Path.GetFullPath(rootDirectory);
         RetainedGenerations = Math.Max(3, retainedGenerations);
         _faultInjector = faultInjector;

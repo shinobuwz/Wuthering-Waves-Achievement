@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using Microsoft.Web.WebView2.Core;
 using Wuwa.Infrastructure;
 
 namespace Wuwa.App;
@@ -36,7 +37,9 @@ public partial class MapOverlayWindow : Window
 
         try
         {
-            await MapBrowser.EnsureCoreWebView2Async();
+            var environment = await CoreWebView2Environment.CreateAsync(
+                userDataFolder: AppPaths.WebView2Directory);
+            await MapBrowser.EnsureCoreWebView2Async(environment);
             if (MapBrowser.CoreWebView2 is null)
             {
                 throw new InvalidOperationException("WebView2 初始化后没有返回 CoreWebView2 实例。");
