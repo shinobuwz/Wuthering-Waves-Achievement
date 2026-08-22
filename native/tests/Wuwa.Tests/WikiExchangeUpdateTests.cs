@@ -20,7 +20,7 @@ public sealed class WikiExchangeUpdateTests
         Assert.IsTrue(result.IsSuccess, result.Error);
         Assert.AreEqual(2, result.Achievements.Count);
         Assert.AreEqual("索拉漫行", result.Achievements[0].FirstCategory);
-        Assert.AreEqual("区域·一", result.Achievements[0].SecondCategory);
+        Assert.AreEqual("fallback", result.Achievements[0].SecondCategory);
         Assert.IsTrue(result.Achievements[0].IsHidden);
         CollectionAssert.AreEquivalent(
             new[] { $"{KuroWikiAchievementSource.EntryId}/table-a/4", $"{KuroWikiAchievementSource.EntryId}/table-b/4" },
@@ -44,7 +44,7 @@ public sealed class WikiExchangeUpdateTests
             new[] { "选择告知真相。", "选择隐瞒真相。" },
             result.Achievements.Select(item => item.Description).ToArray());
         Assert.IsTrue(result.Achievements.All(item => item.IsHidden));
-        Assert.AreEqual("世间百态·二", result.Achievements[0].SecondCategory);
+        Assert.AreEqual("fallback", result.Achievements[0].SecondCategory);
         Assert.AreEqual(result.Achievements[0].GroupId, result.Achievements[1].GroupId);
         Assert.IsFalse(string.IsNullOrWhiteSpace(result.Achievements[0].GroupId));
         CollectionAssert.AreEqual(

@@ -120,7 +120,15 @@ public sealed class KuroWikiAchievementSource : IWikiAchievementSource
             var rowDataIndex = Attribute(attrs, "data-index");
             if (string.IsNullOrWhiteSpace(rowDataIndex)) throw new InvalidDataException("Wiki achievement row has no stable data-index.");
             var sourceRef = $"{EntryId}/{tableUid}/{rowDataIndex}";
-            var secondCategory = FilterTag(attrs, "合集") ?? cells[2].Trim();
+            // The third table column is the category shown in the game UI. Wiki
+            // filter tags can lag behind it (for example 风之所在), so the
+            // visible table value is authoritative; use the tag only as a
+            // fallback when the column is empty.
+            var secondCategory = cells[2].Trim();
+            if (string.IsNullOrWhiteSpace(secondCategory))
+            {
+                secondCategory = FilterTag(attrs, "合集") ?? string.Empty;
+            }
             if (string.IsNullOrWhiteSpace(cells[1]) || string.IsNullOrWhiteSpace(secondCategory))
             {
                 throw new InvalidDataException($"Wiki achievement row '{sourceRef}' has missing required fields.");
