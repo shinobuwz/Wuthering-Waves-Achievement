@@ -12,6 +12,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <AssemblyName>WutheringWavesAchievement</AssemblyName>
     <ApplicationIcon>..\..\resources\icons\logo.ico</ApplicationIcon>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <NativeOcrBuildRoot>$(MSBuildProjectDirectory)\..\..\ocr\build</NativeOcrBuildRoot>

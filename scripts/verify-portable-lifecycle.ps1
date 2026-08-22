@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $nativeRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($PackageDirectory)) { $PackageDirectory = Join-Path $nativeRoot 'publish/win-x64' }
-$packageExe = Join-Path $PackageDirectory 'Wuwa.App.exe'
+$packageExe = Join-Path $PackageDirectory 'WutheringWavesAchievement.exe'
 if (-not (Test-Path $packageExe)) { throw "Portable package was not found: $packageExe" }
 
 $verificationRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("wuwa-portable-lifecycle-" + [Guid]::NewGuid().ToString('N'))
@@ -36,7 +36,7 @@ try {
         Get-ChildItem $legacyDirectory -File | ForEach-Object { $legacyHashes[$_.FullName] = (Get-FileHash $_.FullName -Algorithm SHA256).Hash }
         $args = @('--legacy-config', $legacyConfigPath, '--auto-import-legacy')
     }
-    Start-Bounded (Join-Path $packageA 'Wuwa.App.exe') $args
+    Start-Bounded (Join-Path $packageA 'WutheringWavesAchievement.exe') $args
     if (-not (Test-Path (Join-Path $dataRoot 'current.json'))) { throw 'First launch did not create native state.' }
     $firstManifestHash = (Get-FileHash (Join-Path $dataRoot 'current.json') -Algorithm SHA256).Hash
     $firstManifest = Get-Content (Join-Path $dataRoot 'current.json') -Raw | ConvertFrom-Json
@@ -50,13 +50,13 @@ try {
         if (-not ($firstState.statuses.PSObject.Properties.Value -contains $completedStatus)) { throw 'Legacy migration did not preserve any completed status.' }
     }
 
-    Start-Bounded (Join-Path $packageB 'Wuwa.App.exe')
+    Start-Bounded (Join-Path $packageB 'WutheringWavesAchievement.exe')
     $upgradeManifest = Get-Content (Join-Path $dataRoot 'current.json') -Raw | ConvertFrom-Json
     if ($upgradeManifest.generation -ne $firstManifest.generation) { throw 'Upgrade launch unexpectedly replaced the active native generation.' }
     Remove-Item $packageA, $packageB -Recurse -Force
     if (-not (Test-Path (Join-Path $dataRoot 'current.json'))) { throw 'Portable uninstall simulation removed user state.' }
 
-    Start-Bounded (Join-Path $packageC 'Wuwa.App.exe')
+    Start-Bounded (Join-Path $packageC 'WutheringWavesAchievement.exe')
     $reinstallManifest = Get-Content (Join-Path $dataRoot 'current.json') -Raw | ConvertFrom-Json
     if ($reinstallManifest.generation -ne $firstManifest.generation) { throw 'Reinstall launch unexpectedly replaced the active native generation.' }
     foreach ($path in $legacyHashes.Keys) {
