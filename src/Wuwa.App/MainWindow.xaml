@@ -135,8 +135,8 @@
                         <StackPanel Grid.Column="6" Margin="12,0,0,0">
                             <TextBlock Text="外观与系统" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,7" />
                             <WrapPanel>
-                                <Button x:Name="ThemeButton" AutomationProperties.AutomationId="ThemeButton" Content="浅色主题" Click="Theme_OnClick" />
-                                <Button AutomationProperties.AutomationId="UpdateButton" Content="检查更新" Click="Update_OnClick" Width="78" MinWidth="78" Margin="0" />
+                                <Button x:Name="ThemeButton" AutomationProperties.AutomationId="ThemeButton" Content="浅色主题" Click="Theme_OnClick" Height="32" MinHeight="32" Padding="14,0" Margin="0,0,8,0" />
+                                <Button AutomationProperties.AutomationId="UpdateButton" Content="检查更新" Click="Update_OnClick" Width="68" MinWidth="68" Height="32" MinHeight="32" Padding="6,0" Margin="0" />
                             </WrapPanel>
                         </StackPanel>
                     </Grid>
