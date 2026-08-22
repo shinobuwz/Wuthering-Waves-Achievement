@@ -104,6 +104,7 @@
                             <TextBlock Text="追踪" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,7" />
                             <WrapPanel>
                                 <Button x:Name="TrackSelectedButton" AutomationProperties.AutomationId="TrackSelectedButton" Content="追踪选中成就" Click="TrackSelected_OnClick" />
+                                <Button x:Name="UntrackSelectedButton" AutomationProperties.AutomationId="UntrackSelectedButton" Content="取消追踪选中" ToolTip="取消当前选中成就的追踪，不改变完成状态" Click="UntrackSelected_OnClick" />
                                 <Button x:Name="OpenTrackerButton" AutomationProperties.AutomationId="OpenTrackerButton" Content="打开追踪浮窗" Click="OpenTracker_OnClick" />
                             </WrapPanel>
                         </StackPanel>
@@ -135,7 +136,7 @@
                             <TextBlock Text="外观与系统" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,7" />
                             <WrapPanel>
                                 <Button x:Name="ThemeButton" AutomationProperties.AutomationId="ThemeButton" Content="浅色主题" Click="Theme_OnClick" />
-                                <Button AutomationProperties.AutomationId="UpdateButton" Content="检查更新" Click="Update_OnClick" Margin="0" />
+                                <Button AutomationProperties.AutomationId="UpdateButton" Content="检查更新" Click="Update_OnClick" Width="78" MinWidth="78" Margin="0" />
                             </WrapPanel>
                         </StackPanel>
                     </Grid>

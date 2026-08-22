@@ -182,6 +182,32 @@ public partial class MainWindow : Window
         HintText.Text = $"已加入 {selected.Length} 条成就追踪。";
     }
 
+    private async void UntrackSelected_OnClick(object sender, RoutedEventArgs e)
+    {
+        var trackedIds = _workspace.GetSnapshot().Metadata.EffectiveTrackedAchievementIds.ToHashSet();
+        var selected = AchievementGrid.SelectedItems
+            .OfType<AchievementRow>()
+            .Select(row => row.Id)
+            .Where(trackedIds.Contains)
+            .Distinct()
+            .ToArray();
+        if (selected.Length == 0)
+        {
+            HintText.Text = "选中的成就中没有正在追踪的项目。";
+            return;
+        }
+
+        var result = await _workspace.RemoveTrackedAchievementsAsync(selected);
+        if (!result.IsSuccess)
+        {
+            ShowError(result.Error?.Message ?? "取消追踪失败。");
+            return;
+        }
+
+        RefreshView();
+        HintText.Text = $"已取消 {selected.Length} 条成就追踪。";
+    }
+
     private void OpenTracker_OnClick(object sender, RoutedEventArgs e)
     {
         if (_trackerWindow is null)
@@ -1918,15 +1944,15 @@ public partial class MainWindow : Window
             ? new Dictionary<string, string>
             {
                 ["WindowBrush"] = "#F5F8F7", ["PanelBrush"] = "#FFFFFF", ["PanelAltBrush"] = "#E8F0EE",
-                ["BorderBrush"] = "#C3D4D0", ["TextBrush"] = "#19302D", ["MutedTextBrush"] = "#5A7470",
+                ["BorderBrush"] = "#C3D4D0", ["AccentBrush"] = "#087F6A", ["TextBrush"] = "#263B38", ["MutedTextBrush"] = "#4F6965",
                 ["InputBrush"] = "#FFFFFF", ["RowBorderBrush"] = "#D7E2DF", ["SelectionBrush"] = "#B8E8DF",
-                ["ErrorBrush"] = "#A52714", ["CompletedStatusBrush"] = "#087F6A", ["IncompleteStatusBrush"] = "#9A6B00",
-                ["UnavailableStatusBrush"] = "#B13B2F", ["OccupiedStatusBrush"] = "#6D4BC0"
+                ["ErrorBrush"] = "#A52714", ["CompletedStatusBrush"] = "#087F6A", ["IncompleteStatusBrush"] = "#886000",
+                ["UnavailableStatusBrush"] = "#A33A30", ["OccupiedStatusBrush"] = "#6547B3"
             }
             : new Dictionary<string, string>
             {
                 ["WindowBrush"] = "#182124", ["PanelBrush"] = "#222E32", ["PanelAltBrush"] = "#29383D",
-                ["BorderBrush"] = "#3A5055", ["TextBrush"] = "#E8F2F0", ["MutedTextBrush"] = "#9BB3AF",
+                ["BorderBrush"] = "#3A5055", ["AccentBrush"] = "#42D8C2", ["TextBrush"] = "#E8F2F0", ["MutedTextBrush"] = "#9BB3AF",
                 ["InputBrush"] = "#172225", ["RowBorderBrush"] = "#304247", ["SelectionBrush"] = "#285A5A",
                 ["ErrorBrush"] = "#FF9A8D", ["CompletedStatusBrush"] = "#42D8C2", ["IncompleteStatusBrush"] = "#E8C56C",
                 ["UnavailableStatusBrush"] = "#FF9A8D", ["OccupiedStatusBrush"] = "#B9A3FF"
