@@ -363,7 +363,7 @@
                             <DataGridTextColumn Header="名称" Binding="{Binding Candidate.MatchedName}" IsReadOnly="True" Width="190" ElementStyle="{StaticResource DataGridCellTextStyle}" />
                             <DataGridTextColumn Header="OCR 原文" Binding="{Binding Candidate.OcrText}" IsReadOnly="True" Width="*" ElementStyle="{StaticResource DataGridCellTextStyle}" />
                             <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" IsReadOnly="True" Width="80" ElementStyle="{StaticResource AchievementStatusTextStyle}" />
-                            <DataGridTextColumn Header="置信度" Binding="{Binding ConfidenceText}" IsReadOnly="True" Width="78" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                            <DataGridTextColumn Header="置信度" Binding="{Binding ConfidenceText}" SortMemberPath="MatchConfidence" IsReadOnly="True" Width="78" ElementStyle="{StaticResource DataGridCellTextStyle}" />
                             <DataGridTextColumn Header="编号" Binding="{Binding Candidate.LegacyCode}" IsReadOnly="True" Width="100" ElementStyle="{StaticResource DataGridCellTextStyle}" />
                         </DataGrid.Columns>
                     </DataGrid>

@@ -1161,9 +1161,9 @@ public partial class MainWindow : Window
         var preview = new OcrScanPreview(
             Array.AsReadOnly(candidates.ToArray()),
             Array.Empty<OcrUnmatchedText>(),
-            candidates.Count(candidate => candidate.ProposedStatus == ProgressStatus.Completed),
-            candidates.Count(candidate => candidate.ProposedStatus == ProgressStatus.Incomplete),
-            candidates.Count(candidate => candidate.ProposedStatus is null));
+            candidates.Count(candidate => candidate.CanApply && candidate.ProposedStatus == ProgressStatus.Completed),
+            candidates.Count(candidate => candidate.CanApply && candidate.ProposedStatus == ProgressStatus.Incomplete),
+            candidates.Count(candidate => !candidate.CanApply));
         var applied = await _workspace.ApplyOcrPreviewAsync(preview, confirm: true, cancellationToken: CancellationToken.None);
         if (!applied.IsSuccess)
         {
@@ -2639,9 +2639,9 @@ public partial class MainWindow : Window
             return new OcrScanPreview(
                 Array.AsReadOnly(orderedCandidates),
                 Array.Empty<OcrUnmatchedText>(),
-                orderedCandidates.Count(candidate => candidate.ProposedStatus == ProgressStatus.Completed && !candidate.IsAmbiguous),
-                orderedCandidates.Count(candidate => candidate.ProposedStatus == ProgressStatus.Incomplete && !candidate.IsAmbiguous),
-                orderedCandidates.Count(candidate => candidate.ProposedStatus is null || candidate.IsAmbiguous));
+                orderedCandidates.Count(candidate => candidate.CanApply && candidate.ProposedStatus == ProgressStatus.Completed),
+                orderedCandidates.Count(candidate => candidate.CanApply && candidate.ProposedStatus == ProgressStatus.Incomplete),
+                orderedCandidates.Count(candidate => !candidate.CanApply));
         }
 
         static OcrAchievementCandidate CreateUnknownCandidate(AchievementRow row, string ocrText) => new(
@@ -3443,6 +3443,7 @@ public partial class MainWindow : Window
 
     private static bool PreferOcrCandidate(OcrAchievementCandidate candidate, OcrAchievementCandidate existing)
     {
+        if (candidate.CanApply != existing.CanApply) return candidate.CanApply;
         if (candidate.ProposedStatus == ProgressStatus.Completed && existing.ProposedStatus != ProgressStatus.Completed) return true;
         if (existing.ProposedStatus == ProgressStatus.Completed && candidate.ProposedStatus != ProgressStatus.Completed) return false;
         return candidate.MatchConfidence > existing.MatchConfidence;
@@ -3467,9 +3468,9 @@ public partial class MainWindow : Window
         return new OcrScanPreview(
             Array.AsReadOnly(orderedCandidates),
             Array.AsReadOnly(unmatched.Values.ToArray()),
-            orderedCandidates.Count(candidate => candidate.ProposedStatus == ProgressStatus.Completed),
-            orderedCandidates.Count(candidate => candidate.ProposedStatus == ProgressStatus.Incomplete),
-            orderedCandidates.Count(candidate => candidate.ProposedStatus is null));
+            orderedCandidates.Count(candidate => candidate.CanApply && candidate.ProposedStatus == ProgressStatus.Completed),
+            orderedCandidates.Count(candidate => candidate.CanApply && candidate.ProposedStatus == ProgressStatus.Incomplete),
+            orderedCandidates.Count(candidate => !candidate.CanApply));
     }
 
     private static string? FindOcrTemplateDirectory()

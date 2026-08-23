@@ -29,7 +29,7 @@ public partial class OcrPreviewWindow : Window
     private void Apply_OnClick(object sender, RoutedEventArgs e)
     {
         var selected = Rows
-            .Where(row => row.Apply && row.Candidate.ProposedStatus is not null && !row.Candidate.IsAmbiguous)
+            .Where(row => row.Apply && row.Candidate.CanApply)
             .Select(row => row.Candidate)
             .ToArray();
         if (selected.Length == 0)
@@ -62,7 +62,7 @@ public sealed class OcrPreviewRow : INotifyPropertyChanged
     public OcrPreviewRow(OcrAchievementCandidate candidate)
     {
         Candidate = candidate;
-        _apply = candidate.ProposedStatus is not null && !candidate.IsAmbiguous;
+        _apply = candidate.CanApply;
     }
 
     public OcrAchievementCandidate Candidate { get; }
@@ -72,8 +72,9 @@ public sealed class OcrPreviewRow : INotifyPropertyChanged
         get => _apply;
         set
         {
-            if (_apply == value) return;
-            _apply = value;
+            var applicableValue = Candidate.CanApply && value;
+            if (_apply == applicableValue) return;
+            _apply = applicableValue;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Apply)));
         }
     }

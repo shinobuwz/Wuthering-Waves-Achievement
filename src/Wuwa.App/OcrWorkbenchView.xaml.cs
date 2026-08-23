@@ -250,7 +250,7 @@ public partial class OcrWorkbenchView : UserControl
     {
         if (_applyResults is null || _pendingPreview is null) return;
         var selected = _allResultRows
-            .Where(row => row.Apply && row.Candidate.ProposedStatus is not null && !row.Candidate.IsAmbiguous)
+            .Where(row => row.Apply && row.Candidate.CanApply)
             .Select(row => row.Candidate)
             .ToArray();
         if (selected.Length == 0)
@@ -460,22 +460,24 @@ public sealed class OcrResultViewRow : INotifyPropertyChanged
         Candidate = candidate;
         FirstCategory = firstCategory;
         SecondCategory = secondCategory;
-        _apply = true;
+        _apply = candidate.CanApply;
     }
 
     public OcrAchievementCandidate Candidate { get; }
     public string FirstCategory { get; }
     public string SecondCategory { get; }
     public string StatusText => Candidate.IsAmbiguous ? "歧义" : Candidate.ProposedStatus?.ToChinese() ?? "未知";
-    public string ConfidenceText => $"{Candidate.MatchConfidence:P0}";
+    public double MatchConfidence => Candidate.MatchConfidence;
+    public string ConfidenceText => $"{MatchConfidence:P0}";
 
     public bool Apply
     {
         get => _apply;
         set
         {
-            if (_apply == value) return;
-            _apply = value;
+            var applicableValue = Candidate.CanApply && value;
+            if (_apply == applicableValue) return;
+            _apply = applicableValue;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Apply)));
         }
     }

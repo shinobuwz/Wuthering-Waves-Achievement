@@ -83,7 +83,8 @@ public sealed class OcrMatchingTests
         Assert.AreEqual(ProgressStatus.Completed, candidate.ProposedStatus);
         Assert.AreEqual("2025/09/26", candidate.StatusText);
         Assert.IsFalse(candidate.IsAmbiguous);
-        Assert.IsTrue(candidate.MatchConfidence < 0.75);
+        Assert.IsTrue(candidate.MatchConfidence < OcrAchievementCandidate.MinimumApplicableConfidence);
+        Assert.IsFalse(candidate.CanApply);
     }
 
     [TestMethod]
@@ -99,6 +100,34 @@ public sealed class OcrMatchingTests
 
         Assert.IsNull(candidate.ProposedStatus);
         Assert.IsFalse(candidate.IsAmbiguous);
+        Assert.IsFalse(candidate.CanApply);
+    }
+
+    [TestMethod]
+    public async Task ApplyOcrPreview_DoesNotUseCandidatesBelowSeventyFivePercentConfidence()
+    {
+        var achievement = Achievement("100", 1, "先行之证·今州");
+        var store = new InMemoryAppDataStore();
+        var workspace = new AchievementWorkspace(store, new FixedAchievementLibrarySource(new AchievementLibrary([achievement], CategoryCatalog.Empty)));
+        await workspace.OpenAsync();
+        var before = workspace.Query().Revision;
+        var lowConfidence = new OcrAchievementCandidate(
+            achievement.Id,
+            achievement.LegacyCode,
+            achievement.Name,
+            "先行之证今",
+            0.74,
+            ProgressStatus.Completed,
+            "2025/04/21");
+        var preview = new OcrScanPreview([lowConfidence], [], 0, 0, 1);
+
+        var applied = await workspace.ApplyOcrPreviewAsync(preview, confirm: true);
+
+        Assert.IsTrue(applied.IsSuccess);
+        Assert.AreEqual(0, applied.Updated);
+        Assert.AreEqual(1, applied.Unchanged);
+        Assert.AreEqual(before, applied.Snapshot.Revision);
+        Assert.AreEqual(ProgressStatus.Incomplete, applied.Snapshot.Rows.Single().Status);
     }
 
     [TestMethod]

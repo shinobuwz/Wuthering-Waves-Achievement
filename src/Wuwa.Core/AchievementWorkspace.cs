@@ -624,23 +624,23 @@ public sealed partial class AchievementWorkspace
             foreach (var candidate in preview.Candidates.OrderBy(candidate => candidate.ProposedStatus == ProgressStatus.Completed ? 1 : 0))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (candidate.IsAmbiguous || candidate.ProposedStatus is null || !achievements.TryGetValue(candidate.AchievementId, out var achievement))
+                if (!candidate.CanApply || candidate.ProposedStatus is not { } proposedStatus || !achievements.TryGetValue(candidate.AchievementId, out var achievement))
                 {
                     unchanged++;
                     continue;
                 }
                 var current = statuses[candidate.AchievementId];
-                if (preventCompletedDowngrade && current == ProgressStatus.Completed && candidate.ProposedStatus != ProgressStatus.Completed)
+                if (preventCompletedDowngrade && current == ProgressStatus.Completed && proposedStatus != ProgressStatus.Completed)
                 {
                     prevented++;
                     continue;
                 }
-                if (current == candidate.ProposedStatus)
+                if (current == proposedStatus)
                 {
                     unchanged++;
                     continue;
                 }
-                ApplyStatusTransition(_state.Achievements, statuses, achievement, candidate.ProposedStatus.Value);
+                ApplyStatusTransition(_state.Achievements, statuses, achievement, proposedStatus);
                 updated++;
             }
 

@@ -10,7 +10,15 @@ public sealed record OcrAchievementCandidate(
     double MatchConfidence,
     ProgressStatus? ProposedStatus,
     string? StatusText,
-    bool IsAmbiguous = false);
+    bool IsAmbiguous = false)
+{
+    public const double MinimumApplicableConfidence = 0.75;
+
+    public bool CanApply =>
+        MatchConfidence >= MinimumApplicableConfidence &&
+        ProposedStatus is not null &&
+        !IsAmbiguous;
+}
 
 public sealed record OcrUnmatchedText(string Text, string Reason, float OcrScore);
 
@@ -112,9 +120,9 @@ public static partial class AchievementOcrMatcher
         return new OcrScanPreview(
             Array.AsReadOnly(deduplicated),
             Array.AsReadOnly(unmatched.ToArray()),
-            deduplicated.Count(candidate => candidate.ProposedStatus == ProgressStatus.Completed),
-            deduplicated.Count(candidate => candidate.ProposedStatus == ProgressStatus.Incomplete),
-            deduplicated.Count(candidate => candidate.ProposedStatus is null));
+            deduplicated.Count(candidate => candidate.CanApply && candidate.ProposedStatus == ProgressStatus.Completed),
+            deduplicated.Count(candidate => candidate.CanApply && candidate.ProposedStatus == ProgressStatus.Incomplete),
+            deduplicated.Count(candidate => !candidate.CanApply));
     }
 
     public static OcrAchievementCandidate CreateTargetedSearchCandidate(
