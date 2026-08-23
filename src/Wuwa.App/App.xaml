@@ -61,6 +61,10 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="TerminalActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
+            <!-- Clear only the inter-item right gap; preserve ActionButtonStyle's bottom spacing so adjacent buttons stay 32 px high. -->
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
         <Style TargetType="TextBox"><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /><Setter Property="Background" Value="{DynamicResource InputBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" /><Setter Property="MinHeight" Value="32" /><Setter Property="VerticalContentAlignment" Value="Center" /><Setter Property="Padding" Value="8,4" /><Setter Property="Margin" Value="0,0,8,0" /></Style>
         <Style TargetType="ComboBox">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />

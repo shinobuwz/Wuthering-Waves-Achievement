@@ -261,7 +261,7 @@
                     <DockPanel Grid.Row="0" Margin="0,0,0,12">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button Content="选择当前筛选" Click="SelectFilteredResults_OnClick" MinWidth="105" />
-                            <Button Content="取消当前筛选" Click="UnselectFilteredResults_OnClick" MinWidth="105" Margin="0" />
+                            <Button Style="{StaticResource TerminalActionButtonStyle}" Content="取消当前筛选" Click="UnselectFilteredResults_OnClick" MinWidth="105" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="扫描结果" FontSize="14" FontWeight="SemiBold" />
@@ -448,7 +448,7 @@
                         <Button Content="清空全部标记" Click="ClearHistory_OnClick" MinWidth="105" />
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button Content="DEBUG：标记选中 Tag 并跳过" Click="MarkSelectedTags_OnClick" MinWidth="170" />
-                            <Button Content="DEBUG：取消选中 Tag 跳过" Click="UnmarkSelectedTags_OnClick" MinWidth="170" Margin="0" />
+                            <Button Style="{StaticResource TerminalActionButtonStyle}" Content="DEBUG：取消选中 Tag 跳过" Click="UnmarkSelectedTags_OnClick" MinWidth="170" />
                         </StackPanel>
                     </DockPanel>
                 </Grid>

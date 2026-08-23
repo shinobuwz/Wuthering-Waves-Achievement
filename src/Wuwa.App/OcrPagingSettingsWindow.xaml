@@ -212,7 +212,7 @@
                                 HorizontalAlignment="Right"
                                 Margin="0,12,0,0">
                         <Button Content="保存并校准成就列表" Click="CalibrateAchievement_OnClick" MinWidth="142" />
-                        <Button Content="保存并校准二级 Tag" Click="CalibrateSecondaryTags_OnClick" MinWidth="142" Margin="0" />
+                        <Button Style="{StaticResource TerminalActionButtonStyle}" Content="保存并校准二级 Tag" Click="CalibrateSecondaryTags_OnClick" MinWidth="142" />
                     </StackPanel>
                 </Grid>
             </TabItem>
@@ -274,11 +274,11 @@
                                 HorizontalAlignment="Right"
                                 Margin="0,12,0,0">
                         <Button AutomationProperties.AutomationId="OcrSearchInputTestButton"
+                                Style="{StaticResource TerminalActionButtonStyle}"
                                 Content="保存并测试搜索输入"
                                 ToolTip="保存当前间隔后运行安全输入测试，不执行搜索或修改进度"
                                 Click="TestSearchInput_OnClick"
-                                MinWidth="154"
-                                Margin="0" />
+                                MinWidth="154" />
                     </StackPanel>
                 </Grid>
             </TabItem>
@@ -288,7 +288,7 @@
             <!-- Match the page action edge: TabControl border (1) + selected-content Grid margin (16). -->
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,17,0">
                 <Button Content="取消" Click="Cancel_OnClick" MinWidth="72" />
-                <Button Content="仅保存" Click="Save_OnClick" MinWidth="80" Margin="0" />
+                <Button Style="{StaticResource TerminalActionButtonStyle}" Content="仅保存" Click="Save_OnClick" MinWidth="80" />
             </StackPanel>
             <TextBlock x:Name="ValidationText" Foreground="{DynamicResource ErrorBrush}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,10,0" />
         </DockPanel>
