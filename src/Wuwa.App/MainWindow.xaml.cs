@@ -189,6 +189,9 @@ public partial class MainWindow : Window
             _ => null
         });
 
+    private void AuthorBilibili_OnClick(object sender, RoutedEventArgs e) =>
+        App.OpenAuthorBilibili(this);
+
     private void WorkspaceHelp_OnClick(object sender, RoutedEventArgs e) => ShowWorkspaceHelpPage();
 
     private void ActionHelp_OnClick(object sender, RoutedEventArgs e)

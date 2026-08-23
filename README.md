@@ -1,5 +1,7 @@
 # 鸣潮成就管理器
 
+作者 Bilibili：[蓝若惜miss](https://www.bilibili.com/video/BV13e826hEJQ/?spm_id_from=333.1387.homepage.video_card.click)
+
 本仓库目前只维护 **Native WPF/.NET 8 版本**。项目源码、Native OCR、模型和构建脚本均位于仓库根目录，不再使用额外的 `native/` 目录层级。
 
 Python/PySide6 版本及其打包脚本、OCR 运行时已移除，后续功能和 OCR 导航只在 Native 代码中实现。
@@ -15,7 +17,7 @@ powershell -ExecutionPolicy Bypass -File scripts/publish-native.ps1 -Configurati
 
 Visual Studio 用户打开根目录的 `WutheringWavesAchievement.sln`，启动项目选择 `Wuwa.App`。
 
-发布目录为 `publish/win-x64/`。
+发布目录为 `publish/win-x64/`。脚本同时读取 `src/Wuwa.App/Wuwa.App.csproj` 的 `Version`，生成版本化压缩包 `publish/WutheringWavesAchievement-vx.x.x.zip`（当前版本例如 `WutheringWavesAchievement-v2.1.0.zip`）。
 
 ## 项目结构
 

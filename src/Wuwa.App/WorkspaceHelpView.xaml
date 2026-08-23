@@ -35,16 +35,22 @@
         </Grid.RowDefinitions>
 
         <DockPanel Grid.Row="0" Margin="0,0,0,14">
-            <Button DockPanel.Dock="Right"
-                    AutomationProperties.AutomationId="WorkspaceHelpBackButton"
-                    Content="返回主页面"
-                    Click="Back_OnClick"
-                    Width="104"
-                    MinWidth="104"
-                    Height="32"
-                    MinHeight="32"
-                    Margin="0"
-                    VerticalAlignment="Center" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock VerticalAlignment="Center" Margin="0,0,14,0">
+                    <Hyperlink Style="{StaticResource BilibiliLinkStyle}"
+                               ToolTip="打开作者 B 站：蓝若惜miss"
+                               Click="AuthorBilibili_OnClick">Bilibili@蓝若惜miss</Hyperlink>
+                </TextBlock>
+                <Button AutomationProperties.AutomationId="WorkspaceHelpBackButton"
+                        Content="返回主页面"
+                        Click="Back_OnClick"
+                        Width="104"
+                        MinWidth="104"
+                        Height="32"
+                        MinHeight="32"
+                        Margin="0"
+                        VerticalAlignment="Center" />
+            </StackPanel>
             <StackPanel>
                 <TextBlock Text="主页面使用帮助" FontSize="25" FontWeight="SemiBold" />
                 <TextBlock Text="筛选、状态维护、追踪、数据交换与辅助工具说明"
