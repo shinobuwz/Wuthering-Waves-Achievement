@@ -12,6 +12,16 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $nativeRoot = $repoRoot
 $applicationExeName = 'WutheringWavesAchievement.exe'
+$applicationProjectPath = Join-Path $nativeRoot 'src/Wuwa.App/Wuwa.App.csproj'
+$applicationProject = [xml](Get-Content $applicationProjectPath -Raw)
+$versionNode = $applicationProject.SelectSingleNode('/Project/PropertyGroup/Version')
+if ($null -eq $versionNode -or [string]::IsNullOrWhiteSpace($versionNode.InnerText)) {
+    throw "The application version is missing from $applicationProjectPath."
+}
+$packageVersion = $versionNode.InnerText.Trim()
+if ($packageVersion -notmatch '^\d+\.\d+\.\d+$') {
+    throw "Application Version must use x.x.x format, but found '$packageVersion'."
+}
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $nativeRoot "publish/$RuntimeIdentifier"
 } elseif (-not [System.IO.Path]::IsPathRooted($OutputDirectory)) {
@@ -19,6 +29,7 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 }
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 $allowedPublishRoot = [System.IO.Path]::GetFullPath((Join-Path $nativeRoot 'publish'))
+$archivePath = Join-Path $allowedPublishRoot "WutheringWavesAchievement-v$packageVersion.zip"
 $allowedPrefix = $allowedPublishRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
 if ($OutputDirectory -eq $allowedPublishRoot -or -not $OutputDirectory.StartsWith($allowedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw "OutputDirectory must be a child of $allowedPublishRoot."
@@ -34,6 +45,8 @@ function Invoke-Checked([string]$Command, [string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "$Command failed with exit code $LASTEXITCODE." }
 }
 
+$temporaryOutput = $null
+$temporaryArchive = $null
 Push-Location $nativeRoot
 try {
     $expectedSdkText = (Get-Content (Join-Path $nativeRoot 'global.json') -Raw | ConvertFrom-Json).sdk.version
@@ -100,9 +113,31 @@ try {
         if (-not (Test-Path $OutputDirectory) -and (Test-Path $backupOutput)) { Move-Item $backupOutput $OutputDirectory }
         throw
     }
+
+    New-Item $allowedPublishRoot -ItemType Directory -Force | Out-Null
+    $temporaryArchive = Join-Path ([System.IO.Path]::GetTempPath()) ("WutheringWavesAchievement-v$packageVersion-" + [Guid]::NewGuid().ToString('N') + '.zip')
+    Compress-Archive -Path (Join-Path $OutputDirectory '*') -DestinationPath $temporaryArchive -CompressionLevel Optimal
+    if (-not (Test-Path $temporaryArchive) -or (Get-Item $temporaryArchive).Length -le 0) {
+        throw "Release archive was not created: $temporaryArchive"
+    }
+
+    $backupArchive = $archivePath + '.previous-' + [Guid]::NewGuid().ToString('N')
+    if (Test-Path $archivePath) { Move-Item $archivePath $backupArchive }
+    try {
+        Move-Item $temporaryArchive $archivePath
+        $temporaryArchive = $null
+        if (Test-Path $backupArchive) { Remove-Item $backupArchive -Force }
+    }
+    catch {
+        if (-not (Test-Path $archivePath) -and (Test-Path $backupArchive)) { Move-Item $backupArchive $archivePath }
+        throw
+    }
+
     Write-Host "Native package with OCR assets: $OutputDirectory"
+    Write-Host "Release archive: $archivePath"
 }
 finally {
     Pop-Location
     if ($temporaryOutput -and (Test-Path $temporaryOutput)) { Remove-Item $temporaryOutput -Recurse -Force }
+    if ($temporaryArchive -and (Test-Path $temporaryArchive)) { Remove-Item $temporaryArchive -Force }
 }

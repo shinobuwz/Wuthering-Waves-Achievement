@@ -15,7 +15,7 @@ powershell -ExecutionPolicy Bypass -File scripts/publish-native.ps1 -Configurati
 
 Visual Studio 用户打开根目录的 `WutheringWavesAchievement.sln`，启动项目选择 `Wuwa.App`。
 
-发布目录为 `publish/win-x64/`。
+发布目录为 `publish/win-x64/`。脚本同时读取 `src/Wuwa.App/Wuwa.App.csproj` 的 `Version`，生成版本化压缩包 `publish/WutheringWavesAchievement-vx.x.x.zip`（当前版本例如 `WutheringWavesAchievement-v2.0.0.zip`）。
 
 ## 项目结构
 
