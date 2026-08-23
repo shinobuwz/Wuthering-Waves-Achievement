@@ -14,7 +14,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
     // The achievement list occupies the middle/right part of the 1920×1080 game client.
     // Use client coordinates so window placement and multi-monitor desktop centers do not change the target.
     private const double AchievementListScrollXRatio = 0.62;
-    private const int DragReleaseHoldMilliseconds = 300;
+    private const int WheelChunkDistance = 160;
     private const int TextFieldFocusSettleMilliseconds = 220;
     private const int ModifierSettleMilliseconds = 40;
     private const int KeyPressMilliseconds = 30;
@@ -138,28 +138,30 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         return true;
     }
 
-    public Task<bool> DragScrollAsync(
+    public Task<bool> ScrollAsync(
         GameWindowCandidate window,
-        int dragPixels = -480,
+        int scrollDistance = -2400,
+        int eventIntervalMilliseconds = 100,
         CancellationToken cancellationToken = default)
     {
-        ValidateDragArguments(window, dragPixels);
+        ValidateScrollArguments(window, scrollDistance, eventIntervalMilliseconds);
         var clientX = (int)Math.Round(window.ClientWidth * AchievementListScrollXRatio);
-        var clientY = (int)Math.Round(window.ClientHeight * 0.78);
-        NativeOcrDiagnostics.Write($"DragScroll requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} achievement-list client={clientX},{clientY} deltaY={dragPixels}");
-        return Task.Run(() => DragWindow(window, clientX, clientY, dragPixels, cancellationToken), cancellationToken);
+        var clientY = (int)Math.Round(window.ClientHeight * 0.62);
+        NativeOcrDiagnostics.Write($"Scroll requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} achievement-list client={clientX},{clientY} distance={scrollDistance} interval={eventIntervalMilliseconds}ms");
+        return Task.Run(() => ScrollWindow(window, clientX, clientY, scrollDistance, eventIntervalMilliseconds, cancellationToken), cancellationToken);
     }
 
-    public Task<bool> DragScrollAtAsync(
+    public Task<bool> ScrollAtAsync(
         GameWindowCandidate window,
         int clientX,
         int clientY,
-        int dragPixels = -480,
+        int scrollDistance = -2400,
+        int eventIntervalMilliseconds = 100,
         CancellationToken cancellationToken = default)
     {
-        ValidateDragArguments(window, dragPixels);
-        NativeOcrDiagnostics.Write($"DragScroll requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} client={clientX},{clientY} deltaY={dragPixels}");
-        return Task.Run(() => DragWindow(window, clientX, clientY, dragPixels, cancellationToken), cancellationToken);
+        ValidateScrollArguments(window, scrollDistance, eventIntervalMilliseconds);
+        NativeOcrDiagnostics.Write($"Scroll requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} client={clientX},{clientY} distance={scrollDistance} interval={eventIntervalMilliseconds}ms");
+        return Task.Run(() => ScrollWindow(window, clientX, clientY, scrollDistance, eventIntervalMilliseconds, cancellationToken), cancellationToken);
     }
 
     public Task<bool> ClickAsync(
@@ -193,11 +195,12 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         return Task.Run(() => ReplaceText(window, clientX, clientY, text, cancellationToken), cancellationToken);
     }
 
-    private static void ValidateDragArguments(GameWindowCandidate window, int dragPixels)
+    private static void ValidateScrollArguments(GameWindowCandidate window, int scrollDistance, int eventIntervalMilliseconds)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Game-window input currently supports Windows only.");
         if (window.Handle == 0) throw new ArgumentException("A valid window handle is required.", nameof(window));
-        if (dragPixels == 0) throw new ArgumentOutOfRangeException(nameof(dragPixels));
+        if (scrollDistance == 0) throw new ArgumentOutOfRangeException(nameof(scrollDistance));
+        if (eventIntervalMilliseconds is < 20 or > 1000) throw new ArgumentOutOfRangeException(nameof(eventIntervalMilliseconds));
     }
 
     private static GameWindowCandidate FindGameWindow(
@@ -365,8 +368,6 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         }
         finally
         {
-            // Never leave a modifier or character key held if SendInput fails partway
-            // through the chord. Cancellation is checked before/after the short chord.
             if (keyPressed) _ = SendKeyEvent(key, keyUp: true);
             if (controlPressed) _ = SendKeyEvent(NativeMethods.VirtualKeyControl, keyUp: true);
         }
@@ -461,88 +462,141 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
             }
         };
 
-    private static bool DragWindow(
+    private static bool ScrollWindow(
         GameWindowCandidate window,
         int clientX,
         int clientY,
-        int dragPixels,
+        int scrollDistance,
+        int eventIntervalMilliseconds,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!NativeMethods.IsWindow(window.Handle))
         {
-            NativeOcrDiagnostics.Write("DragScroll aborted: target window is no longer valid");
+            NativeOcrDiagnostics.Write("Scroll aborted: target window is no longer valid");
             return false;
         }
 
         NativeMethods.ShowWindow(window.Handle, NativeMethods.ShowWindowRestore);
         var foreground = NativeMethods.SetForegroundWindow(window.Handle);
         Thread.Sleep(300);
-
-        var startClient = new NativePoint
+        var screenPoint = new NativePoint
         {
             X = Math.Clamp(clientX, 0, Math.Max(0, window.ClientWidth - 1)),
             Y = Math.Clamp(clientY, 0, Math.Max(0, window.ClientHeight - 1))
         };
-        var endClient = new NativePoint
+        if (!NativeMethods.ClientToScreen(window.Handle, ref screenPoint))
         {
-            X = startClient.X,
-            Y = Math.Clamp(startClient.Y + dragPixels, 0, Math.Max(0, window.ClientHeight - 1))
-        };
-        var startScreen = startClient;
-        var endScreen = endClient;
-        if (!NativeMethods.ClientToScreen(window.Handle, ref startScreen) ||
-            !NativeMethods.ClientToScreen(window.Handle, ref endScreen))
-        {
-            NativeOcrDiagnostics.Write("DragScroll failed: ClientToScreen returned false");
+            NativeOcrDiagnostics.Write("Scroll failed: ClientToScreen returned false");
             return false;
         }
 
-        NativeOcrDiagnostics.Write($"DragScroll focus foreground={foreground} startClient={startClient.X},{startClient.Y} endClient={endClient.X},{endClient.Y} startScreen={startScreen.X},{startScreen.Y} endScreen={endScreen.X},{endScreen.Y}");
-        if (TrySendInputDrag(startScreen, endScreen, cancellationToken))
+        var wheelDeltas = BuildWheelDeltas(scrollDistance);
+        NativeOcrDiagnostics.Write($"Scroll focus foreground={foreground} screen={screenPoint.X},{screenPoint.Y} events={wheelDeltas.Count} distance={scrollDistance}");
+        if (TryMouseEventScroll(screenPoint, wheelDeltas, eventIntervalMilliseconds, cancellationToken))
         {
-            NativeOcrDiagnostics.Write("DragScroll method=SendInput result=success");
+            NativeOcrDiagnostics.Write("Scroll method=mouse_event result=success");
+            return true;
+        }
+        if (TrySendInputScroll(screenPoint, wheelDeltas, eventIntervalMilliseconds, cancellationToken))
+        {
+            NativeOcrDiagnostics.Write("Scroll method=SendInput result=success");
             return true;
         }
 
-        if (TryMouseEventDrag(startScreen, endScreen, cancellationToken))
+        var fallbackSucceeded = true;
+        foreach (var wheelDelta in wheelDeltas)
         {
-            NativeOcrDiagnostics.Write("DragScroll method=mouse_event result=success");
-            return true;
+            cancellationToken.ThrowIfCancellationRequested();
+            var messageData = unchecked((UIntPtr)((uint)wheelDelta << 16));
+            var point = new IntPtr((screenPoint.Y << 16) | (screenPoint.X & 0xffff));
+            fallbackSucceeded &= NativeMethods.PostMessage(window.Handle, NativeMethods.MouseWheelMessage, messageData, point);
+            WaitForInputInterval(eventIntervalMilliseconds, cancellationToken);
         }
-
-        NativeOcrDiagnostics.Write("DragScroll result=failure");
-        return false;
+        NativeOcrDiagnostics.Write($"Scroll method=PostMessage result={fallbackSucceeded}");
+        return fallbackSucceeded;
     }
 
-    private static bool TryMouseEventDrag(NativePoint start, NativePoint end, CancellationToken cancellationToken)
+    private static bool TryMouseEventScroll(
+        NativePoint screenPoint,
+        IReadOnlyList<int> wheelDeltas,
+        int eventIntervalMilliseconds,
+        CancellationToken cancellationToken)
     {
-        if (!NativeMethods.SetCursorPos(start.X, start.Y))
+        if (!NativeMethods.SetCursorPos(screenPoint.X, screenPoint.Y))
         {
-            NativeOcrDiagnostics.Write("DragScroll mouse_event SetCursorPos=false");
+            NativeOcrDiagnostics.Write("Scroll mouse_event SetCursorPos=false");
             return false;
         }
 
-        const int steps = 32;
-        var buttonDown = false;
-        try
+        Thread.Sleep(100);
+        foreach (var wheelDelta in wheelDeltas)
         {
-            Thread.Sleep(100);
-            NativeMethods.MouseEvent(NativeMethods.MouseEventLeftDown, 0, 0, 0, UIntPtr.Zero);
-            buttonDown = true;
-            for (var step = 1; step <= steps; step++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var point = Interpolate(start, end, step, steps);
-                if (!NativeMethods.SetCursorPos(point.X, point.Y)) return false;
-                Thread.Sleep(15);
-            }
-            HoldDragBeforeRelease(cancellationToken);
-            return true;
+            cancellationToken.ThrowIfCancellationRequested();
+            NativeMethods.MouseEvent(NativeMethods.MouseEventWheel, 0, 0, wheelDelta, UIntPtr.Zero);
+            WaitForInputInterval(eventIntervalMilliseconds, cancellationToken);
         }
-        finally
+        NativeOcrDiagnostics.Write($"Scroll method=mouse_event positioned=true events={wheelDeltas.Count} interval={eventIntervalMilliseconds}ms");
+        return true;
+    }
+
+    private static bool TrySendInputScroll(
+        NativePoint screenPoint,
+        IReadOnlyList<int> wheelDeltas,
+        int eventIntervalMilliseconds,
+        CancellationToken cancellationToken)
+    {
+        var virtualLeft = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenLeft);
+        var virtualTop = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenTop);
+        var virtualWidth = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenWidth);
+        var virtualHeight = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenHeight);
+        if (virtualWidth <= 1 || virtualHeight <= 1) return false;
+
+        var size = Marshal.SizeOf<NativeInput>();
+        var moveInput = CreateAbsoluteMove(screenPoint, virtualLeft, virtualTop, virtualWidth, virtualHeight);
+        var moveSent = NativeMethods.SendInput(1, new[] { moveInput }, size);
+        NativeOcrDiagnostics.Write($"SendInput scroll pointer requested=1 sent={moveSent} absolute={moveInput.Mouse.Dx},{moveInput.Mouse.Dy}");
+        if (moveSent != 1) return false;
+
+        Thread.Sleep(250);
+        foreach (var wheelDelta in wheelDeltas)
         {
-            if (buttonDown) NativeMethods.MouseEvent(NativeMethods.MouseEventLeftUp, 0, 0, 0, UIntPtr.Zero);
+            cancellationToken.ThrowIfCancellationRequested();
+            var wheelInput = new NativeInput
+            {
+                Type = NativeMethods.InputMouse,
+                Mouse = new NativeMouseInput
+                {
+                    MouseData = unchecked((uint)wheelDelta),
+                    Flags = NativeMethods.MouseEventWheel
+                }
+            };
+            if (NativeMethods.SendInput(1, new[] { wheelInput }, size) != 1) return false;
+            WaitForInputInterval(eventIntervalMilliseconds, cancellationToken);
+        }
+        NativeOcrDiagnostics.Write($"SendInput wheel requested={wheelDeltas.Count} sent={wheelDeltas.Count} interval={eventIntervalMilliseconds}ms");
+        return true;
+    }
+
+    private static IReadOnlyList<int> BuildWheelDeltas(int scrollDistance)
+    {
+        var direction = Math.Sign(scrollDistance);
+        var remaining = Math.Abs(scrollDistance);
+        var result = new List<int>((remaining + WheelChunkDistance - 1) / WheelChunkDistance);
+        while (remaining > 0)
+        {
+            var current = Math.Min(WheelChunkDistance, remaining);
+            result.Add(direction * current);
+            remaining -= current;
+        }
+        return result;
+    }
+
+    private static void WaitForInputInterval(int milliseconds, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.WaitHandle.WaitOne(milliseconds))
+        {
+            throw new OperationCanceledException(cancellationToken);
         }
     }
 
@@ -587,74 +641,6 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         return true;
     }
 
-    private static bool TrySendInputDrag(NativePoint start, NativePoint end, CancellationToken cancellationToken)
-    {
-        var virtualLeft = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenLeft);
-        var virtualTop = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenTop);
-        var virtualWidth = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenWidth);
-        var virtualHeight = NativeMethods.GetSystemMetrics(NativeMethods.VirtualScreenHeight);
-        if (virtualWidth <= 1 || virtualHeight <= 1) return false;
-
-        var size = Marshal.SizeOf<NativeInput>();
-        var startMove = CreateAbsoluteMove(start, virtualLeft, virtualTop, virtualWidth, virtualHeight);
-        var moveSent = NativeMethods.SendInput(1, new[] { startMove }, size);
-        NativeOcrDiagnostics.Write($"SendInput drag move requested=1 sent={moveSent} absolute={startMove.Mouse.Dx},{startMove.Mouse.Dy}");
-        if (moveSent != 1) return false;
-
-        Thread.Sleep(100);
-        cancellationToken.ThrowIfCancellationRequested();
-        var buttonDown = new NativeInput
-        {
-            Type = NativeMethods.InputMouse,
-            Mouse = new NativeMouseInput { Flags = NativeMethods.MouseEventLeftDown }
-        };
-        var downSent = NativeMethods.SendInput(1, new[] { buttonDown }, size);
-        NativeOcrDiagnostics.Write($"SendInput drag left-down requested=1 sent={downSent}");
-        if (downSent != 1) return false;
-
-        var buttonIsDown = true;
-        try
-        {
-            const int steps = 32;
-            for (var step = 1; step <= steps; step++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var point = Interpolate(start, end, step, steps);
-                var move = CreateAbsoluteMove(point, virtualLeft, virtualTop, virtualWidth, virtualHeight);
-                var sent = NativeMethods.SendInput(1, new[] { move }, size);
-                if (sent != 1)
-                {
-                    NativeOcrDiagnostics.Write($"SendInput drag move failed step={step}/{steps} sent={sent}");
-                    return false;
-                }
-                Thread.Sleep(15);
-            }
-            HoldDragBeforeRelease(cancellationToken);
-            return true;
-        }
-        finally
-        {
-            if (buttonIsDown)
-            {
-                var buttonUp = new NativeInput
-                {
-                    Type = NativeMethods.InputMouse,
-                    Mouse = new NativeMouseInput { Flags = NativeMethods.MouseEventLeftUp }
-                };
-                var upSent = NativeMethods.SendInput(1, new[] { buttonUp }, size);
-                NativeOcrDiagnostics.Write($"SendInput drag left-up requested=1 sent={upSent}");
-            }
-        }
-    }
-
-    private static void HoldDragBeforeRelease(CancellationToken cancellationToken)
-    {
-        if (cancellationToken.WaitHandle.WaitOne(DragReleaseHoldMilliseconds))
-        {
-            throw new OperationCanceledException(cancellationToken);
-        }
-    }
-
     private static NativeInput CreateAbsoluteMove(
         NativePoint point,
         int virtualLeft,
@@ -670,13 +656,6 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
                 Dy = Math.Clamp((point.Y - virtualTop) * 65535 / (virtualHeight - 1), 0, 65535),
                 Flags = NativeMethods.MouseEventMove | NativeMethods.MouseEventAbsolute | NativeMethods.MouseEventVirtualDesk
             }
-        };
-
-    private static NativePoint Interpolate(NativePoint start, NativePoint end, int step, int steps) =>
-        new()
-        {
-            X = start.X + (end.X - start.X) * step / steps,
-            Y = start.Y + (end.Y - start.Y) * step / steps
         };
 
     private static OcrImageFrame CaptureClient(
@@ -852,6 +831,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         internal const uint MouseEventMove = 0x0001;
         internal const uint MouseEventLeftDown = 0x0002;
         internal const uint MouseEventLeftUp = 0x0004;
+        internal const uint MouseEventWheel = 0x0800;
         internal const uint MouseEventAbsolute = 0x8000;
         internal const uint MouseEventVirtualDesk = 0x4000;
         internal const int ShowWindowRestore = 9;
@@ -859,6 +839,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         internal const int VirtualScreenTop = 77;
         internal const int VirtualScreenWidth = 78;
         internal const int VirtualScreenHeight = 79;
+        internal const uint MouseWheelMessage = 0x020A;
 
         [LibraryImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool GetClientRect(IntPtr handle, out NativeRect rectangle);
         [LibraryImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static partial bool ClientToScreen(IntPtr handle, ref NativePoint point);
