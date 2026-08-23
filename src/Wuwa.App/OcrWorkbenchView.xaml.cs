@@ -469,6 +469,7 @@ public sealed class OcrResultViewRow : INotifyPropertyChanged
     public OcrAchievementCandidate Candidate { get; }
     public string FirstCategory { get; }
     public string SecondCategory { get; }
+    public bool CanApply => Candidate.CanApply;
     public string StatusText => Candidate.IsAmbiguous ? "歧义" : Candidate.ProposedStatus?.ToChinese() ?? "未知";
     public double MatchConfidence => Candidate.MatchConfidence;
     public string ConfidenceText => $"{MatchConfidence:P0}";
