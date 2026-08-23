@@ -600,11 +600,18 @@
         </Border>
 
         <DockPanel Grid.Row="4" Margin="0,10,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="扫描运行中：Ctrl+Shift+F12 停止并保留 · Ctrl+Alt+F12 强制中止（不保留）"
+                           Foreground="{DynamicResource MutedTextBrush}"
+                           VerticalAlignment="Center"
+                           Margin="0,0,14,0" />
+                <TextBlock VerticalAlignment="Center">
+                    <Hyperlink Style="{StaticResource BilibiliLinkStyle}"
+                               ToolTip="打开作者 B 站：蓝若惜miss"
+                               Click="AuthorBilibili_OnClick">Bilibili@蓝若惜miss</Hyperlink>
+                </TextBlock>
+            </StackPanel>
             <TextBlock x:Name="StatusText"
-                       Foreground="{DynamicResource MutedTextBrush}"
-                       VerticalAlignment="Center" />
-            <TextBlock DockPanel.Dock="Right"
-                       Text="扫描运行中：Ctrl+Shift+F12 停止并保留 · Ctrl+Alt+F12 强制中止（不保留）"
                        Foreground="{DynamicResource MutedTextBrush}"
                        VerticalAlignment="Center" />
         </DockPanel>

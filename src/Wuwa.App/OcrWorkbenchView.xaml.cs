@@ -157,6 +157,9 @@ public partial class OcrWorkbenchView : UserControl
         StatusText.Text = message;
     }
 
+    private void AuthorBilibili_OnClick(object sender, RoutedEventArgs e) =>
+        App.OpenAuthorBilibili(Window.GetWindow(this));
+
     private void ScanCurrent_OnClick(object sender, RoutedEventArgs e) => _scanCurrent?.Invoke();
     private void ScanFull_OnClick(object sender, RoutedEventArgs e) => _scanFull?.Invoke();
     private void SearchSync_OnClick(object sender, RoutedEventArgs e) => _searchSync?.Invoke();

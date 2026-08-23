@@ -241,8 +241,15 @@
         </Border>
 
         <DockPanel Grid.Row="4" Margin="0,10,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock x:Name="ErrorText" Foreground="{DynamicResource ErrorBrush}" VerticalAlignment="Center" Margin="0,0,14,0" />
+                <TextBlock VerticalAlignment="Center">
+                    <Hyperlink Style="{StaticResource BilibiliLinkStyle}"
+                               ToolTip="打开作者 B 站：蓝若惜miss"
+                               Click="AuthorBilibili_OnClick">Bilibili@蓝若惜miss</Hyperlink>
+                </TextBlock>
+            </StackPanel>
             <TextBlock x:Name="HintText" Text="Ctrl/Shift 多选后可加入追踪 · 双击切换完成状态 · 右键设置状态" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
-            <TextBlock x:Name="ErrorText" DockPanel.Dock="Right" Foreground="{DynamicResource ErrorBrush}" VerticalAlignment="Center" />
         </DockPanel>
         </Grid>
 

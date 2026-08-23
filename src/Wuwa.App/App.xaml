@@ -27,6 +27,17 @@
         </Style>
         <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /></Style>
         <Style TargetType="Label"><Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
+        <Style x:Key="BilibiliLinkStyle" TargetType="{x:Type Hyperlink}">
+            <Setter Property="Foreground" Value="#00AEEC" />
+            <Setter Property="TextDecorations" Value="None" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="#23C9FF" />
+                    <Setter Property="TextDecorations" Value="Underline" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
         <Style TargetType="Button"><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /><Setter Property="Background" Value="{DynamicResource PanelAltBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" /><Setter Property="BorderThickness" Value="1" /><Setter Property="MinHeight" Value="32" /><Setter Property="Padding" Value="14,6" /><Setter Property="Margin" Value="0,0,8,0" /></Style>
         <Style x:Key="ActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Margin" Value="0,0,8,8" />

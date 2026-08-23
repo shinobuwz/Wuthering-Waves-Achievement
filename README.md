@@ -1,5 +1,7 @@
 # 鸣潮成就管理器
 
+作者 Bilibili：[蓝若惜miss](https://www.bilibili.com/video/BV13e826hEJQ/?spm_id_from=333.1387.homepage.video_card.click)
+
 本仓库目前只维护 **Native WPF/.NET 8 版本**。项目源码、Native OCR、模型和构建脚本均位于仓库根目录，不再使用额外的 `native/` 目录层级。
 
 Python/PySide6 版本及其打包脚本、OCR 运行时已移除，后续功能和 OCR 导航只在 Native 代码中实现。

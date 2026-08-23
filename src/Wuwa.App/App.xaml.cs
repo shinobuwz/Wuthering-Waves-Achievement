@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -8,6 +9,28 @@ namespace Wuwa.App;
 
 public partial class App : Application
 {
+    public const string AuthorBilibiliUrl = "https://www.bilibili.com/video/BV13e826hEJQ/?spm_id_from=333.1387.homepage.video_card.click";
+
+    public static void OpenAuthorBilibili(Window? owner)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(AuthorBilibiliUrl) { UseShellExecute = true });
+        }
+        catch (Exception exception)
+        {
+            var message = $"无法打开作者 B 站链接。\n\n{exception.Message}";
+            if (owner is null)
+            {
+                MessageBox.Show(message, "打开 Bilibili 失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            else
+            {
+                MessageBox.Show(owner, message, "打开 Bilibili 失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+    }
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);

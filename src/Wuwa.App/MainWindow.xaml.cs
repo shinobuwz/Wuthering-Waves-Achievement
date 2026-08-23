@@ -188,6 +188,9 @@ public partial class MainWindow : Window
             _ => null
         });
 
+    private void AuthorBilibili_OnClick(object sender, RoutedEventArgs e) =>
+        App.OpenAuthorBilibili(this);
+
     private void ActionHelp_OnClick(object sender, RoutedEventArgs e)
     {
         var section = (sender as FrameworkElement)?.Tag?.ToString();
