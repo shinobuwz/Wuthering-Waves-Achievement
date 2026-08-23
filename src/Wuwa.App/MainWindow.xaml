@@ -119,9 +119,11 @@
                                 <Button x:Name="OcrHelpButton" AutomationProperties.AutomationId="OcrHelpButton" Content="?" Tag="ocr" ToolTip="查看 OCR 区域说明" Click="ActionHelp_OnClick" Width="24" MinWidth="24" Height="24" MinHeight="24" Padding="0" Margin="0" HorizontalAlignment="Right" />
                             </Grid>
                             <WrapPanel>
-                                <Button x:Name="OcrScanButton" AutomationProperties.AutomationId="OcrScanButton" Content="自动扫描当前分类" Click="OcrScan_OnClick" />
-                                <Button x:Name="OcrFullScanButton" AutomationProperties.AutomationId="OcrFullScanButton" Content="全量扫描所有分类" Click="OcrFullScan_OnClick" />
-                                <Button x:Name="OcrSearchSyncButton" AutomationProperties.AutomationId="OcrSearchSyncButton" Content="自动校验未完成成就" ToolTip="逐条搜索未完成成就，识别右侧结果后写入已完成状态；Ctrl+Shift+F12 取消，Ctrl+Alt+F12 强制中止" Click="OcrSearchSync_OnClick" />
+                                <Button x:Name="OcrWorkbenchButton" AutomationProperties.AutomationId="OcrWorkbenchButton" Content="打开 OCR 工具" ToolTip="集中管理扫描、翻页校准和已扫描分类记录" Click="OcrWorkbench_OnClick" />
+                                <Button x:Name="OcrScanButton" AutomationProperties.AutomationId="OcrScanButton" Content="自动扫描当前分类" Click="OcrScan_OnClick" Visibility="Collapsed" />
+                                <Button x:Name="OcrFullScanButton" AutomationProperties.AutomationId="OcrFullScanButton" Content="全量扫描所有分类" Click="OcrFullScan_OnClick" Visibility="Collapsed" />
+                                <Button x:Name="OcrSearchSyncButton" AutomationProperties.AutomationId="OcrSearchSyncButton" Content="自动校验未完成成就" ToolTip="逐条搜索未完成成就，识别右侧结果后写入已完成状态；Ctrl+Shift+F12 取消，Ctrl+Alt+F12 强制中止" Click="OcrSearchSync_OnClick" Visibility="Collapsed" />
+                                <Button x:Name="OcrPagingSettingsButton" AutomationProperties.AutomationId="OcrPagingSettingsButton" Content="翻页设置" ToolTip="切换滚轮/拖动方式，设置距离并自动校准当前机器" Click="OcrPagingSettings_OnClick" Visibility="Collapsed" />
                                 <Button x:Name="OcrNavigationDebugButton" AutomationProperties.AutomationId="OcrNavigationDebugButton" Content="DEBUG：测试分类切换" Click="OcrNavigationDebug_OnClick" Visibility="Collapsed" />
                             </WrapPanel>
                         </StackPanel>
