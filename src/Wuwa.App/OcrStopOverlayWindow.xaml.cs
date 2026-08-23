@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using Wuwa.Core;
@@ -11,14 +12,28 @@ public partial class OcrStopOverlayWindow : Window
     private const uint SetWindowPosNoSize = 0x0001;
     private const uint SetWindowPosNoActivate = 0x0010;
     private const uint SetWindowPosShowWindow = 0x0040;
+    private const int WindowMessageMouseActivate = 0x0021;
+    private const int MouseActivateNoActivate = 3;
     private static readonly IntPtr HwndTopmost = new(-1);
-    private readonly Action _forceStop;
+    private readonly Action _requestStop;
+    private bool _stopRequested;
 
-    public OcrStopOverlayWindow(Action forceStop)
+    public OcrStopOverlayWindow(Action requestStop)
     {
-        _forceStop = forceStop ?? throw new ArgumentNullException(nameof(forceStop));
+        _requestStop = requestStop ?? throw new ArgumentNullException(nameof(requestStop));
         InitializeComponent();
-        SourceInitialized += (_, _) => EnsureTopmost();
+        SourceInitialized += (_, _) =>
+        {
+            EnsureTopmost();
+            HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(WindowHook);
+        };
+    }
+
+    public void ResetStopState()
+    {
+        _stopRequested = false;
+        StopButton.IsEnabled = true;
+        StopButton.Content = "停止扫描";
     }
 
     public void PositionAt(GameWindowScreenBounds gameBounds)
@@ -62,7 +77,29 @@ public partial class OcrStopOverlayWindow : Window
             SetWindowPosNoSize | SetWindowPosNoActivate | SetWindowPosShowWindow);
     }
 
-    private void Stop_OnClick(object sender, RoutedEventArgs e) => _forceStop();
+    private void Stop_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        if (_stopRequested) return;
+        _stopRequested = true;
+        StopButton.IsEnabled = false;
+        StopButton.Content = "正在停止…";
+        _requestStop();
+    }
+
+    private static IntPtr WindowHook(
+        IntPtr hwnd,
+        int message,
+        IntPtr wParam,
+        IntPtr lParam,
+        ref bool handled)
+    {
+        if (message != WindowMessageMouseActivate) return IntPtr.Zero;
+        // Keep the game focused without discarding the mouse-down message. This lets
+        // the overlay button react reliably even though the window is shown inactive.
+        handled = true;
+        return new IntPtr(MouseActivateNoActivate);
+    }
 
     private static partial class NativeMethods
     {

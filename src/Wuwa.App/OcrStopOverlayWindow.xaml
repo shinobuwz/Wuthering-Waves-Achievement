@@ -41,14 +41,16 @@
                            FontSize="11"
                            Margin="0,3,0,0" />
             </StackPanel>
-            <Button Grid.Row="2"
-                    Content="立即停止"
-                    Click="Stop_OnClick"
+            <Button x:Name="StopButton"
+                    Grid.Row="2"
+                    Content="停止扫描"
+                    PreviewMouseLeftButtonDown="Stop_OnPreviewMouseLeftButtonDown"
                     HorizontalAlignment="Right"
-                    MinWidth="86"
-                    MinHeight="28"
-                    Padding="10,4"
-                    Margin="0" />
+                    MinWidth="96"
+                    MinHeight="32"
+                    Padding="12,4"
+                    Margin="0"
+                    Cursor="Hand" />
         </Grid>
     </Border>
 </Window>
