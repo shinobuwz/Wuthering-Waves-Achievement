@@ -14,7 +14,12 @@ public sealed class OcrPagingTests
             WheelEventIntervalMilliseconds: 140,
             AutoCalibrate: false,
             MinimumSettleMilliseconds: 240,
-            MaximumSettleMilliseconds: 3600);
+            MaximumSettleMilliseconds: 3600,
+            TextFieldFocusSettleMilliseconds: 410,
+            ModifierSettleMilliseconds: 65,
+            KeyPressMilliseconds: 45,
+            SelectAllSettleMilliseconds: 230,
+            ClipboardPasteSettleMilliseconds: 540);
 
         var settings = new Dictionary<string, string>
         {
@@ -28,6 +33,11 @@ public sealed class OcrPagingTests
         Assert.IsFalse(parsed.AutoCalibrate);
         Assert.AreEqual(240, parsed.MinimumSettleMilliseconds);
         Assert.AreEqual(3600, parsed.MaximumSettleMilliseconds);
+        Assert.AreEqual(410, parsed.TextFieldFocusSettleMilliseconds);
+        Assert.AreEqual(65, parsed.ModifierSettleMilliseconds);
+        Assert.AreEqual(45, parsed.KeyPressMilliseconds);
+        Assert.AreEqual(230, parsed.SelectAllSettleMilliseconds);
+        Assert.AreEqual(540, parsed.ClipboardPasteSettleMilliseconds);
     }
 
     [TestMethod]
@@ -40,6 +50,39 @@ public sealed class OcrPagingTests
 
         Assert.AreEqual(OcrPagingOptions.DefaultWheelDistance, parsed.WheelDistance);
         Assert.AreEqual(OcrPagingOptions.DefaultSecondaryWheelDistance, parsed.SecondaryWheelDistance);
+    }
+
+    [TestMethod]
+    public void PagingOptions_OlderJsonUsesSearchInputTimingDefaults()
+    {
+        var parsed = OcrPagingOptions.FromSettings(new Dictionary<string, string>
+        {
+            [OcrPagingOptions.SettingKey] = "{\"wheelDistance\":2800,\"secondaryWheelDistance\":720}"
+        });
+
+        var timing = parsed.GetTextInputTiming();
+        Assert.AreEqual(OcrTextInputTiming.DefaultTextFieldFocusSettleMilliseconds, timing.TextFieldFocusSettleMilliseconds);
+        Assert.AreEqual(OcrTextInputTiming.DefaultModifierSettleMilliseconds, timing.ModifierSettleMilliseconds);
+        Assert.AreEqual(OcrTextInputTiming.DefaultKeyPressMilliseconds, timing.KeyPressMilliseconds);
+        Assert.AreEqual(OcrTextInputTiming.DefaultSelectAllSettleMilliseconds, timing.SelectAllSettleMilliseconds);
+        Assert.AreEqual(OcrTextInputTiming.DefaultClipboardPasteSettleMilliseconds, timing.ClipboardPasteSettleMilliseconds);
+    }
+
+    [TestMethod]
+    public void PagingOptions_SearchInputTimingNormalizesInvalidValues()
+    {
+        var timing = new OcrPagingOptions(
+            TextFieldFocusSettleMilliseconds: 9000,
+            ModifierSettleMilliseconds: 1,
+            KeyPressMilliseconds: -10,
+            SelectAllSettleMilliseconds: 5000,
+            ClipboardPasteSettleMilliseconds: 1).GetTextInputTiming();
+
+        Assert.AreEqual(2000, timing.TextFieldFocusSettleMilliseconds);
+        Assert.AreEqual(10, timing.ModifierSettleMilliseconds);
+        Assert.AreEqual(OcrTextInputTiming.DefaultKeyPressMilliseconds, timing.KeyPressMilliseconds);
+        Assert.AreEqual(1000, timing.SelectAllSettleMilliseconds);
+        Assert.AreEqual(50, timing.ClipboardPasteSettleMilliseconds);
     }
 
     [TestMethod]

@@ -11,7 +11,6 @@ public partial class OcrWorkbenchView : UserControl
     private Action? _scanCurrent;
     private Action? _scanFull;
     private Action? _searchSync;
-    private Action? _testSearchInput;
     private Action? _openPagingSettings;
     private Action? _back;
     private Func<bool, Task<bool>>? _setSkipPreviouslyScanned;
@@ -53,7 +52,6 @@ public partial class OcrWorkbenchView : UserControl
         Action scanCurrent,
         Action scanFull,
         Action searchSync,
-        Action testSearchInput,
         Action openPagingSettings,
         Action back,
         Func<bool, Task<bool>> setSkipPreviouslyScanned,
@@ -64,7 +62,6 @@ public partial class OcrWorkbenchView : UserControl
         _scanCurrent = scanCurrent ?? throw new ArgumentNullException(nameof(scanCurrent));
         _scanFull = scanFull ?? throw new ArgumentNullException(nameof(scanFull));
         _searchSync = searchSync ?? throw new ArgumentNullException(nameof(searchSync));
-        _testSearchInput = testSearchInput ?? throw new ArgumentNullException(nameof(testSearchInput));
         _openPagingSettings = openPagingSettings ?? throw new ArgumentNullException(nameof(openPagingSettings));
         _back = back ?? throw new ArgumentNullException(nameof(back));
         _setSkipPreviouslyScanned = setSkipPreviouslyScanned ?? throw new ArgumentNullException(nameof(setSkipPreviouslyScanned));
@@ -163,7 +160,6 @@ public partial class OcrWorkbenchView : UserControl
     private void ScanCurrent_OnClick(object sender, RoutedEventArgs e) => _scanCurrent?.Invoke();
     private void ScanFull_OnClick(object sender, RoutedEventArgs e) => _scanFull?.Invoke();
     private void SearchSync_OnClick(object sender, RoutedEventArgs e) => _searchSync?.Invoke();
-    private void TestSearchInput_OnClick(object sender, RoutedEventArgs e) => _testSearchInput?.Invoke();
     private void PagingSettings_OnClick(object sender, RoutedEventArgs e) => _openPagingSettings?.Invoke();
     private void Back_OnClick(object sender, RoutedEventArgs e) => _back?.Invoke();
     private void ResultsView_OnChecked(object sender, RoutedEventArgs e) => ShowWorkbenchPage(showResults: true);

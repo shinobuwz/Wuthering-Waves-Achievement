@@ -85,7 +85,6 @@ public partial class MainWindow : Window
             scanCurrent: () => OcrScan_OnClick(OcrScanButton, new RoutedEventArgs()),
             scanFull: () => OcrFullScan_OnClick(OcrFullScanButton, new RoutedEventArgs()),
             searchSync: () => OcrSearchSync_OnClick(OcrSearchSyncButton, new RoutedEventArgs()),
-            testSearchInput: () => OcrSearchInputTest_OnClick(OcrSearchSyncButton, new RoutedEventArgs()),
             openPagingSettings: () => OcrPagingSettings_OnClick(OcrPagingSettingsButton, new RoutedEventArgs()),
             back: ShowWorkspacePage,
             setSkipPreviouslyScanned: SetSkipPreviouslyScannedAsync,
@@ -199,7 +198,7 @@ public partial class MainWindow : Window
                 "追踪选中成就：将列表中选中的未完成成就加入追踪。\n取消追踪选中：取消当前选中成就的追踪，不改变完成状态。\n打开追踪浮窗：打开置顶追踪窗口，可在游戏旁查看追踪项目。"),
             "ocr" => (
                 "OCR 扫描区域",
-                "打开 OCR 工具：切换到主窗口内的 OCR 工作台页面，可随时返回成就工作区。\n工作台集中提供当前分类扫描、全量扫描、未完成成就增量扫描、搜索框输入测试、结果筛选、Tag 跳过管理和翻页校准。\n增量扫描的高置信完成结果会立即入库；搜索框输入测试不会执行搜索或修改进度。\n全量扫描默认跳过已标记的一级 / 二级 Tag 组合，也可以关闭跳过。\n取消：右上角“停止扫描”或 Ctrl+Shift+F12。强制中止：Ctrl+Alt+F12。"),
+                "打开 OCR 工具：切换到主窗口内的 OCR 工作台页面，可随时返回成就工作区。\n工作台集中提供当前分类扫描、全量扫描、未完成成就增量扫描、结果筛选、Tag 跳过管理和 OCR 校准设置。\n搜索框输入测试及聚焦、按键、全选和粘贴等待参数位于“校准与输入设置”中；测试不会执行搜索或修改进度。\n增量扫描的高置信完成结果会立即入库。全量扫描默认跳过已标记的一级 / 二级 Tag 组合，也可以关闭跳过。\n取消：右上角“停止扫描”或 Ctrl+Shift+F12。强制中止：Ctrl+Alt+F12。"),
             "data" => (
                 "数据管理区域",
                 "导入旧版进度：导入旧版本工具生成的进度文件。\n导入 JSON/Excel：从 JSON 或 Excel 恢复成就数据。\n导出 JSON/Excel：备份当前成就和进度。\n同步 Wiki：从 Wiki 获取最新成就数据并合并。"),
@@ -1129,7 +1128,7 @@ public partial class MainWindow : Window
     {
         if (_ocrCancellation is not null)
         {
-            HintText.Text = "请先结束当前 OCR 操作，再修改翻页设置。";
+            HintText.Text = "请先结束当前 OCR 操作，再修改校准与输入设置。";
             return;
         }
 
@@ -1138,8 +1137,13 @@ public partial class MainWindow : Window
         _ocrPagingOptions = dialog.AcceptedOptions.Normalize();
         _ocrPagingOptionsDirty = true;
         if (!await PersistOcrPagingOptionsAsync(showError: true)) return;
-        HintText.Text = "OCR 翻页设置已保存，成就列表和二级 Tag 列表统一使用鼠标滚轮。";
+        HintText.Text = "OCR 校准与输入设置已保存。";
         if (dialog.CalibrationTarget == OcrPagingCalibrationTarget.None) return;
+        if (dialog.CalibrationTarget == OcrPagingCalibrationTarget.SearchInput)
+        {
+            OcrSearchInputTest_OnClick(OcrPagingSettingsButton, new RoutedEventArgs());
+            return;
+        }
         var calibrationSurface = dialog.CalibrationTarget == OcrPagingCalibrationTarget.SecondaryTags
             ? OcrPagingSurface.SecondaryTags
             : OcrPagingSurface.AchievementList;
@@ -1489,8 +1493,8 @@ public partial class MainWindow : Window
         var result = await _workspace.SetSettingAsync(OcrPagingOptions.SettingKey, _ocrPagingOptions.ToSettingValue(), CancellationToken.None);
         if (!result.IsSuccess)
         {
-            NativeOcrDiagnostics.Write($"OCR paging settings save failed: {result.Error?.Message}");
-            if (showError) ShowOcrError(result.Error?.Message ?? "OCR 翻页设置保存失败。", "保存翻页设置失败");
+            NativeOcrDiagnostics.Write($"OCR calibration settings save failed: {result.Error?.Message}");
+            if (showError) ShowOcrError(result.Error?.Message ?? "OCR 校准与输入设置保存失败。", "保存 OCR 设置失败");
             return false;
         }
 
@@ -2417,12 +2421,14 @@ public partial class MainWindow : Window
             var inputY = (int)Math.Round(gameWindow.ClientHeight * SearchControlYRatio);
             var clearX = (int)Math.Round(gameWindow.ClientWidth * SearchButtonXRatio);
             var clearY = inputY;
+            var inputTiming = _ocrPagingOptions.GetTextInputTiming();
             var elapsed = Stopwatch.StartNew();
             var inputAccepted = await capture.ReplaceTextAsync(
                 gameWindow,
                 inputX,
                 inputY,
                 testRow.Name,
+                inputTiming,
                 _ocrCancellation.Token);
             var gameFocused = inputAccepted && capture.IsForegroundWindow(gameWindow.Handle);
             var verification = new SearchInputVerificationResult(false, string.Empty, 0, 0);
@@ -2478,8 +2484,8 @@ public partial class MainWindow : Window
                     : verification.IsVerified && additionalDelay == 0
                         ? "功能正常：当前聚焦和粘贴间隔足够。"
                         : verification.IsVerified
-                            ? $"粘贴成功，但需要额外等待约 {additionalDelay} ms 才能稳定识别；建议增加粘贴后间隔。"
-                            : "未能确认搜索框中的文字：可能需要增加聚焦/粘贴间隔，或调整搜索框 OCR 区域。";
+                            ? $"粘贴成功，但需要额外等待约 {additionalDelay} ms 才能稳定识别；建议在“校准与输入设置”中增加 Ctrl+V 后等待。"
+                            : "未能确认搜索框中的文字：可在“校准与输入设置”中增加聚焦或 Ctrl+V 后等待，或检查搜索框 OCR 区域。";
             var details =
                 $"测试文本：{testRow.Name}\n" +
                 $"输入调用：{(inputAccepted ? "成功" : "失败")}\n" +
@@ -2487,10 +2493,15 @@ public partial class MainWindow : Window
                 $"OCR 文字：{(string.IsNullOrWhiteSpace(verification.RecognizedText) ? "<空>" : verification.RecognizedText)}\n" +
                 $"OCR 分数：{verification.OcrScore:0.000}\n" +
                 $"名称匹配：{verification.MatchConfidence:0.000}\n" +
+                $"聚焦等待：{inputTiming.TextFieldFocusSettleMilliseconds} ms\n" +
+                $"Ctrl+A 后等待：{inputTiming.SelectAllSettleMilliseconds} ms\n" +
+                $"Ctrl+V 后等待：{inputTiming.ClipboardPasteSettleMilliseconds} ms\n" +
                 $"总耗时：{elapsed.ElapsedMilliseconds} ms\n\n" +
                 conclusion;
             NativeOcrDiagnostics.Write(
-                $"SearchSync input test expected={testRow.Name} accepted={inputAccepted} gameFocused={gameFocused} verified={verification.IsVerified} additionalDelay={additionalDelay} elapsedMs={elapsed.ElapsedMilliseconds}");
+                $"SearchSync input test expected={testRow.Name} accepted={inputAccepted} gameFocused={gameFocused} verified={verification.IsVerified} additionalDelay={additionalDelay} " +
+                $"focusDelay={inputTiming.TextFieldFocusSettleMilliseconds} modifierDelay={inputTiming.ModifierSettleMilliseconds} keyPressDelay={inputTiming.KeyPressMilliseconds} " +
+                $"selectAllDelay={inputTiming.SelectAllSettleMilliseconds} pasteDelay={inputTiming.ClipboardPasteSettleMilliseconds} elapsedMs={elapsed.ElapsedMilliseconds}");
             MessageBox.Show(
                 this,
                 details,
@@ -2650,7 +2661,13 @@ public partial class MainWindow : Window
                     var inputY = (int)Math.Round(currentWindow.ClientHeight * SearchControlYRatio);
                     var searchX = (int)Math.Round(currentWindow.ClientWidth * SearchButtonXRatio);
                     var searchY = inputY;
-                    if (!await capture.ReplaceTextAsync(currentWindow, inputX, inputY, row.Name, _ocrCancellation.Token))
+                    if (!await capture.ReplaceTextAsync(
+                            currentWindow,
+                            inputX,
+                            inputY,
+                            row.Name,
+                            _ocrPagingOptions.GetTextInputTiming(),
+                            _ocrCancellation.Token))
                     {
                         failures.Add($"{row.Name}：搜索框输入失败");
                         continue;

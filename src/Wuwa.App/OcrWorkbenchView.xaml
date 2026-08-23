@@ -163,7 +163,6 @@
                             <Button Content="扫描当前分类" Click="ScanCurrent_OnClick" MinWidth="120" />
                             <Button Content="全量扫描所有分类" Click="ScanFull_OnClick" MinWidth="142" />
                             <Button Content="增量扫描未完成成就" Click="SearchSync_OnClick" MinWidth="156" />
-                            <Button AutomationProperties.AutomationId="OcrSearchInputTestButton" Content="测试搜索框输入" ToolTip="检测游戏窗口聚焦、中文粘贴、搜索框 OCR 和额外等待时间，不执行搜索或修改进度" Click="TestSearchInput_OnClick" MinWidth="130" />
                         </WrapPanel>
                     </StackPanel>
 
@@ -196,13 +195,13 @@
                     <Border Grid.Column="3" Width="1" Background="{DynamicResource BorderBrush}" />
 
                     <StackPanel Grid.Column="4" Margin="14,0,0,0">
-                        <TextBlock Text="翻页与跳过"
+                        <TextBlock Text="校准与跳过"
                                    Foreground="{DynamicResource AccentBrush}"
                                    FontSize="11"
                                    FontWeight="SemiBold"
                                    Margin="0,0,0,7" />
                         <WrapPanel>
-                            <Button Content="翻页与校准设置" Click="PagingSettings_OnClick" MinWidth="128" />
+                            <Button AutomationProperties.AutomationId="OcrCalibrationSettingsButton" Content="校准与输入设置" ToolTip="调整翻页、停稳检测和搜索框输入间隔，并运行输入测试" Click="PagingSettings_OnClick" MinWidth="128" />
                             <CheckBox x:Name="SkipScannedCheckBox"
                                       AutomationProperties.AutomationId="OcrSkipMarkedTagsCheckBox"
                                       Style="{StaticResource WorkbenchCheckBoxStyle}"

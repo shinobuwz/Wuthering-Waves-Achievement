@@ -15,11 +15,6 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
     // Use client coordinates so window placement and multi-monitor desktop centers do not change the target.
     private const double AchievementListScrollXRatio = 0.62;
     private const int WheelChunkDistance = 160;
-    private const int TextFieldFocusSettleMilliseconds = 220;
-    private const int ModifierSettleMilliseconds = 40;
-    private const int KeyPressMilliseconds = 30;
-    private const int SelectAllSettleMilliseconds = 160;
-    private const int ClipboardPasteSettleMilliseconds = 320;
 
     public Task<GameWindowCandidate> FindGameWindowAsync(
         IReadOnlyCollection<string> processNames,
@@ -186,13 +181,25 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         int clientX,
         int clientY,
         string text,
+        CancellationToken cancellationToken = default) =>
+        ReplaceTextAsync(window, clientX, clientY, text, new OcrTextInputTiming(), cancellationToken);
+
+    public Task<bool> ReplaceTextAsync(
+        GameWindowCandidate window,
+        int clientX,
+        int clientY,
+        string text,
+        OcrTextInputTiming timing,
         CancellationToken cancellationToken = default)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Game-window input currently supports Windows only.");
         if (window.Handle == 0) throw new ArgumentException("A valid window handle is required.", nameof(window));
         if (text is null) throw new ArgumentNullException(nameof(text));
-        NativeOcrDiagnostics.Write($"ReplaceText requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} client={clientX},{clientY} length={text.Length} method=clipboard-paste");
-        return Task.Run(() => ReplaceText(window, clientX, clientY, text, cancellationToken), cancellationToken);
+        timing = (timing ?? throw new ArgumentNullException(nameof(timing))).Normalize();
+        NativeOcrDiagnostics.Write(
+            $"ReplaceText requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} client={clientX},{clientY} length={text.Length} method=clipboard-paste " +
+            $"focus={timing.TextFieldFocusSettleMilliseconds}ms modifier={timing.ModifierSettleMilliseconds}ms key={timing.KeyPressMilliseconds}ms selectAll={timing.SelectAllSettleMilliseconds}ms paste={timing.ClipboardPasteSettleMilliseconds}ms");
+        return Task.Run(() => ReplaceText(window, clientX, clientY, text, timing, cancellationToken), cancellationToken);
     }
 
     private static void ValidateScrollArguments(GameWindowCandidate window, int scrollDistance, int eventIntervalMilliseconds)
@@ -325,6 +332,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         int clientX,
         int clientY,
         string text,
+        OcrTextInputTiming timing,
         CancellationToken cancellationToken)
     {
         // The game's text field accepts clipboard paste reliably, while
@@ -332,17 +340,20 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         // by the game's Slate/IME text widget for Chinese achievement names.
         if (!SetClipboardUnicodeText(text)) return false;
         if (!ClickWindow(window, clientX, clientY, cancellationToken)) return false;
-        WaitForInput(TextFieldFocusSettleMilliseconds, cancellationToken);
+        WaitForInput(timing.TextFieldFocusSettleMilliseconds, cancellationToken);
 
-        if (!SendPacedKeyChord(NativeMethods.VirtualKeyA, cancellationToken)) return false;
-        WaitForInput(SelectAllSettleMilliseconds, cancellationToken);
-        if (!SendPacedKeyChord(NativeMethods.VirtualKeyV, cancellationToken)) return false;
-        WaitForInput(ClipboardPasteSettleMilliseconds, cancellationToken);
+        if (!SendPacedKeyChord(NativeMethods.VirtualKeyA, timing, cancellationToken)) return false;
+        WaitForInput(timing.SelectAllSettleMilliseconds, cancellationToken);
+        if (!SendPacedKeyChord(NativeMethods.VirtualKeyV, timing, cancellationToken)) return false;
+        WaitForInput(timing.ClipboardPasteSettleMilliseconds, cancellationToken);
         NativeOcrDiagnostics.Write($"ReplaceText paste completed text={text}");
         return true;
     }
 
-    private static bool SendPacedKeyChord(ushort key, CancellationToken cancellationToken)
+    private static bool SendPacedKeyChord(
+        ushort key,
+        OcrTextInputTiming timing,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var controlPressed = false;
@@ -351,15 +362,15 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         {
             if (!SendKeyEvent(NativeMethods.VirtualKeyControl, keyUp: false)) return false;
             controlPressed = true;
-            Thread.Sleep(ModifierSettleMilliseconds);
+            WaitForInput(timing.ModifierSettleMilliseconds, cancellationToken);
 
             if (!SendKeyEvent(key, keyUp: false)) return false;
             keyPressed = true;
-            Thread.Sleep(KeyPressMilliseconds);
+            WaitForInput(timing.KeyPressMilliseconds, cancellationToken);
 
             if (!SendKeyEvent(key, keyUp: true)) return false;
             keyPressed = false;
-            Thread.Sleep(ModifierSettleMilliseconds);
+            WaitForInput(timing.ModifierSettleMilliseconds, cancellationToken);
 
             if (!SendKeyEvent(NativeMethods.VirtualKeyControl, keyUp: true)) return false;
             controlPressed = false;

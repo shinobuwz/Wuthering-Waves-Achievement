@@ -2,6 +2,32 @@ using System.Text.Json;
 
 namespace Wuwa.Core;
 
+public sealed record OcrTextInputTiming(
+    int TextFieldFocusSettleMilliseconds = 220,
+    int ModifierSettleMilliseconds = 40,
+    int KeyPressMilliseconds = 30,
+    int SelectAllSettleMilliseconds = 160,
+    int ClipboardPasteSettleMilliseconds = 320)
+{
+    public const int DefaultTextFieldFocusSettleMilliseconds = 220;
+    public const int DefaultModifierSettleMilliseconds = 40;
+    public const int DefaultKeyPressMilliseconds = 30;
+    public const int DefaultSelectAllSettleMilliseconds = 160;
+    public const int DefaultClipboardPasteSettleMilliseconds = 320;
+
+    public OcrTextInputTiming Normalize() => this with
+    {
+        TextFieldFocusSettleMilliseconds = NormalizeOrDefault(TextFieldFocusSettleMilliseconds, DefaultTextFieldFocusSettleMilliseconds, 50, 2000),
+        ModifierSettleMilliseconds = NormalizeOrDefault(ModifierSettleMilliseconds, DefaultModifierSettleMilliseconds, 10, 500),
+        KeyPressMilliseconds = NormalizeOrDefault(KeyPressMilliseconds, DefaultKeyPressMilliseconds, 10, 300),
+        SelectAllSettleMilliseconds = NormalizeOrDefault(SelectAllSettleMilliseconds, DefaultSelectAllSettleMilliseconds, 20, 1000),
+        ClipboardPasteSettleMilliseconds = NormalizeOrDefault(ClipboardPasteSettleMilliseconds, DefaultClipboardPasteSettleMilliseconds, 50, 2500)
+    };
+
+    private static int NormalizeOrDefault(int value, int defaultValue, int minimum, int maximum) =>
+        value <= 0 ? defaultValue : Math.Clamp(value, minimum, maximum);
+}
+
 public sealed record OcrPagingOptions(
     int WheelDistance = 2400,
     int SecondaryWheelDistance = 640,
@@ -14,7 +40,12 @@ public sealed record OcrPagingOptions(
     int? LastForwardPixels = null,
     int? LastReversePixels = null,
     int? LastSecondaryPixels = null,
-    DateTimeOffset? CalibratedAtUtc = null)
+    DateTimeOffset? CalibratedAtUtc = null,
+    int TextFieldFocusSettleMilliseconds = OcrTextInputTiming.DefaultTextFieldFocusSettleMilliseconds,
+    int ModifierSettleMilliseconds = OcrTextInputTiming.DefaultModifierSettleMilliseconds,
+    int KeyPressMilliseconds = OcrTextInputTiming.DefaultKeyPressMilliseconds,
+    int SelectAllSettleMilliseconds = OcrTextInputTiming.DefaultSelectAllSettleMilliseconds,
+    int ClipboardPasteSettleMilliseconds = OcrTextInputTiming.DefaultClipboardPasteSettleMilliseconds)
 {
     public const string SettingKey = "ocr.paging";
     // Historical native wheel values were -160 × 15 for achievement pages and
@@ -48,17 +79,33 @@ public sealed record OcrPagingOptions(
 
     public string ToSettingValue() => JsonSerializer.Serialize(Normalize(), JsonOptions);
 
-    public OcrPagingOptions Normalize() => this with
+    public OcrPagingOptions Normalize()
     {
-        WheelDistance = Math.Clamp(Math.Abs(WheelDistance), 120, 12000),
-        SecondaryWheelDistance = Math.Clamp(Math.Abs(SecondaryWheelDistance), 120, MaximumSecondaryWheelDistance),
-        WheelEventIntervalMilliseconds = Math.Clamp(WheelEventIntervalMilliseconds, 20, 300),
-        MinimumSettleMilliseconds = Math.Clamp(MinimumSettleMilliseconds, 50, 1500),
-        MaximumSettleMilliseconds = Math.Clamp(
-            MaximumSettleMilliseconds,
-            Math.Max(800, Math.Clamp(MinimumSettleMilliseconds, 50, 1500) + 300),
-            6000)
-    };
+        var inputTiming = GetTextInputTiming();
+        return this with
+        {
+            WheelDistance = Math.Clamp(Math.Abs(WheelDistance), 120, 12000),
+            SecondaryWheelDistance = Math.Clamp(Math.Abs(SecondaryWheelDistance), 120, MaximumSecondaryWheelDistance),
+            WheelEventIntervalMilliseconds = Math.Clamp(WheelEventIntervalMilliseconds, 20, 300),
+            MinimumSettleMilliseconds = Math.Clamp(MinimumSettleMilliseconds, 50, 1500),
+            MaximumSettleMilliseconds = Math.Clamp(
+                MaximumSettleMilliseconds,
+                Math.Max(800, Math.Clamp(MinimumSettleMilliseconds, 50, 1500) + 300),
+                6000),
+            TextFieldFocusSettleMilliseconds = inputTiming.TextFieldFocusSettleMilliseconds,
+            ModifierSettleMilliseconds = inputTiming.ModifierSettleMilliseconds,
+            KeyPressMilliseconds = inputTiming.KeyPressMilliseconds,
+            SelectAllSettleMilliseconds = inputTiming.SelectAllSettleMilliseconds,
+            ClipboardPasteSettleMilliseconds = inputTiming.ClipboardPasteSettleMilliseconds
+        };
+    }
+
+    public OcrTextInputTiming GetTextInputTiming() => new OcrTextInputTiming(
+        TextFieldFocusSettleMilliseconds,
+        ModifierSettleMilliseconds,
+        KeyPressMilliseconds,
+        SelectAllSettleMilliseconds,
+        ClipboardPasteSettleMilliseconds).Normalize();
 
     public bool NeedsCalibration(int width, int height) =>
         AutoCalibrate &&

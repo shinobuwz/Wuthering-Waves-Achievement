@@ -1,11 +1,11 @@
 <Window x:Class="Wuwa.App.OcrPagingSettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="OCR 翻页设置"
-        Width="540"
-        Height="620"
-        MinWidth="520"
-        MinHeight="590"
+        Title="OCR 校准与输入设置"
+        Width="700"
+        Height="640"
+        MinWidth="680"
+        MinHeight="620"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource WindowBrush}"
@@ -13,94 +13,147 @@
     <Grid Margin="22">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <StackPanel>
-            <TextBlock Text="OCR 翻页设置" FontSize="22" FontWeight="SemiBold" />
-            <TextBlock Text="OCR 统一使用鼠标滚轮。成就列表与二级 Tag 列表分别保存距离，并在扫描时根据画面和 OCR 重叠结果自动调整。"
+            <TextBlock Text="OCR 校准与输入设置" FontSize="22" FontWeight="SemiBold" />
+            <TextBlock Text="集中调整翻页校准、画面停稳检测，以及增量扫描使用的搜索框聚焦和粘贴间隔。"
                        Foreground="{DynamicResource MutedTextBrush}"
                        TextWrapping="Wrap"
                        Margin="0,6,0,0" />
         </StackPanel>
 
-        <Border Grid.Row="1"
-                Background="{DynamicResource PanelBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1"
-                CornerRadius="7"
-                Padding="16"
-                Margin="0,18,0,12">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="155" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+        <TabControl Grid.Row="1" Margin="0,18,0,12">
+            <TabItem Header="翻页与停稳">
+                <Grid Margin="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="178" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="成就列表滚轮总距离" VerticalAlignment="Center" Margin="0,0,12,10" />
-                <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
-                    <TextBox x:Name="WheelDistanceBox" />
-                    <TextBlock Text="默认 2400；校准目标为一页 4 个成就中保留 1 个旧成就、翻出 3 个新成就。"
-                               Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,4,0,0" />
-                </StackPanel>
+                    <TextBlock Grid.Row="0" Text="成就列表滚轮总距离" VerticalAlignment="Center" Margin="0,0,12,10" />
+                    <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
+                        <TextBox x:Name="WheelDistanceBox" />
+                        <TextBlock Text="默认 2400；目标为一页 4 个成就中保留 1 个旧成就、翻出 3 个新成就。"
+                                   Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,4,0,0" />
+                    </StackPanel>
 
-                <TextBlock Grid.Row="1" Text="二级 Tag 滚轮总距离" VerticalAlignment="Center" Margin="0,0,12,10" />
-                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,10">
-                    <TextBox x:Name="SecondaryWheelDistanceBox" />
-                    <TextBlock Text="默认 640；校准目标为一页 7 个 Tag 中保留 1 个旧 Tag、翻出 6 个新 Tag。"
-                               Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,4,0,0" />
-                </StackPanel>
+                    <TextBlock Grid.Row="1" Text="二级 Tag 滚轮总距离" VerticalAlignment="Center" Margin="0,0,12,10" />
+                    <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,10">
+                        <TextBox x:Name="SecondaryWheelDistanceBox" />
+                        <TextBlock Text="默认 640；目标为一页 7 个 Tag 中保留 1 个旧 Tag、翻出 6 个新 Tag。"
+                                   Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,4,0,0" />
+                    </StackPanel>
 
-                <TextBlock Grid.Row="2" Text="滚轮事件间隔（ms）" VerticalAlignment="Center" Margin="0,0,12,10" />
-                <TextBox Grid.Row="2" Grid.Column="1" x:Name="WheelIntervalBox" Margin="0,0,0,10" />
+                    <TextBlock Grid.Row="2" Text="滚轮事件间隔（ms）" VerticalAlignment="Center" Margin="0,0,12,10" />
+                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="WheelIntervalBox" Margin="0,0,0,10" />
 
-                <TextBlock Grid.Row="3" Text="停稳检测起始等待（ms）" VerticalAlignment="Center" Margin="0,0,12,10" />
-                <TextBox Grid.Row="3" Grid.Column="1" x:Name="SettleDelayBox" Margin="0,0,0,10" />
+                    <TextBlock Grid.Row="3" Text="停稳检测起始等待（ms）" VerticalAlignment="Center" Margin="0,0,12,10" />
+                    <TextBox Grid.Row="3" Grid.Column="1" x:Name="SettleDelayBox" Margin="0,0,0,10" />
 
-                <CheckBox Grid.Row="4" Grid.ColumnSpan="2"
-                          x:Name="AutoCalibrateCheckBox"
-                          Content="根据实际画面位移自动校准后续翻页距离和停稳等待"
-                          VerticalAlignment="Center" />
-            </Grid>
-        </Border>
+                    <CheckBox Grid.Row="4" Grid.ColumnSpan="2"
+                              x:Name="AutoCalibrateCheckBox"
+                              Content="根据实际画面位移自动校准后续翻页距离和停稳等待"
+                              VerticalAlignment="Center"
+                              Margin="0,0,0,12" />
 
-        <Border Grid.Row="2"
-                Background="{DynamicResource PanelAltBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1"
-                CornerRadius="6"
-                Padding="12">
-            <StackPanel>
-                <TextBlock Text="最近校准" FontWeight="SemiBold" />
-                <TextBlock x:Name="CalibrationText"
-                           Foreground="{DynamicResource MutedTextBrush}"
-                           TextWrapping="Wrap"
-                           Margin="0,5,0,0" />
-                <TextBlock Text="可分别手动校准成就列表和二级 Tag 列表。校准前请停留在游戏成就页面，并选择一个内容足够长的成就分类或二级 Tag 列表；程序会向下、向上滚动并尽量回到原位置。扫描过程中仍会继续自动微调。"
-                           Foreground="{DynamicResource MutedTextBrush}"
-                           TextWrapping="Wrap"
-                           Margin="0,9,0,0" />
-            </StackPanel>
-        </Border>
+                    <Border Grid.Row="5" Grid.ColumnSpan="2"
+                            Background="{DynamicResource PanelAltBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="最近校准" FontWeight="SemiBold" />
+                            <TextBlock x:Name="CalibrationText"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,5,0,0" />
+                            <TextBlock Text="手动校准前请停留在游戏成就页面，并选择内容足够长的成就或二级 Tag 列表。程序会向下、向上滚动并尽量回到原位置。"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,9,0,0" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
 
-        <DockPanel Grid.Row="3" Margin="0,18,0,0">
-            <TextBlock x:Name="ValidationText" Foreground="{DynamicResource ErrorBrush}" VerticalAlignment="Center" />
+            <TabItem Header="搜索框输入">
+                <Grid Margin="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="178" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="聚焦搜索框后等待（ms）" VerticalAlignment="Center" Margin="0,0,12,12" />
+                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="TextFieldFocusDelayBox" Margin="0,0,0,12" />
+
+                    <TextBlock Grid.Row="1" Text="修饰键切换间隔（ms）" VerticalAlignment="Center" Margin="0,0,12,12" />
+                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="ModifierDelayBox" Margin="0,0,0,12" />
+
+                    <TextBlock Grid.Row="2" Text="按键按下时间（ms）" VerticalAlignment="Center" Margin="0,0,12,12" />
+                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="KeyPressDelayBox" Margin="0,0,0,12" />
+
+                    <TextBlock Grid.Row="3" Text="Ctrl+A 后等待（ms）" VerticalAlignment="Center" Margin="0,0,12,12" />
+                    <TextBox Grid.Row="3" Grid.Column="1" x:Name="SelectAllDelayBox" Margin="0,0,0,12" />
+
+                    <TextBlock Grid.Row="4" Text="Ctrl+V 后等待（ms）" VerticalAlignment="Center" Margin="0,0,12,12" />
+                    <TextBox Grid.Row="4" Grid.Column="1" x:Name="ClipboardPasteDelayBox" Margin="0,0,0,12" />
+
+                    <Border Grid.Row="5" Grid.ColumnSpan="2"
+                            Background="{DynamicResource PanelAltBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="输入测试说明" FontWeight="SemiBold" />
+                            <TextBlock Text="“保存并测试搜索输入”会先保存以上参数，再使用所选成就名称（未选择时使用第一条未完成成就）测试游戏窗口聚焦、中文剪贴板粘贴和搜索框 OCR。不会点击搜索按钮，也不会修改成就进度。"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,6,0,0" />
+                            <TextBlock Text="如果测试提示需要额外等待，可优先增加 Ctrl+V 后等待；若游戏窗口未保持前台，则增加聚焦搜索框后等待。"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,7,0,0" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <DockPanel Grid.Row="2">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                 <Button Content="取消" Click="Cancel_OnClick" MinWidth="66" />
                 <Button Content="仅保存" Click="Save_OnClick" MinWidth="72" />
                 <Button Content="校准成就列表" Click="CalibrateAchievement_OnClick" MinWidth="108" />
-                <Button Content="校准二级 Tag" Click="CalibrateSecondaryTags_OnClick" MinWidth="108" Margin="0" />
+                <Button Content="校准二级 Tag" Click="CalibrateSecondaryTags_OnClick" MinWidth="108" />
+                <Button AutomationProperties.AutomationId="OcrSearchInputTestButton"
+                        Content="保存并测试搜索输入"
+                        ToolTip="保存当前间隔后运行安全输入测试，不执行搜索或修改进度"
+                        Click="TestSearchInput_OnClick"
+                        MinWidth="138"
+                        Margin="0" />
             </StackPanel>
+            <TextBlock x:Name="ValidationText" Foreground="{DynamicResource ErrorBrush}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,10,0" />
         </DockPanel>
     </Grid>
 </Window>
