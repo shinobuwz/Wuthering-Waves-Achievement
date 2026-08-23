@@ -338,6 +338,7 @@
                               VirtualizingPanel.VirtualizationMode="Recycling"
                               ScrollViewer.IsDeferredScrollingEnabled="True"
                               HeadersVisibility="Column"
+                              PreviewMouseRightButtonUp="ResultGrid_OnPreviewMouseRightButtonUp"
                               GridLinesVisibility="None"
                               Background="{DynamicResource PanelBrush}"
                               BorderBrush="{DynamicResource BorderBrush}"
@@ -530,8 +531,8 @@
                                 <TextBlock Text="3. 开始扫描区域的按钮" Style="{StaticResource HelpTitleStyle}" />
                                 <TextBlock Text="• 扫描当前分类：扫描游戏当前选中的二级 Tag 成就列表。程序会读取当前页、使用成就列表固定滚轮距离继续翻页，并在检测到重复页或列表结束后停止。适合首次测试和只更新某一个分类。" Style="{StaticResource HelpBodyStyle}" />
                                 <TextBlock Text="• 全量扫描所有分类：依次切换游戏中的一级分类，识别和遍历其二级 Tag，再扫描每个二级 Tag 下的成就列表。运行时间较长，建议先校验当前分类流程。" Style="{StaticResource HelpBodyStyle}" />
-                                <TextBlock Text="• 增量扫描未完成成就：读取本地所有“未完成”成就，逐条在游戏搜索框中搜索并识别右侧结果。明确识别为已完成、无歧义且达到置信度要求时会立即写入工作区。" Style="{StaticResource HelpBodyStyle}" />
-                                <TextBlock Text="• 当前分类和全量扫描不会直接修改进度，结果必须进入扫描结果页，经人工勾选并应用。增量扫描采用逐条立即入库，取消时此前已成功写入的结果会保留。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 增量扫描未完成成就：读取本地所有“未完成”成就，逐条在游戏搜索框中搜索并识别右侧结果。每个已处理项目都会加入扫描结果列表；无法确认状态或操作失败的项目显示为“未知”，低置信完成结果显示为“歧义”。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 当前分类、全量扫描和增量扫描都不会直接修改进度。每次扫描完成或正常中断时，下方列表都会替换为该次最新结果，仍需人工勾选并应用。" Style="{StaticResource HelpBodyStyle}" />
                             </StackPanel>
                         </Border>
 
@@ -540,7 +541,8 @@
                                 <TextBlock Text="4. 扫描结果视图" Style="{StaticResource HelpTitleStyle}" />
                                 <TextBlock Text="• 顶部统计卡依次显示结果总数、已勾选数量、识别完成、识别未完成、未匹配文字和已跳过 Tag 数量。" Style="{StaticResource HelpBodyStyle}" />
                                 <TextBlock Text="• 搜索框可按成就名称、OCR 原文或编号过滤；右侧下拉框可按状态、一级分类和二级分类过滤。" Style="{StaticResource HelpBodyStyle}" />
-                                <TextBlock Text="• “选择当前筛选”只勾选当前过滤结果中状态明确且无歧义的记录；“取消当前筛选”只取消当前过滤结果。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 新加载的扫描结果默认全部勾选。“选择当前筛选”会勾选当前全部过滤结果；“取消当前筛选”只取消当前过滤结果。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 可使用 Ctrl／Shift 多选表格行，然后右键执行“批量勾选”或“批量取消勾选”。右键未选中的行时会先切换为只选择该行。" Style="{StaticResource HelpBodyStyle}" />
                                 <TextBlock Text="• 表格中的“应用”复选框决定该记录是否写入。状态和 OCR 原文不一致、置信度偏低或名称明显错误时，请取消勾选。" Style="{StaticResource HelpBodyStyle}" />
                                 <TextBlock Text="• “应用勾选结果”才会真正修改成就进度。应用后会刷新主页面修订号和统计数据；未勾选及未匹配文字不会写入。" Style="{StaticResource HelpBodyStyle}" />
                             </StackPanel>
@@ -571,7 +573,7 @@
                             <StackPanel>
                                 <TextBlock Text="7. 停止、保留结果与强制中止" Style="{StaticResource HelpTitleStyle}" />
                                 <TextBlock Text="• 点击游戏右上角浮层的“停止并保留结果”，或按 Ctrl+Shift+F12，会发起正常停止。工具会等待当前操作响应取消，并把中断前已经识别的结果加载到扫描结果页。" Style="{StaticResource HelpBodyStyle}" />
-                                <TextBlock Text="• 当前分类和全量扫描正常停止后，会把中断前已识别的结果加载到扫描结果页，仍需人工勾选和应用。增量扫描已确认的高置信完成结果会逐条立即入库，停止后不会回滚。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 当前分类、全量扫描和增量扫描正常停止后，都会把中断前已识别的最新结果加载到扫描结果页，仍需人工勾选和应用。" Style="{StaticResource HelpBodyStyle}" />
                                 <TextBlock Text="• 全量扫描正常停止时，已经完整扫描成功的二级 Tag 断点会持久化；正在扫描但尚未完成的 Tag 不会标记为完成，但已识别的候选结果会保留。" Style="{StaticResource HelpBodyStyle}" />
                                 <TextBlock Text="• Ctrl+Alt+F12 是紧急强制中止，会直接终止工具进程，不执行正常收尾，也不保证保留扫描结果。仅在普通停止长时间无响应时使用。" Style="{StaticResource HelpBodyStyle}" />
                             </StackPanel>

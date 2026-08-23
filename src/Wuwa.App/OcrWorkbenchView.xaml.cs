@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using Wuwa.Core;
 
 namespace Wuwa.App;
@@ -354,7 +356,7 @@ public partial class OcrWorkbenchView : UserControl
 
     private void SelectFilteredResults_OnClick(object sender, RoutedEventArgs e)
     {
-        foreach (var row in ResultGrid.Items.OfType<OcrResultViewRow>().Where(row => row.Candidate.ProposedStatus is not null && !row.Candidate.IsAmbiguous)) row.Apply = true;
+        foreach (var row in ResultGrid.Items.OfType<OcrResultViewRow>()) row.Apply = true;
         RefreshResultFilter();
     }
 
@@ -362,6 +364,66 @@ public partial class OcrWorkbenchView : UserControl
     {
         foreach (var row in ResultGrid.Items.OfType<OcrResultViewRow>()) row.Apply = false;
         RefreshResultFilter();
+    }
+
+    private void ResultGrid_OnPreviewMouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        var gridRow = FindVisualParent<DataGridRow>(e.OriginalSource as DependencyObject);
+        if (gridRow?.Item is not OcrResultViewRow clickedRow)
+        {
+            return;
+        }
+
+        if (!gridRow.IsSelected)
+        {
+            ResultGrid.SelectedItems.Clear();
+            gridRow.IsSelected = true;
+        }
+
+        var selectedRows = ResultGrid.SelectedItems
+            .OfType<OcrResultViewRow>()
+            .ToArray();
+        if (selectedRows.Length == 0)
+        {
+            selectedRows = [clickedRow];
+        }
+
+        var menu = new ContextMenu();
+        var select = new MenuItem { Header = "批量勾选" };
+        select.Click += (_, _) => SetResultRowsApply(selectedRows, apply: true);
+        menu.Items.Add(select);
+        var unselect = new MenuItem { Header = "批量取消勾选" };
+        unselect.Click += (_, _) => SetResultRowsApply(selectedRows, apply: false);
+        menu.Items.Add(unselect);
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private void SetResultRowsApply(IReadOnlyList<OcrResultViewRow> rows, bool apply)
+    {
+        foreach (var row in rows)
+        {
+            row.Apply = apply;
+        }
+        StatusText.Text = apply
+            ? $"已勾选选中的 {rows.Count} 条扫描结果。"
+            : $"已取消勾选选中的 {rows.Count} 条扫描结果。";
+        RefreshResultFilter();
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject? source) where T : DependencyObject
+    {
+        while (source is not null)
+        {
+            if (source is T target)
+            {
+                return target;
+            }
+            source = source is FrameworkContentElement contentElement
+                ? contentElement.Parent
+                : VisualTreeHelper.GetParent(source);
+        }
+        return null;
     }
 
     private enum OcrWorkbenchSection
@@ -401,7 +463,7 @@ public sealed class OcrResultViewRow : INotifyPropertyChanged
         Candidate = candidate;
         FirstCategory = firstCategory;
         SecondCategory = secondCategory;
-        _apply = candidate.ProposedStatus is not null && !candidate.IsAmbiguous;
+        _apply = true;
     }
 
     public OcrAchievementCandidate Candidate { get; }

@@ -122,6 +122,25 @@ public sealed class AchievementWorkspaceTests
     }
 
     [TestMethod]
+    public async Task ChangeStatuses_UpdatesAllSelectedRowsInOneRevision()
+    {
+        var first = Achievement("120", 1, name: "first");
+        var second = Achievement("121", 2, name: "second");
+        var third = Achievement("122", 3, name: "third");
+        var workspace = CreateWorkspace(first, second, third);
+        var opened = await workspace.OpenAsync();
+
+        var result = await workspace.ChangeStatusesAsync([first.Id, third.Id], ProgressStatus.Completed);
+
+        Assert.IsTrue(result.IsSuccess, result.Error?.Message);
+        Assert.AreEqual(opened.Snapshot.Revision + 1, result.Snapshot.Revision);
+        Assert.AreEqual(ProgressStatus.Completed, result.Snapshot.Rows.Single(row => row.Id == first.Id).Status);
+        Assert.AreEqual(ProgressStatus.Incomplete, result.Snapshot.Rows.Single(row => row.Id == second.Id).Status);
+        Assert.AreEqual(ProgressStatus.Completed, result.Snapshot.Rows.Single(row => row.Id == third.Id).Status);
+        Assert.AreEqual(2, result.Snapshot.Statistics.Completed);
+    }
+
+    [TestMethod]
     public async Task ChangeStatus_CancellationReturnsStructuredFailureAndLeavesStateActive()
     {
         var achievement = Achievement("150", 1);

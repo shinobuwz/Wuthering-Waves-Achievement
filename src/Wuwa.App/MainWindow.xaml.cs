@@ -81,6 +81,7 @@ public partial class MainWindow : Window
     {
         _workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
         InitializeComponent();
+        WorkspaceHelpPage.Configure(ShowWorkspacePage);
         OcrWorkbenchPage.Configure(
             scanCurrent: () => OcrScan_OnClick(OcrScanButton, new RoutedEventArgs()),
             scanFull: () => OcrFullScan_OnClick(OcrFullScanButton, new RoutedEventArgs()),
@@ -170,7 +171,7 @@ public partial class MainWindow : Window
         HiddenText.Text = _view.Statistics.Hidden.ToString();
         RateText.Text = $"{_view.Statistics.CompletionRatePercent:0.0}%";
         FilterSummaryText.Text = $"显示 {_view.Rows.Count} 条";
-        HintText.Text = $"显示 {_view.Rows.Count} 条 · Ctrl/Shift 多选后可加入追踪 · 双击切换完成状态 · 右键设置状态";
+        HintText.Text = $"显示 {_view.Rows.Count} 条 · Ctrl/Shift 多选 · 双击切换完成状态 · 右键批量设置选中项状态";
         ErrorText.Text = string.Empty;
     }
 
@@ -191,6 +192,8 @@ public partial class MainWindow : Window
     private void AuthorBilibili_OnClick(object sender, RoutedEventArgs e) =>
         App.OpenAuthorBilibili(this);
 
+    private void WorkspaceHelp_OnClick(object sender, RoutedEventArgs e) => ShowWorkspaceHelpPage();
+
     private void ActionHelp_OnClick(object sender, RoutedEventArgs e)
     {
         var section = (sender as FrameworkElement)?.Tag?.ToString();
@@ -201,7 +204,7 @@ public partial class MainWindow : Window
                 "追踪选中成就：将列表中选中的未完成成就加入追踪。\n取消追踪选中：取消当前选中成就的追踪，不改变完成状态。\n打开追踪浮窗：打开置顶追踪窗口，可在游戏旁查看追踪项目。"),
             "ocr" => (
                 "OCR 扫描区域",
-                "打开 OCR 工具：切换到主窗口内的 OCR 工作台页面，可随时返回成就工作区。\n工作台集中提供当前分类扫描、全量扫描、未完成成就增量扫描、结果筛选、Tag 跳过管理、完整使用帮助和 OCR 校准设置。\n搜索框输入测试及聚焦、按键、全选和粘贴等待参数位于“校准与输入设置”中；测试不会执行搜索或修改进度。\n增量扫描的高置信完成结果会立即入库；当前分类和全量扫描正常停止时会保留已识别 preview。\n全量扫描默认跳过已标记的一级 / 二级 Tag 组合，也可以关闭跳过。\n停止并保留已有结果：右上角按钮或 Ctrl+Shift+F12。紧急强制中止：Ctrl+Alt+F12。"),
+                "打开 OCR 工具：切换到主窗口内的 OCR 工作台页面，可随时返回成就工作区。\n工作台集中提供当前分类扫描、全量扫描、未完成成就增量扫描、结果筛选、Tag 跳过管理、完整使用帮助和 OCR 校准设置。\n搜索框输入测试及聚焦、按键、全选和粘贴等待参数位于“校准与输入设置”中；测试不会执行搜索或修改进度。\n所有扫描方式都会用最新结果替换下方扫描结果列表，需人工确认并点击“应用勾选结果”后才会写入进度。\n全量扫描默认跳过已标记的一级 / 二级 Tag 组合，也可以关闭跳过。\n停止并保留已有结果：右上角按钮或 Ctrl+Shift+F12。紧急强制中止：Ctrl+Alt+F12。"),
             "data" => (
                 "数据管理区域",
                 "导入旧版进度：导入旧版本工具生成的进度文件。\n导入 JSON/Excel：从 JSON 或 Excel 恢复成就数据。\n导出 JSON/Excel：备份当前成就和进度。\n同步 Wiki：从 Wiki 获取最新成就数据并合并。"),
@@ -368,20 +371,97 @@ public partial class MainWindow : Window
 
     private void AchievementGrid_OnPreviewMouseRightButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (AchievementGrid.SelectedItem is not AchievementRow row)
+        var gridRow = FindVisualParent<DataGridRow>(e.OriginalSource as DependencyObject);
+        var row = gridRow?.Item as AchievementRow ?? AchievementGrid.SelectedItem as AchievementRow;
+        if (row is null)
         {
             return;
         }
 
+        if (gridRow is { IsSelected: false })
+        {
+            AchievementGrid.SelectedItems.Clear();
+            gridRow.IsSelected = true;
+        }
+
+        var selectedRows = AchievementGrid.SelectedItems
+            .OfType<AchievementRow>()
+            .OrderBy(item => item.AbsoluteOrder)
+            .ToArray();
+        if (selectedRows.Length == 0)
+        {
+            selectedRows = [row];
+        }
+
         var menu = new ContextMenu();
+        var completed = new MenuItem { Header = "标记为完成" };
+        completed.Click += async (_, _) => await ApplyStatusToRowsAsync(selectedRows, ProgressStatus.Completed);
+        menu.Items.Add(completed);
         var unavailable = new MenuItem { Header = "标记为暂不可获取" };
-        unavailable.Click += async (_, _) => await ApplyStatusAsync(row.Id, ProgressStatus.Unavailable);
+        unavailable.Click += async (_, _) => await ApplyStatusToRowsAsync(selectedRows, ProgressStatus.Unavailable);
         menu.Items.Add(unavailable);
         var incomplete = new MenuItem { Header = "重置为未完成" };
-        incomplete.Click += async (_, _) => await ApplyStatusAsync(row.Id, ProgressStatus.Incomplete);
+        incomplete.Click += async (_, _) => await ApplyStatusToRowsAsync(selectedRows, ProgressStatus.Incomplete);
         menu.Items.Add(incomplete);
+        if (selectedRows.Length == 1)
+        {
+            menu.Items.Add(new Separator());
+            var copyName = new MenuItem { Header = "复制成就名称" };
+            copyName.Click += (_, _) => CopyAchievementName(selectedRows[0]);
+            menu.Items.Add(copyName);
+        }
         menu.IsOpen = true;
         e.Handled = true;
+    }
+
+    private async Task ApplyStatusToRowsAsync(IReadOnlyList<AchievementRow> rows, ProgressStatus status)
+    {
+        var result = await _workspace.ChangeStatusesAsync(rows.Select(row => row.Id).ToArray(), status);
+        if (!result.IsSuccess)
+        {
+            ShowError(result.Error?.Message ?? "批量状态变更失败。");
+            return;
+        }
+
+        RefreshView();
+        ErrorText.Text = string.Empty;
+        var statusText = status switch
+        {
+            ProgressStatus.Completed => "已完成",
+            ProgressStatus.Unavailable => "暂不可获取",
+            ProgressStatus.Incomplete => "未完成",
+            _ => status.ToString()
+        };
+        HintText.Text = $"已将选中的 {rows.Count} 个成就标记为{statusText}。";
+    }
+
+    private void CopyAchievementName(AchievementRow row)
+    {
+        try
+        {
+            SetClipboardWithRetry(row.Name);
+            ErrorText.Text = string.Empty;
+            HintText.Text = $"已复制成就名称：{row.Name}";
+        }
+        catch (Exception exception)
+        {
+            ShowError($"复制成就名称失败：{exception.Message}");
+        }
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject? source) where T : DependencyObject
+    {
+        while (source is not null)
+        {
+            if (source is T target)
+            {
+                return target;
+            }
+            source = source is FrameworkContentElement contentElement
+                ? contentElement.Parent
+                : VisualTreeHelper.GetParent(source);
+        }
+        return null;
     }
 
     private async Task ApplyStatusAsync(AchievementId id, ProgressStatus status)
@@ -793,7 +873,7 @@ public partial class MainWindow : Window
         var message = _activeOcrMode switch
         {
             OcrScanMode.FullScan => "正在停止 OCR 全量扫描并保留已有结果…",
-            OcrScanMode.SearchSync => "正在停止增量扫描并保留已入库结果…",
+            OcrScanMode.SearchSync => "正在停止增量扫描并保留已有识别结果…",
             _ => "正在停止 OCR 扫描并保留已有结果…"
         };
         RequestOcrCancellation(message);
@@ -803,8 +883,8 @@ public partial class MainWindow : Window
     {
         if (_ocrCancellation is null) return;
         NativeOcrDiagnostics.Write("OCR force-stop requested; terminating the tool process");
-        // Incremental search commits only high-confidence completed results as they are
-        // recognized. Killing this tool cannot create a partially written generation.
+        // Force-stop bypasses the normal cancellation path, so the latest in-memory
+        // OCR preview may not reach the results list before the process terminates.
         try
         {
             Process.GetCurrentProcess().Kill();
@@ -1008,12 +1088,21 @@ public partial class MainWindow : Window
     {
         OcrWorkbenchPage.ApplyWorkspaceState(_ocrScanHistory, _workspace.GetSnapshot().Rows);
         WorkspacePage.Visibility = Visibility.Collapsed;
+        WorkspaceHelpPage.Visibility = Visibility.Collapsed;
         OcrWorkbenchPage.Visibility = Visibility.Visible;
+    }
+
+    private void ShowWorkspaceHelpPage()
+    {
+        WorkspacePage.Visibility = Visibility.Collapsed;
+        OcrWorkbenchPage.Visibility = Visibility.Collapsed;
+        WorkspaceHelpPage.Visibility = Visibility.Visible;
     }
 
     private void ShowWorkspacePage()
     {
         OcrWorkbenchPage.Visibility = Visibility.Collapsed;
+        WorkspaceHelpPage.Visibility = Visibility.Collapsed;
         WorkspacePage.Visibility = Visibility.Visible;
     }
 
@@ -1540,6 +1629,7 @@ public partial class MainWindow : Window
             ShowOcrStopOverlay(capture, initialWindow);
             var service = new SinglePageOcrScanService(capture, reader);
             rows = _workspace.Query().Rows;
+            OcrWorkbenchPage.SetScanResults(EmptyOcrScanPreview(), rows, "当前分类扫描进行中");
             var seenIds = new HashSet<AchievementId>();
             var repeatedPages = 0;
             var emptyPages = 0;
@@ -1560,8 +1650,14 @@ public partial class MainWindow : Window
                     cancellationToken: _ocrCancellation.Token);
                 if (!scan.IsSuccess)
                 {
-                    if (scan.Error?.Code == OcrScanErrorCode.Cancelled) HintText.Text = "OCR 扫描已取消。";
-                    else ShowOcrError(scan.Error?.Message ?? "OCR 扫描失败。", "OCR 扫描失败");
+                    if (scan.Error?.Code == OcrScanErrorCode.Cancelled)
+                    {
+                        throw new OperationCanceledException(_ocrCancellation.Token);
+                    }
+                    var failedPreview = MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows);
+                    ShowOcrWorkbenchPage();
+                    OcrWorkbenchPage.SetScanResults(failedPreview, rows, $"当前分类扫描异常中止 · 已扫描 {scannedPages} 页");
+                    ShowOcrError(scan.Error?.Message ?? "OCR 扫描失败。", "OCR 扫描失败");
                     return;
                 }
 
@@ -1645,21 +1741,22 @@ public partial class MainWindow : Window
             Activate();
             var mergedPreview = MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows);
             NativeOcrDiagnostics.Write($"OCR finished pages={scannedPages} lines={detectedLineCount} candidates={mergedPreview.Candidates.Count} unmatched={mergedPreview.Unmatched.Count}");
+            ShowOcrWorkbenchPage();
+            OcrWorkbenchPage.SetScanResults(mergedPreview, rows, $"当前分类扫描（{scannedPages} 页）");
             if (mergedPreview.Candidates.Count == 0)
             {
+                HintText.Text = $"当前分类扫描结果已更新，但没有匹配到成就；未匹配文字 {mergedPreview.Unmatched.Count} 条。";
                 ShowOcrError($"OCR 扫描完成，但没有匹配到成就。扫描 {scannedPages} 页，检测到 {detectedLineCount} 条文字，未匹配 {mergedPreview.Unmatched.Count} 条。请确认游戏当前打开的是成就列表。", "OCR 扫描结果");
                 return;
             }
             RecordScannedCategoriesFromPreview(mergedPreview, rows, scannedPages);
-            ShowOcrWorkbenchPage();
-            OcrWorkbenchPage.SetScanResults(mergedPreview, rows, $"当前分类扫描（{scannedPages} 页）");
             HintText.Text = "OCR 扫描结果已加载到 OCR 工具，尚未写入进度。";
         }
         catch (OperationCanceledException)
         {
             WindowState = previousState;
             Activate();
-            if (rows.Count > 0 && (mergedCandidates.Count > 0 || mergedUnmatched.Count > 0))
+            if (rows.Count > 0)
             {
                 var interruptedPreview = MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows);
                 NativeOcrDiagnostics.Write($"OCR cancelled with partial results pages={scannedPages} candidates={interruptedPreview.Candidates.Count} unmatched={interruptedPreview.Unmatched.Count}");
@@ -1674,16 +1771,31 @@ public partial class MainWindow : Window
         }
         catch (GameWindowNotFoundException exception)
         {
+            if (rows.Count > 0)
+            {
+                ShowOcrWorkbenchPage();
+                OcrWorkbenchPage.SetScanResults(MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows), rows, $"当前分类扫描异常中止 · 已扫描 {scannedPages} 页");
+            }
             NativeOcrDiagnostics.Write($"OCR exception GameWindowNotFound: {exception}");
             ShowOcrError($"未找到可捕获的游戏窗口：{exception.Message}", "未找到游戏窗口");
         }
         catch (GameWindowCaptureException exception)
         {
+            if (rows.Count > 0)
+            {
+                ShowOcrWorkbenchPage();
+                OcrWorkbenchPage.SetScanResults(MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows), rows, $"当前分类扫描异常中止 · 已扫描 {scannedPages} 页");
+            }
             NativeOcrDiagnostics.Write($"OCR exception GameWindowCapture: {exception}");
             ShowOcrError($"无法捕获游戏画面：{exception.Message}", "游戏画面捕获失败");
         }
         catch (Exception exception)
         {
+            if (rows.Count > 0)
+            {
+                ShowOcrWorkbenchPage();
+                OcrWorkbenchPage.SetScanResults(MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows), rows, $"当前分类扫描异常中止 · 已扫描 {scannedPages} 页");
+            }
             NativeOcrDiagnostics.Write($"OCR exception: {exception}");
             ShowOcrError($"OCR 扫描失败：{exception.Message}", "OCR 扫描失败");
         }
@@ -2007,6 +2119,7 @@ public partial class MainWindow : Window
 
             var workspaceSnapshot = _workspace.GetSnapshot();
             rows = workspaceSnapshot.Rows;
+            OcrWorkbenchPage.SetScanResults(EmptyOcrScanPreview(), rows, "全量扫描进行中");
             var categories = workspaceSnapshot.Categories;
             var primaryYPercentages = new[] { 0.1778, 0.2981, 0.4343, 0.5537 };
             var currentWindow = initialWindow;
@@ -2172,30 +2285,30 @@ public partial class MainWindow : Window
             Activate();
             var mergedPreview = MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows);
             NativeOcrDiagnostics.Write($"OCR full finished candidates={mergedPreview.Candidates.Count} unmatched={mergedPreview.Unmatched.Count}");
-            if (mergedPreview.Candidates.Count == 0)
-            {
-                if (skippedCategories > 0 && scannedCategories == 0)
-                {
-                    HintText.Text = $"OCR 全量扫描已跳过 {skippedCategories} 个已有记录的分类，没有需要重新扫描的分类。";
-                    ShowOcrWorkbenchPage();
-                    OcrWorkbenchPage.SetStatus(HintText.Text + " 可在 Tag 跳过管理中取消标记后重新运行。");
-                    return;
-                }
-                ShowOcrError($"OCR 全量扫描没有匹配到成就。实际扫描 {scannedCategories} 个分类，跳过 {skippedCategories} 个分类。请确认游戏处于成就页面，并检查 log 目录中的 native-ocr-YYYY-MM-DD.log。", "OCR 扫描结果");
-                return;
-            }
             ShowOcrWorkbenchPage();
             OcrWorkbenchPage.SetScanResults(
                 mergedPreview,
                 rows,
                 $"全量扫描（扫描 {scannedCategories} 个分类，跳过 {skippedCategories} 个）");
+            if (mergedPreview.Candidates.Count == 0)
+            {
+                if (skippedCategories > 0 && scannedCategories == 0)
+                {
+                    HintText.Text = $"OCR 全量扫描已跳过 {skippedCategories} 个已有记录的分类，没有需要重新扫描的分类。";
+                    OcrWorkbenchPage.SetStatus(HintText.Text + " 最新扫描结果列表已清空；可在 Tag 跳过管理中取消标记后重新运行。");
+                    return;
+                }
+                HintText.Text = $"OCR 全量扫描结果已更新，但没有匹配到成就；未匹配文字 {mergedPreview.Unmatched.Count} 条。";
+                ShowOcrError($"OCR 全量扫描没有匹配到成就。实际扫描 {scannedCategories} 个分类，跳过 {skippedCategories} 个分类。请确认游戏处于成就页面，并检查 log 目录中的 native-ocr-YYYY-MM-DD.log。", "OCR 扫描结果");
+                return;
+            }
             HintText.Text = "OCR 全量扫描结果已加载到 OCR 工具，尚未写入进度。";
         }
         catch (OperationCanceledException)
         {
             WindowState = previousState;
             Activate();
-            if (rows.Count > 0 && (mergedCandidates.Count > 0 || mergedUnmatched.Count > 0))
+            if (rows.Count > 0)
             {
                 var interruptedPreview = MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows);
                 NativeOcrDiagnostics.Write($"OCR full cancelled with partial results scannedCategories={scannedCategories} skippedCategories={skippedCategories} candidates={interruptedPreview.Candidates.Count} unmatched={interruptedPreview.Unmatched.Count}");
@@ -2213,16 +2326,31 @@ public partial class MainWindow : Window
         }
         catch (GameWindowNotFoundException exception)
         {
+            if (rows.Count > 0)
+            {
+                ShowOcrWorkbenchPage();
+                OcrWorkbenchPage.SetScanResults(MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows), rows, $"全量扫描异常中止 · 已扫描 {scannedCategories} 个分类");
+            }
             NativeOcrDiagnostics.Write($"OCR full exception GameWindowNotFound: {exception}");
             ShowOcrError($"未找到可捕获的游戏窗口：{exception.Message}", "未找到游戏窗口");
         }
         catch (GameWindowCaptureException exception)
         {
+            if (rows.Count > 0)
+            {
+                ShowOcrWorkbenchPage();
+                OcrWorkbenchPage.SetScanResults(MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows), rows, $"全量扫描异常中止 · 已扫描 {scannedCategories} 个分类");
+            }
             NativeOcrDiagnostics.Write($"OCR full exception GameWindowCapture: {exception}");
             ShowOcrError($"无法捕获游戏画面：{exception.Message}", "游戏画面捕获失败");
         }
         catch (Exception exception)
         {
+            if (rows.Count > 0)
+            {
+                ShowOcrWorkbenchPage();
+                OcrWorkbenchPage.SetScanResults(MergeOcrPreviews(mergedCandidates, mergedUnmatched, rows), rows, $"全量扫描异常中止 · 已扫描 {scannedCategories} 个分类");
+            }
             NativeOcrDiagnostics.Write($"OCR full exception: {exception}");
             ShowOcrError($"OCR 全量扫描失败：{exception.Message}", "OCR 全量扫描失败");
         }
@@ -2458,7 +2586,10 @@ public partial class MainWindow : Window
             .ToArray();
         if (incompleteRows.Length == 0)
         {
-            HintText.Text = "没有可扫描的未完成成就。";
+            var emptyPreview = EmptyOcrScanPreview();
+            ShowOcrWorkbenchPage();
+            OcrWorkbenchPage.SetScanResults(emptyPreview, _workspace.GetSnapshot().Rows, "增量扫描未完成成就（没有待扫描项目）");
+            HintText.Text = "没有可扫描的未完成成就，最新扫描结果列表已清空。";
             return;
         }
 
@@ -2492,17 +2623,37 @@ public partial class MainWindow : Window
         ReportOcrProgress(
             OcrScanMode.SearchSync,
             OcrScanPhase.Preparing,
-            $"准备逐条扫描 {incompleteRows.Length} 条未完成成就；识别成功后立即入库…",
+            $"准备逐条扫描 {incompleteRows.Length} 条未完成成就；识别结果将加载到下方列表…",
             totalCount: incompleteRows.Length);
         ErrorText.Text = string.Empty;
         var previousState = WindowState;
         var currentWindow = (GameWindowCandidate?)null;
-        var currentStatuses = _workspace.GetSnapshot().Rows.ToDictionary(row => row.Id, row => row.Status);
+        var searchCandidates = new Dictionary<AchievementId, OcrAchievementCandidate>();
         var processedCount = 0;
-        var appliedCount = 0;
-        var unchangedCount = 0;
+        var checkedCount = 0;
         var failures = new List<string>();
-        string? fatalApplyError = null;
+
+        OcrScanPreview CreateLatestPreview()
+        {
+            var orderedCandidates = searchCandidates.Values
+                .OrderBy(candidate => incompleteRows.First(row => row.Id == candidate.AchievementId).AbsoluteOrder)
+                .ToArray();
+            return new OcrScanPreview(
+                Array.AsReadOnly(orderedCandidates),
+                Array.Empty<OcrUnmatchedText>(),
+                orderedCandidates.Count(candidate => candidate.ProposedStatus == ProgressStatus.Completed && !candidate.IsAmbiguous),
+                orderedCandidates.Count(candidate => candidate.ProposedStatus == ProgressStatus.Incomplete && !candidate.IsAmbiguous),
+                orderedCandidates.Count(candidate => candidate.ProposedStatus is null || candidate.IsAmbiguous));
+        }
+
+        static OcrAchievementCandidate CreateUnknownCandidate(AchievementRow row, string ocrText) => new(
+            row.Id,
+            row.LegacyCode,
+            row.Name,
+            ocrText,
+            0,
+            null,
+            null);
 
         try
         {
@@ -2527,6 +2678,7 @@ public partial class MainWindow : Window
             }
 
             ShowOcrStopOverlay(capture, currentWindow);
+            OcrWorkbenchPage.SetScanResults(EmptyOcrScanPreview(), _workspace.GetSnapshot().Rows, "增量扫描未完成成就进行中");
             WindowState = WindowState.Minimized;
             await Task.Delay(350, _ocrCancellation.Token);
             for (var index = 0; index < incompleteRows.Length; index++)
@@ -2536,20 +2688,14 @@ public partial class MainWindow : Window
                 _ocrCancellation.Token.ThrowIfCancellationRequested();
                 try
                 {
-                    if (!currentStatuses.TryGetValue(row.Id, out var currentStatus) || currentStatus != ProgressStatus.Incomplete)
-                    {
-                        NativeOcrDiagnostics.Write($"SearchSync skip code={row.LegacyCode} name={row.Name} currentStatus={currentStatus}");
-                        continue;
-                    }
-
                     ReportOcrProgress(
                         OcrScanMode.SearchSync,
                         OcrScanPhase.SearchingAchievement,
-                        $"正在扫描 {index + 1}/{incompleteRows.Length}：{row.Name} · 已入库 {appliedCount} 条",
+                        $"正在扫描 {index + 1}/{incompleteRows.Length}：{row.Name} · 已记录 {searchCandidates.Count} 条",
                         page: index + 1,
                         visitedCount: processedCount,
                         totalCount: incompleteRows.Length,
-                        matchedCount: appliedCount,
+                        matchedCount: searchCandidates.Count,
                         unmatchedCount: failures.Count);
 
                     shouldClearSearch = true;
@@ -2565,13 +2711,17 @@ public partial class MainWindow : Window
                             _ocrPagingOptions.GetTextInputTiming(),
                             _ocrCancellation.Token))
                     {
-                        failures.Add($"{row.Name}：搜索框输入失败");
+                        const string reason = "搜索框输入失败";
+                        failures.Add($"{row.Name}：{reason}");
+                        searchCandidates[row.Id] = CreateUnknownCandidate(row, reason);
                         continue;
                     }
 
                     if (!await capture.ClickAsync(currentWindow, searchX, searchY, _ocrCancellation.Token))
                     {
-                        failures.Add($"{row.Name}：搜索按钮点击失败");
+                        const string reason = "搜索按钮点击失败";
+                        failures.Add($"{row.Name}：{reason}");
+                        searchCandidates[row.Id] = CreateUnknownCandidate(row, reason);
                         continue;
                     }
 
@@ -2588,53 +2738,32 @@ public partial class MainWindow : Window
 
                         var reason = scan.Error?.Message ?? "右侧结果识别失败";
                         failures.Add($"{row.Name}：{reason}");
+                        searchCandidates[row.Id] = CreateUnknownCandidate(row, reason);
                         if (scan.Error?.Code is OcrScanErrorCode.WindowNotFound or OcrScanErrorCode.CaptureFailed)
                             break;
                         continue;
                     }
 
+                    checkedCount++;
                     currentWindow = scan.Window ?? currentWindow;
                     var resultPreview = AchievementOcrMatcher.CreatePreview(scan.Lines, [row]);
-                    var completed = resultPreview.Candidates
-                        .Where(candidate => candidate.AchievementId == row.Id &&
-                                            candidate.ProposedStatus == ProgressStatus.Completed &&
-                                            !candidate.IsAmbiguous)
-                        .OrderByDescending(candidate => candidate.MatchConfidence)
+                    var candidate = resultPreview.Candidates
+                        .Where(item => item.AchievementId == row.Id)
+                        .OrderByDescending(item => item.MatchConfidence)
                         .FirstOrDefault();
-                    if (completed is null || completed.MatchConfidence < 0.75)
+                    if (candidate is null)
                     {
-                        NativeOcrDiagnostics.Write($"SearchSync not-completed-or-unconfirmed code={row.LegacyCode} name={row.Name} lines={scan.Lines.Count}");
-                        continue;
+                        var ocrText = string.Join("；", scan.Lines.Select(line => line.Text).Where(text => !string.IsNullOrWhiteSpace(text)));
+                        candidate = CreateUnknownCandidate(row, string.IsNullOrWhiteSpace(ocrText) ? "未识别到有效文字" : ocrText);
+                    }
+                    else if (candidate.ProposedStatus == ProgressStatus.Completed && candidate.MatchConfidence < 0.75)
+                    {
+                        candidate = candidate with { IsAmbiguous = true };
                     }
 
-                    var immediatePreview = new OcrScanPreview(
-                        Array.AsReadOnly(new[] { completed }),
-                        Array.Empty<OcrUnmatchedText>(),
-                        1,
-                        0,
-                        0);
-                    var applied = await _workspace.ApplyOcrPreviewAsync(
-                        immediatePreview,
-                        confirm: true,
-                        cancellationToken: _ocrCancellation.Token);
-                    if (!applied.IsSuccess)
-                    {
-                        if (applied.Error?.Code == WorkspaceErrorCode.Cancelled)
-                            throw new OperationCanceledException(_ocrCancellation.Token);
-                        fatalApplyError = $"{row.Name}：立即入库失败（{applied.Error?.Message ?? "未知错误"}）";
-                        failures.Add(fatalApplyError);
-                        NativeOcrDiagnostics.Write($"SearchSync immediate-apply failed code={row.LegacyCode} name={row.Name} error={applied.Error}");
-                        break;
-                    }
-
-                    appliedCount += applied.Updated;
-                    unchangedCount += applied.Unchanged;
-                    foreach (var updatedRow in applied.Snapshot.Rows)
-                    {
-                        currentStatuses[updatedRow.Id] = updatedRow.Status;
-                    }
+                    searchCandidates[row.Id] = candidate;
                     NativeOcrDiagnostics.Write(
-                        $"SearchSync immediate-apply code={row.LegacyCode} name={row.Name} confidence={completed.MatchConfidence:F3} updated={applied.Updated} unchanged={applied.Unchanged}");
+                        $"SearchSync result code={row.LegacyCode} name={row.Name} status={candidate.ProposedStatus} confidence={candidate.MatchConfidence:F3} ambiguous={candidate.IsAmbiguous}");
                 }
                 catch (OperationCanceledException)
                 {
@@ -2643,6 +2772,7 @@ public partial class MainWindow : Window
                 catch (Exception exception)
                 {
                     failures.Add($"{row.Name}：{exception.Message}");
+                    searchCandidates[row.Id] = CreateUnknownCandidate(row, exception.Message);
                     NativeOcrDiagnostics.Write($"SearchSync item failed code={row.LegacyCode} exception={exception}");
                 }
                 finally
@@ -2656,7 +2786,7 @@ public partial class MainWindow : Window
                             page: index + 1,
                             visitedCount: processedCount + 1,
                             totalCount: incompleteRows.Length,
-                            matchedCount: appliedCount,
+                            matchedCount: searchCandidates.Count,
                             unmatchedCount: failures.Count);
                         var deleteX = (int)Math.Round(currentWindow.ClientWidth * SearchButtonXRatio);
                         var deleteY = (int)Math.Round(currentWindow.ClientHeight * SearchControlYRatio);
@@ -2675,45 +2805,58 @@ public partial class MainWindow : Window
             }
 
             _ocrCancellation.Token.ThrowIfCancellationRequested();
-            if (fatalApplyError is not null) throw new InvalidOperationException(fatalApplyError);
             CloseOcrStopOverlay();
             WindowState = previousState;
             Activate();
-            RefreshView();
+            var preview = CreateLatestPreview();
+            ShowOcrWorkbenchPage();
+            OcrWorkbenchPage.SetScanResults(
+                preview,
+                _workspace.GetSnapshot().Rows,
+                maximumCount is > 0
+                    ? $"DEBUG 增量扫描前 {maximumCount.Value} 条（实际识别 {checkedCount} 条）"
+                    : $"增量扫描未完成成就（实际识别 {checkedCount} 条）");
             HintText.Text = failures.Count == 0
-                ? $"增量扫描完成：处理 {processedCount} 条，立即入库 {appliedCount} 条，未变化 {unchangedCount} 条。"
-                : $"增量扫描完成：处理 {processedCount} 条，立即入库 {appliedCount} 条；另有 {failures.Count} 条未确认或失败。";
-            OcrWorkbenchPage.ApplyWorkspaceState(_ocrScanHistory, _workspace.GetSnapshot().Rows);
-            OcrWorkbenchPage.SetStatus(HintText.Text);
+                ? $"增量扫描结果已加载：处理 {processedCount} 条，结果 {preview.Candidates.Count} 条（完成 {preview.CompletedCount}、未完成 {preview.IncompleteCount}、未知 {preview.UnknownStatusCount}），尚未写入进度。"
+                : $"增量扫描结果已加载：处理 {processedCount} 条，结果 {preview.Candidates.Count} 条；另有 {failures.Count} 条未确认或失败。";
             NativeOcrDiagnostics.Write(
-                $"SearchSync finished processed={processedCount} total={incompleteRows.Length} applied={appliedCount} unchanged={unchangedCount} failures={failures.Count}");
+                $"SearchSync finished processed={processedCount} checked={checkedCount} total={incompleteRows.Length} results={preview.Candidates.Count} completed={preview.CompletedCount} incomplete={preview.IncompleteCount} unknown={preview.UnknownStatusCount} failures={failures.Count}");
         }
         catch (OperationCanceledException)
         {
             WindowState = previousState;
             Activate();
-            RefreshView();
-            HintText.Text = $"增量扫描已取消；此前已立即入库 {appliedCount} 条，当前处理项未写入。";
-            OcrWorkbenchPage.ApplyWorkspaceState(_ocrScanHistory, _workspace.GetSnapshot().Rows);
-            OcrWorkbenchPage.SetStatus(HintText.Text);
+            var interruptedPreview = CreateLatestPreview();
+            ShowOcrWorkbenchPage();
+            OcrWorkbenchPage.SetScanResults(
+                interruptedPreview,
+                _workspace.GetSnapshot().Rows,
+                $"增量扫描已中断 · 已处理 {processedCount} 条");
+            HintText.Text = $"增量扫描已取消，已保留 {interruptedPreview.Candidates.Count} 条扫描结果，尚未写入进度。";
             NativeOcrDiagnostics.Write(
-                $"SearchSync cancelled processed={processedCount} applied={appliedCount} unchanged={unchangedCount} failures={failures.Count}");
+                $"SearchSync cancelled processed={processedCount} checked={checkedCount} results={interruptedPreview.Candidates.Count} failures={failures.Count}");
         }
         catch (GameWindowNotFoundException exception)
         {
-            RefreshView();
+            var failedPreview = CreateLatestPreview();
+            ShowOcrWorkbenchPage();
+            OcrWorkbenchPage.SetScanResults(failedPreview, _workspace.GetSnapshot().Rows, $"增量扫描异常中止 · 已处理 {processedCount} 条");
             NativeOcrDiagnostics.Write($"SearchSync exception GameWindowNotFound: {exception}");
             ShowOcrError($"未找到可捕获的游戏窗口：{exception.Message}", "未找到游戏窗口");
         }
         catch (GameWindowCaptureException exception)
         {
-            RefreshView();
+            var failedPreview = CreateLatestPreview();
+            ShowOcrWorkbenchPage();
+            OcrWorkbenchPage.SetScanResults(failedPreview, _workspace.GetSnapshot().Rows, $"增量扫描异常中止 · 已处理 {processedCount} 条");
             NativeOcrDiagnostics.Write($"SearchSync exception GameWindowCapture: {exception}");
             ShowOcrError($"无法捕获游戏画面：{exception.Message}", "游戏画面捕获失败");
         }
         catch (Exception exception)
         {
-            RefreshView();
+            var failedPreview = CreateLatestPreview();
+            ShowOcrWorkbenchPage();
+            OcrWorkbenchPage.SetScanResults(failedPreview, _workspace.GetSnapshot().Rows, $"增量扫描异常中止 · 已处理 {processedCount} 条");
             NativeOcrDiagnostics.Write($"SearchSync exception: {exception}");
             ShowOcrError($"增量扫描失败：{exception.Message}", "增量扫描失败");
         }
@@ -3319,6 +3462,13 @@ public partial class MainWindow : Window
         if (existing.ProposedStatus == ProgressStatus.Completed && candidate.ProposedStatus != ProgressStatus.Completed) return false;
         return candidate.MatchConfidence > existing.MatchConfidence;
     }
+
+    private static OcrScanPreview EmptyOcrScanPreview() => new(
+        Array.Empty<OcrAchievementCandidate>(),
+        Array.Empty<OcrUnmatchedText>(),
+        0,
+        0,
+        0);
 
     private static OcrScanPreview MergeOcrPreviews(
         IReadOnlyDictionary<AchievementId, OcrAchievementCandidate> candidates,
