@@ -45,7 +45,7 @@ public partial class OcrWorkbenchView : UserControl
         }
         RefreshResultFilter();
         RefreshTagFilter();
-        ShowWorkbenchPage(showResults: true);
+        ShowWorkbenchPage(OcrWorkbenchSection.Results);
     }
 
     public void Configure(
@@ -146,9 +146,9 @@ public partial class OcrWorkbenchView : UserControl
         UnmatchedSummaryText.Text = preview.Unmatched.Count == 0
             ? "没有未匹配文字。"
             : $"未匹配 {preview.Unmatched.Count} 条：{string.Join("；", preview.Unmatched.Take(6).Select(item => item.Text))}";
-        StatusText.Text = $"{sourceLabel}完成，结果尚未写入。请筛选、勾选后点击“应用勾选结果”。";
+        StatusText.Text = $"{sourceLabel}，结果尚未写入。请筛选、勾选后点击“应用勾选结果”。";
         ResultsViewButton.IsChecked = true;
-        ShowWorkbenchPage(showResults: true);
+        ShowWorkbenchPage(OcrWorkbenchSection.Results);
         RefreshResultFilter();
     }
 
@@ -162,14 +162,21 @@ public partial class OcrWorkbenchView : UserControl
     private void SearchSync_OnClick(object sender, RoutedEventArgs e) => _searchSync?.Invoke();
     private void PagingSettings_OnClick(object sender, RoutedEventArgs e) => _openPagingSettings?.Invoke();
     private void Back_OnClick(object sender, RoutedEventArgs e) => _back?.Invoke();
-    private void ResultsView_OnChecked(object sender, RoutedEventArgs e) => ShowWorkbenchPage(showResults: true);
-    private void TagsView_OnChecked(object sender, RoutedEventArgs e) => ShowWorkbenchPage(showResults: false);
+    private void ResultsView_OnChecked(object sender, RoutedEventArgs e) => ShowWorkbenchPage(OcrWorkbenchSection.Results);
+    private void TagsView_OnChecked(object sender, RoutedEventArgs e) => ShowWorkbenchPage(OcrWorkbenchSection.Tags);
+    private void HelpView_OnClick(object sender, RoutedEventArgs e) => ShowWorkbenchPage(OcrWorkbenchSection.Help);
 
-    private void ShowWorkbenchPage(bool showResults)
+    private void ShowWorkbenchPage(OcrWorkbenchSection section)
     {
-        if (ResultsPage is null || TagsPage is null) return;
-        ResultsPage.Visibility = showResults ? Visibility.Visible : Visibility.Collapsed;
-        TagsPage.Visibility = showResults ? Visibility.Collapsed : Visibility.Visible;
+        if (ResultsPage is null || TagsPage is null || HelpPage is null) return;
+        if (section == OcrWorkbenchSection.Help)
+        {
+            ResultsViewButton.IsChecked = false;
+            TagsViewButton.IsChecked = false;
+        }
+        ResultsPage.Visibility = section == OcrWorkbenchSection.Results ? Visibility.Visible : Visibility.Collapsed;
+        TagsPage.Visibility = section == OcrWorkbenchSection.Tags ? Visibility.Visible : Visibility.Collapsed;
+        HelpPage.Visibility = section == OcrWorkbenchSection.Help ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async void SkipScanned_OnClick(object sender, RoutedEventArgs e)
@@ -352,6 +359,13 @@ public partial class OcrWorkbenchView : UserControl
     {
         foreach (var row in ResultGrid.Items.OfType<OcrResultViewRow>()) row.Apply = false;
         RefreshResultFilter();
+    }
+
+    private enum OcrWorkbenchSection
+    {
+        Results,
+        Tags,
+        Help
     }
 }
 

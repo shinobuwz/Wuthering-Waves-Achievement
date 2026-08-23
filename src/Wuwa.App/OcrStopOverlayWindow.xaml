@@ -43,10 +43,10 @@
             </StackPanel>
             <Button x:Name="StopButton"
                     Grid.Row="2"
-                    Content="停止扫描"
+                    Content="停止并保留结果"
                     PreviewMouseLeftButtonDown="Stop_OnPreviewMouseLeftButtonDown"
                     HorizontalAlignment="Right"
-                    MinWidth="96"
+                    MinWidth="118"
                     MinHeight="32"
                     Padding="12,4"
                     Margin="0"

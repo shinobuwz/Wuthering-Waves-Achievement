@@ -33,7 +33,7 @@ public partial class OcrStopOverlayWindow : Window
     {
         _stopRequested = false;
         StopButton.IsEnabled = true;
-        StopButton.Content = "停止扫描";
+        StopButton.Content = "停止并保留结果";
     }
 
     public void PositionAt(GameWindowScreenBounds gameBounds)

@@ -21,7 +21,6 @@ public partial class OcrPagingSettingsWindow : Window
         KeyPressDelayBox.Text = _original.KeyPressMilliseconds.ToString(CultureInfo.InvariantCulture);
         SelectAllDelayBox.Text = _original.SelectAllSettleMilliseconds.ToString(CultureInfo.InvariantCulture);
         ClipboardPasteDelayBox.Text = _original.ClipboardPasteSettleMilliseconds.ToString(CultureInfo.InvariantCulture);
-        AutoCalibrateCheckBox.IsChecked = _original.AutoCalibrate;
         CalibrationText.Text = BuildCalibrationText(_original);
     }
 
@@ -64,7 +63,7 @@ public partial class OcrPagingSettingsWindow : Window
             SecondaryWheelDistance = secondaryWheelDistance,
             WheelEventIntervalMilliseconds = wheelInterval,
             MinimumSettleMilliseconds = settleDelay,
-            AutoCalibrate = AutoCalibrateCheckBox.IsChecked == true,
+            AutoCalibrate = false,
             TextFieldFocusSettleMilliseconds = textFieldFocusDelay,
             ModifierSettleMilliseconds = modifierDelay,
             KeyPressMilliseconds = keyPressDelay,
@@ -100,7 +99,7 @@ public partial class OcrPagingSettingsWindow : Window
     {
         if (options.CalibratedAtUtc is null)
         {
-            return "尚未校准。启用自动校准后，首次产生可靠翻页位移时会记录当前分辨率和实测距离。";
+            return "尚未校准。手动校准会按当前固定距离执行往返滚动并记录实测位移。";
         }
 
         var forward = options.LastForwardPixels is null ? "—" : $"{options.LastForwardPixels} px";

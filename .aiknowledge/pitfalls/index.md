@@ -8,4 +8,4 @@
 | active | OCR preview、扫描取消、状态合并、保存进度、降级保护 | [OCR 只能从已确认 preview 合并进度](ocr-preview-before-merge.md) |
 | active | 游戏窗口、Tab 导航、滚轮、截图、全量扫描、输入权限 | [OCR 导航和输入必须先验证环境与页面反馈](ocr-navigation-input-validation.md) |
 | active | 互斥成就、累计进度链、已占用、统计、手动或 OCR 状态变更 | [成就组状态必须经过统一 transition](achievement-group-status-transition.md) |
-| active | WPF、XAML、相邻按钮、页签、Margin、Padding、Border、跨区域对齐 | [XAML 控件组对齐必须核算末项间距和父容器内缩](xaml-adjacent-control-terminal-spacing.md) |
+| active | WPF、XAML、横向按钮组、页签、Margin、Padding、Border、按钮高度、跨区域对齐 | [XAML 控件组对齐必须核算四向间距和父容器内缩](xaml-adjacent-control-terminal-spacing.md) |
