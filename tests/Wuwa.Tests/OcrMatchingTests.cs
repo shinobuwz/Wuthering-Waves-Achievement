@@ -67,6 +67,41 @@ public sealed class OcrMatchingTests
     }
 
     [TestMethod]
+    public void CreateTargetedSearchCandidate_UsesStatusCropEvenWhenNameOcrIsNoisy()
+    {
+        var row = Row("10100008", "打上花火", 1);
+        var lines = new[]
+        {
+            Line("打h花火]", 100, 0.82f, OcrTextKind.AchievementName),
+            Line("2025/09/26", 112, 0.98f, OcrTextKind.AchievementStatus)
+        };
+
+        var candidate = AchievementOcrMatcher.CreateTargetedSearchCandidate(lines, row);
+
+        Assert.AreEqual(row.Id, candidate.AchievementId);
+        Assert.AreEqual("打h花火]", candidate.OcrText);
+        Assert.AreEqual(ProgressStatus.Completed, candidate.ProposedStatus);
+        Assert.AreEqual("2025/09/26", candidate.StatusText);
+        Assert.IsFalse(candidate.IsAmbiguous);
+        Assert.IsTrue(candidate.MatchConfidence < 0.75);
+    }
+
+    [TestMethod]
+    public void CreateTargetedSearchCandidate_LeavesStatusUnknownWhenStatusCropIsMissing()
+    {
+        var row = Row("10100013", "消逝余残响", 1);
+        var lines = new[]
+        {
+            Line("消m余残n", 100, 0.75f, OcrTextKind.AchievementName)
+        };
+
+        var candidate = AchievementOcrMatcher.CreateTargetedSearchCandidate(lines, row);
+
+        Assert.IsNull(candidate.ProposedStatus);
+        Assert.IsFalse(candidate.IsAmbiguous);
+    }
+
+    [TestMethod]
     public async Task ApplyOcrPreview_RequiresConfirmationAndCommitsOneRevisionWithoutDowngrade()
     {
         var first = Achievement("100", 1, "昨日今州");

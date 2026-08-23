@@ -117,6 +117,54 @@ public static partial class AchievementOcrMatcher
             deduplicated.Count(candidate => candidate.ProposedStatus is null));
     }
 
+    public static OcrAchievementCandidate CreateTargetedSearchCandidate(
+        IReadOnlyList<OcrTextLine> lines,
+        AchievementRow achievement)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        ArgumentNullException.ThrowIfNull(achievement);
+        var nameLines = lines
+            .Where(line => line.Kind == OcrTextKind.AchievementName)
+            .ToArray();
+        if (nameLines.Length == 0)
+        {
+            nameLines = lines
+                .Where(line => ParseStatus(line.Text) is null && line.Kind != OcrTextKind.AchievementDescription)
+                .ToArray();
+        }
+
+        var bestName = nameLines
+            .Select(line =>
+            {
+                MatchKnownText(line.Text, [achievement.Name], out var confidence);
+                return (Line: line, Confidence: confidence);
+            })
+            .OrderByDescending(item => item.Confidence)
+            .ThenByDescending(item => item.Line.Score)
+            .FirstOrDefault();
+        var status = lines
+            .Select(line => (Line: line, Status: ParseStatus(line.Text)))
+            .Where(item => item.Status is not null)
+            .OrderByDescending(item => item.Line.Kind == OcrTextKind.AchievementStatus)
+            .ThenByDescending(item => item.Line.Score)
+            .FirstOrDefault();
+        var ocrText = bestName.Line?.Text;
+        if (string.IsNullOrWhiteSpace(ocrText))
+        {
+            ocrText = string.Join("；", lines.Select(line => line.Text).Where(text => !string.IsNullOrWhiteSpace(text)));
+        }
+
+        return new OcrAchievementCandidate(
+            achievement.Id,
+            achievement.LegacyCode,
+            achievement.Name,
+            string.IsNullOrWhiteSpace(ocrText) ? "未识别到有效文字" : ocrText,
+            bestName.Confidence,
+            status.Status,
+            status.Line?.Text,
+            IsAmbiguous: false);
+    }
+
     public static ProgressStatus? ParseStatus(string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;

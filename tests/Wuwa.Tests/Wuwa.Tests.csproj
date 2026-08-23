@@ -25,4 +25,8 @@
     <ProjectReference Include="..\..\src\Wuwa.Infrastructure\Wuwa.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Fixtures\ocr\search-result-name-region-503x40.bgr" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

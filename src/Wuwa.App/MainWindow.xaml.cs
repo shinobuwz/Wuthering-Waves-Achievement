@@ -1585,6 +1585,7 @@ public partial class MainWindow : Window
         }
         NativeOcrDiagnostics.Write($"OCR start root={ocrAssets.Root} modelRoot={modelRoot} templates={templateDirectory}");
         var recognitionModel = Path.Combine(modelRoot, "rec", "rec.onnx");
+        var detectionModel = Path.Combine(modelRoot, "det", "det.onnx");
         var dictionary = Path.Combine(modelRoot, "ppocrv5_dict.txt");
         var gameProcessNames = new[] { "Client-Win64-Shipping.exe", "Wuthering Waves.exe" };
         if (!IsAnyProcessRunning(gameProcessNames))
@@ -1613,7 +1614,7 @@ public partial class MainWindow : Window
         try
         {
             using var client = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.0f));
-            var reader = new NativeOcrTemplateTextReader(client, templateDirectory);
+            var reader = new NativeOcrTemplateTextReader(client, templateDirectory, detectionModel);
             var capture = new WindowsGameWindowCapture();
             ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.FindingGameWindow, "正在检测游戏窗口…");
             var initialWindow = await capture.TryFindGameWindowAsync(gameProcessNames, minimumWidth: 800, minimumHeight: 600, cancellationToken: _ocrCancellation.Token);
@@ -2095,7 +2096,7 @@ public partial class MainWindow : Window
             var classifierModel = Path.Combine(modelRoot, "cls", "cls.onnx");
             var dictionary = Path.Combine(modelRoot, "ppocrv5_dict.txt");
             using var rowClient = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.0f));
-            var rowReader = new NativeOcrTemplateTextReader(rowClient, templateDirectory);
+            var rowReader = new NativeOcrTemplateTextReader(rowClient, templateDirectory, detectionModel);
             var navigationClient = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.0f));
             navigationClient.EnableDetection(detectionModel);
             navigationClient.EnableClassifier(classifierModel);
@@ -2656,9 +2657,10 @@ public partial class MainWindow : Window
         {
             var modelRoot = ocrAssets.ModelRoot;
             var recognitionModel = Path.Combine(modelRoot, "rec", "rec.onnx");
+            var detectionModel = Path.Combine(modelRoot, "det", "det.onnx");
             var dictionary = Path.Combine(modelRoot, "ppocrv5_dict.txt");
             using var client = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.0f));
-            var resultReader = new NativeOcrTemplateTextReader(client, templateDirectory);
+            var resultReader = new NativeOcrTemplateTextReader(client, templateDirectory, detectionModel);
             var capture = new WindowsGameWindowCapture();
             var resultService = new SinglePageOcrScanService(capture, resultReader);
 
@@ -2743,21 +2745,7 @@ public partial class MainWindow : Window
 
                     checkedCount++;
                     currentWindow = scan.Window ?? currentWindow;
-                    var resultPreview = AchievementOcrMatcher.CreatePreview(scan.Lines, [row]);
-                    var candidate = resultPreview.Candidates
-                        .Where(item => item.AchievementId == row.Id)
-                        .OrderByDescending(item => item.MatchConfidence)
-                        .FirstOrDefault();
-                    if (candidate is null)
-                    {
-                        var ocrText = string.Join("；", scan.Lines.Select(line => line.Text).Where(text => !string.IsNullOrWhiteSpace(text)));
-                        candidate = CreateUnknownCandidate(row, string.IsNullOrWhiteSpace(ocrText) ? "未识别到有效文字" : ocrText);
-                    }
-                    else if (candidate.ProposedStatus == ProgressStatus.Completed && candidate.MatchConfidence < 0.75)
-                    {
-                        candidate = candidate with { IsAmbiguous = true };
-                    }
-
+                    var candidate = AchievementOcrMatcher.CreateTargetedSearchCandidate(scan.Lines, row);
                     searchCandidates[row.Id] = candidate;
                     NativeOcrDiagnostics.Write(
                         $"SearchSync result code={row.LegacyCode} name={row.Name} status={candidate.ProposedStatus} confidence={candidate.MatchConfidence:F3} ambiguous={candidate.IsAmbiguous}");
