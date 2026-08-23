@@ -217,6 +217,7 @@
                 </Grid>
             </TabItem>
 
+            <!-- Shared TabItem style supplies the inter-item gap; the final tab must not carry a trailing margin. -->
             <TabItem Header="搜索框输入" Margin="0">
                 <Grid Margin="16">
                     <Grid.ColumnDefinitions>
@@ -284,7 +285,8 @@
         </TabControl>
 
         <DockPanel Grid.Row="2">
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+            <!-- Match the page action edge: TabControl border (1) + selected-content Grid margin (16). -->
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,17,0">
                 <Button Content="取消" Click="Cancel_OnClick" MinWidth="72" />
                 <Button Content="仅保存" Click="Save_OnClick" MinWidth="80" Margin="0" />
             </StackPanel>
