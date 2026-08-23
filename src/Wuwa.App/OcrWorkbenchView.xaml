@@ -5,6 +5,12 @@
              Foreground="{DynamicResource TextBrush}">
     <UserControl.Resources>
         <Style TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}" />
+        <Style x:Key="InlineActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
         <Style x:Key="WorkbenchNavigationStyle" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
             <Setter Property="Background" Value="{DynamicResource PanelAltBrush}" />
@@ -39,6 +45,26 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+        <Style x:Key="HelpSectionStyle" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource PanelAltBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="14" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+        </Style>
+        <Style x:Key="HelpTitleStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+        <Style x:Key="HelpBodyStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="LineHeight" Value="21" />
+            <Setter Property="Margin" Value="0,2,0,0" />
         </Style>
         <Style x:Key="WorkbenchCheckBoxStyle" TargetType="CheckBox">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
@@ -92,13 +118,19 @@
         </Grid.RowDefinitions>
 
         <DockPanel Grid.Row="0" Margin="0,0,0,14">
-            <Button DockPanel.Dock="Right"
-                    AutomationProperties.AutomationId="OcrBackButton"
-                    Content="返回主页面"
-                    Click="Back_OnClick"
-                    MinWidth="104"
-                    Margin="0"
-                    VerticalAlignment="Center" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button AutomationProperties.AutomationId="OcrHelpButton"
+                        Style="{StaticResource InlineActionButtonStyle}"
+                        Content="使用帮助"
+                        Click="HelpView_OnClick"
+                        MinWidth="104" />
+                <Button AutomationProperties.AutomationId="OcrBackButton"
+                        Style="{StaticResource InlineActionButtonStyle}"
+                        Content="返回主页面"
+                        Click="Back_OnClick"
+                        MinWidth="104"
+                        Margin="0" />
+            </StackPanel>
             <StackPanel>
                 <TextBlock Text="OCR 工作区" FontSize="25" FontWeight="SemiBold" />
                 <TextBlock Text="扫描、校验、结果应用与 Tag 跳过管理"
@@ -260,8 +292,8 @@
 
                     <DockPanel Grid.Row="0" Margin="0,0,0,12">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                            <Button Content="选择当前筛选" Click="SelectFilteredResults_OnClick" MinWidth="105" />
-                            <Button Content="取消当前筛选" Click="UnselectFilteredResults_OnClick" MinWidth="105" Margin="0" />
+                            <Button Style="{StaticResource InlineActionButtonStyle}" Content="选择当前筛选" Click="SelectFilteredResults_OnClick" MinWidth="105" />
+                            <Button Style="{StaticResource InlineActionButtonStyle}" Content="取消当前筛选" Click="UnselectFilteredResults_OnClick" MinWidth="105" Margin="0" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="扫描结果" FontSize="14" FontWeight="SemiBold" />
@@ -445,13 +477,131 @@
                     </DataGrid>
 
                     <DockPanel Grid.Row="3" Margin="0,10,0,0">
-                        <Button Content="清空全部标记" Click="ClearHistory_OnClick" MinWidth="105" />
+                        <Button Style="{StaticResource InlineActionButtonStyle}" Content="清空全部标记" Click="ClearHistory_OnClick" MinWidth="105" Margin="0" />
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                            <Button Content="DEBUG：标记选中 Tag 并跳过" Click="MarkSelectedTags_OnClick" MinWidth="170" />
-                            <Button Content="DEBUG：取消选中 Tag 跳过" Click="UnmarkSelectedTags_OnClick" MinWidth="170" Margin="0" />
+                            <Button Style="{StaticResource InlineActionButtonStyle}" Content="DEBUG：标记选中 Tag 并跳过" Click="MarkSelectedTags_OnClick" MinWidth="170" />
+                            <Button Style="{StaticResource InlineActionButtonStyle}" Content="DEBUG：取消选中 Tag 跳过" Click="UnmarkSelectedTags_OnClick" MinWidth="170" Margin="0" />
                         </StackPanel>
                     </DockPanel>
                 </Grid>
+
+                <ScrollViewer x:Name="HelpPage"
+                              AutomationProperties.AutomationId="OcrHelpPage"
+                              Visibility="Collapsed"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Padding="14">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,12">
+                            <Border DockPanel.Dock="Right"
+                                    Background="{DynamicResource SelectionBrush}"
+                                    BorderBrush="{DynamicResource AccentBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="10,3">
+                                <TextBlock Text="建议首次使用前完整阅读"
+                                           Foreground="{DynamicResource AccentBrush}"
+                                           FontSize="11" />
+                            </Border>
+                            <StackPanel>
+                                <TextBlock Text="OCR 工作区完整使用帮助" FontSize="17" FontWeight="SemiBold" />
+                                <TextBlock Text="从游戏准备、扫描方式、结果应用到中断恢复的完整说明"
+                                           Foreground="{DynamicResource MutedTextBrush}"
+                                           Margin="0,3,0,0" />
+                            </StackPanel>
+                        </DockPanel>
+
+                        <Border Style="{StaticResource HelpSectionStyle}" BorderBrush="{DynamicResource AccentBrush}">
+                            <StackPanel>
+                                <TextBlock Text="1. 前置要求（必须满足）" Style="{StaticResource HelpTitleStyle}" />
+                                <TextBlock Text="• 游戏必须使用 1920 × 1080 分辨率的窗口化或无边框窗口化模式。OCR 的识别区域、点击位置和滚轮位置均按 1920 × 1080 客户区设计；其他分辨率可能导致找不到窗口、点击错位或识别失败。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 本工具必须以管理员身份启动。建议右键程序选择“以管理员身份运行”；游戏和工具应处于相同权限级别，否则 Windows 可能拒绝模拟鼠标、滚轮或文本输入。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 游戏窗口必须可见且不能最小化。开始扫描前请进入游戏的成就页面，不要停留在地图、背包、搜索弹窗或其他菜单。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 扫描期间不要移动游戏窗口、切换分辨率、手动点击分类或滚动列表。可以让工具主窗口自动最小化，右上角 OCR 控制浮层会保持可见。" Style="{StaticResource HelpBodyStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource HelpSectionStyle}">
+                            <StackPanel>
+                                <TextBlock Text="2. 推荐的首次使用流程" Style="{StaticResource HelpTitleStyle}" />
+                                <TextBlock Text="① 以管理员身份启动工具和游戏，将游戏设为 1920 × 1080 窗口化。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="② 在游戏中打开成就页面，并选择一个成就较多、二级 Tag 较多的一级分类。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="③ 打开“翻页与校准设置”，先保存默认距离；如需确认滚轮是否生效，再分别执行成就列表和二级 Tag 校准。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="④ 首次建议先使用“扫描当前分类”验证识别和翻页是否正常，再运行“全量扫描所有分类”。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="⑤ 扫描结束后在“扫描结果”中检查状态、置信度和未匹配文字，勾选确认无误的记录，再点击“应用勾选结果”。" Style="{StaticResource HelpBodyStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource HelpSectionStyle}">
+                            <StackPanel>
+                                <TextBlock Text="3. 开始扫描区域的按钮" Style="{StaticResource HelpTitleStyle}" />
+                                <TextBlock Text="• 扫描当前分类：扫描游戏当前选中的二级 Tag 成就列表。程序会读取当前页、使用成就列表固定滚轮距离继续翻页，并在检测到重复页或列表结束后停止。适合首次测试和只更新某一个分类。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 全量扫描所有分类：依次切换游戏中的一级分类，识别和遍历其二级 Tag，再扫描每个二级 Tag 下的成就列表。运行时间较长，建议先校验当前分类流程。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 校验未完成成就：读取本地所有“未完成”成就，逐条在游戏搜索框中搜索，并识别右侧结果。只有明确识别为已完成且置信度达到要求的项目才会进入结果列表。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 以上三种操作都不会直接修改进度。识别结果必须进入扫描结果页，经人工勾选并应用后才会写入工作区。" Style="{StaticResource HelpBodyStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource HelpSectionStyle}">
+                            <StackPanel>
+                                <TextBlock Text="4. 扫描结果视图" Style="{StaticResource HelpTitleStyle}" />
+                                <TextBlock Text="• 顶部统计卡依次显示结果总数、已勾选数量、识别完成、识别未完成、未匹配文字和已跳过 Tag 数量。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 搜索框可按成就名称、OCR 原文或编号过滤；右侧下拉框可按状态、一级分类和二级分类过滤。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• “选择当前筛选”只勾选当前过滤结果中状态明确且无歧义的记录；“取消当前筛选”只取消当前过滤结果。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 表格中的“应用”复选框决定该记录是否写入。状态和 OCR 原文不一致、置信度偏低或名称明显错误时，请取消勾选。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• “应用勾选结果”才会真正修改成就进度。应用后会刷新主页面修订号和统计数据；未勾选及未匹配文字不会写入。" Style="{StaticResource HelpBodyStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource HelpSectionStyle}">
+                            <StackPanel>
+                                <TextBlock Text="5. Tag 跳过管理" Style="{StaticResource HelpTitleStyle}" />
+                                <TextBlock Text="• “全量扫描跳过已标记 Tag”开启时，全量扫描仍会发现一级和二级 Tag，但遇到已标记的一级／二级组合会直接跳过成就列表扫描。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 完整扫描成功的二级 Tag 会记录扫描时间和页数；正常停止时，已完成分类的记录也会保存，下一次全量扫描可继续跳过。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 在 Tag 表格中可使用 Ctrl 或 Shift 多选。“DEBUG：标记选中 Tag 并跳过”用于手动建立跳过记录；“DEBUG：取消选中 Tag 跳过”用于恢复扫描。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• “清空全部标记”只清除 OCR Tag 扫描／跳过记录，不会修改任何成就完成状态。" Style="{StaticResource HelpBodyStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource HelpSectionStyle}">
+                            <StackPanel>
+                                <TextBlock Text="6. 翻页与校准设置" Style="{StaticResource HelpTitleStyle}" />
+                                <TextBlock Text="• 成就列表默认滚轮总距离为 2400；二级 Tag 默认滚轮总距离为 4500。两个距离独立保存，扫描期间不会自动计算或改写。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• “仅保存”只保存输入值，不操作游戏。手动输入后如果希望扫描严格使用该值，请直接仅保存。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• “校准成就列表”和“校准二级 Tag”会严格使用当前输入距离执行一次向下、向上滚动，验证输入是否生效、记录实测位移，并调整停稳等待；不会重新计算滚轮距离。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 校准前应选择内容足够长的列表。若列表只有一页、已经位于边界或鼠标目标区域不可滚动，校准可能提示没有检测到可靠位移。" Style="{StaticResource HelpBodyStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource HelpSectionStyle}">
+                            <StackPanel>
+                                <TextBlock Text="7. 停止、保留结果与强制中止" Style="{StaticResource HelpTitleStyle}" />
+                                <TextBlock Text="• 点击游戏右上角浮层的“停止并保留结果”，或按 Ctrl+Shift+F12，会发起正常停止。工具会等待当前操作响应取消，并把中断前已经识别的结果加载到扫描结果页。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 当前分类扫描、全量扫描和未完成成就校验都支持正常停止后保留已有结果。结果仍需人工勾选和应用。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 全量扫描正常停止时，已经完整扫描成功的二级 Tag 断点会持久化；正在扫描但尚未完成的 Tag 不会标记为完成，但已识别的候选结果会保留。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• Ctrl+Alt+F12 是紧急强制中止，会直接终止工具进程，不执行正常收尾，也不保证保留扫描结果。仅在普通停止长时间无响应时使用。" Style="{StaticResource HelpBodyStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource HelpSectionStyle}">
+                            <StackPanel>
+                                <TextBlock Text="8. 常见问题排查" Style="{StaticResource HelpTitleStyle}" />
+                                <TextBlock Text="• 找不到游戏窗口：确认游戏没有最小化，使用 1920 × 1080 窗口化，并确保当前桌面可见。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• Windows 拒绝鼠标或滚轮输入：确认工具以管理员身份运行，并让游戏和工具使用相同权限级别。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 只扫描一页或翻页没有变化：确认当前列表确实超过一页，检查固定滚轮距离，并使用对应的手动校准按钮验证。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 点击了错误分类：确认游戏分辨率和窗口客户区为 1920 × 1080，扫描期间不要移动窗口或更改 UI 缩放。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 未匹配或置信度偏低：不要直接应用；检查 OCR 原文、游戏页面是否被遮挡，以及成就名称是否完整显示。" Style="{StaticResource HelpBodyStyle}" />
+                                <TextBlock Text="• 需要进一步排查时，请查看程序目录下 log/native-ocr-YYYY-MM-DD.log。日志会记录窗口检测、点击坐标、滚轮距离、OCR 页数和终止原因。" Style="{StaticResource HelpBodyStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="提示：OCR 结果属于自动识别建议。批量应用前请始终检查名称、状态、置信度和分类，避免将误识别结果写入进度。"
+                                   Foreground="{DynamicResource IncompleteStatusBrush}"
+                                   TextWrapping="Wrap"
+                                   FontWeight="SemiBold"
+                                   Margin="2,2,2,8" />
+                    </StackPanel>
+                </ScrollViewer>
             </Grid>
         </Border>
 
