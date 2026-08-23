@@ -77,6 +77,7 @@ public partial class MainWindow : Window
     {
         _workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
         InitializeComponent();
+        WorkspaceHelpPage.Configure(ShowWorkspacePage);
         OcrWorkbenchPage.Configure(
             scanCurrent: () => OcrScan_OnClick(OcrScanButton, new RoutedEventArgs()),
             scanFull: () => OcrFullScan_OnClick(OcrFullScanButton, new RoutedEventArgs()),
@@ -166,7 +167,7 @@ public partial class MainWindow : Window
         HiddenText.Text = _view.Statistics.Hidden.ToString();
         RateText.Text = $"{_view.Statistics.CompletionRatePercent:0.0}%";
         FilterSummaryText.Text = $"显示 {_view.Rows.Count} 条";
-        HintText.Text = $"显示 {_view.Rows.Count} 条 · Ctrl/Shift 多选后可加入追踪 · 双击切换完成状态 · 右键设置状态";
+        HintText.Text = $"显示 {_view.Rows.Count} 条 · Ctrl/Shift 多选 · 双击切换完成状态 · 右键批量设置选中项状态";
         ErrorText.Text = string.Empty;
     }
 
@@ -183,6 +184,8 @@ public partial class MainWindow : Window
             4 => ProgressStatus.Occupied,
             _ => null
         });
+
+    private void WorkspaceHelp_OnClick(object sender, RoutedEventArgs e) => ShowWorkspaceHelpPage();
 
     private void ActionHelp_OnClick(object sender, RoutedEventArgs e)
     {
@@ -360,20 +363,97 @@ public partial class MainWindow : Window
 
     private void AchievementGrid_OnPreviewMouseRightButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (AchievementGrid.SelectedItem is not AchievementRow row)
+        var gridRow = FindVisualParent<DataGridRow>(e.OriginalSource as DependencyObject);
+        var row = gridRow?.Item as AchievementRow ?? AchievementGrid.SelectedItem as AchievementRow;
+        if (row is null)
         {
             return;
         }
 
+        if (gridRow is { IsSelected: false })
+        {
+            AchievementGrid.SelectedItems.Clear();
+            gridRow.IsSelected = true;
+        }
+
+        var selectedRows = AchievementGrid.SelectedItems
+            .OfType<AchievementRow>()
+            .OrderBy(item => item.AbsoluteOrder)
+            .ToArray();
+        if (selectedRows.Length == 0)
+        {
+            selectedRows = [row];
+        }
+
         var menu = new ContextMenu();
+        var completed = new MenuItem { Header = "标记为完成" };
+        completed.Click += async (_, _) => await ApplyStatusToRowsAsync(selectedRows, ProgressStatus.Completed);
+        menu.Items.Add(completed);
         var unavailable = new MenuItem { Header = "标记为暂不可获取" };
-        unavailable.Click += async (_, _) => await ApplyStatusAsync(row.Id, ProgressStatus.Unavailable);
+        unavailable.Click += async (_, _) => await ApplyStatusToRowsAsync(selectedRows, ProgressStatus.Unavailable);
         menu.Items.Add(unavailable);
         var incomplete = new MenuItem { Header = "重置为未完成" };
-        incomplete.Click += async (_, _) => await ApplyStatusAsync(row.Id, ProgressStatus.Incomplete);
+        incomplete.Click += async (_, _) => await ApplyStatusToRowsAsync(selectedRows, ProgressStatus.Incomplete);
         menu.Items.Add(incomplete);
+        if (selectedRows.Length == 1)
+        {
+            menu.Items.Add(new Separator());
+            var copyName = new MenuItem { Header = "复制成就名称" };
+            copyName.Click += (_, _) => CopyAchievementName(selectedRows[0]);
+            menu.Items.Add(copyName);
+        }
         menu.IsOpen = true;
         e.Handled = true;
+    }
+
+    private async Task ApplyStatusToRowsAsync(IReadOnlyList<AchievementRow> rows, ProgressStatus status)
+    {
+        var result = await _workspace.ChangeStatusesAsync(rows.Select(row => row.Id).ToArray(), status);
+        if (!result.IsSuccess)
+        {
+            ShowError(result.Error?.Message ?? "批量状态变更失败。");
+            return;
+        }
+
+        RefreshView();
+        ErrorText.Text = string.Empty;
+        var statusText = status switch
+        {
+            ProgressStatus.Completed => "已完成",
+            ProgressStatus.Unavailable => "暂不可获取",
+            ProgressStatus.Incomplete => "未完成",
+            _ => status.ToString()
+        };
+        HintText.Text = $"已将选中的 {rows.Count} 个成就标记为{statusText}。";
+    }
+
+    private void CopyAchievementName(AchievementRow row)
+    {
+        try
+        {
+            SetClipboardWithRetry(row.Name);
+            ErrorText.Text = string.Empty;
+            HintText.Text = $"已复制成就名称：{row.Name}";
+        }
+        catch (Exception exception)
+        {
+            ShowError($"复制成就名称失败：{exception.Message}");
+        }
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject? source) where T : DependencyObject
+    {
+        while (source is not null)
+        {
+            if (source is T target)
+            {
+                return target;
+            }
+            source = source is FrameworkContentElement contentElement
+                ? contentElement.Parent
+                : VisualTreeHelper.GetParent(source);
+        }
+        return null;
     }
 
     private async Task ApplyStatusAsync(AchievementId id, ProgressStatus status)
@@ -1000,12 +1080,21 @@ public partial class MainWindow : Window
     {
         OcrWorkbenchPage.ApplyWorkspaceState(_ocrScanHistory, _workspace.GetSnapshot().Rows);
         WorkspacePage.Visibility = Visibility.Collapsed;
+        WorkspaceHelpPage.Visibility = Visibility.Collapsed;
         OcrWorkbenchPage.Visibility = Visibility.Visible;
+    }
+
+    private void ShowWorkspaceHelpPage()
+    {
+        WorkspacePage.Visibility = Visibility.Collapsed;
+        OcrWorkbenchPage.Visibility = Visibility.Collapsed;
+        WorkspaceHelpPage.Visibility = Visibility.Visible;
     }
 
     private void ShowWorkspacePage()
     {
         OcrWorkbenchPage.Visibility = Visibility.Collapsed;
+        WorkspaceHelpPage.Visibility = Visibility.Collapsed;
         WorkspacePage.Visibility = Visibility.Visible;
     }
 

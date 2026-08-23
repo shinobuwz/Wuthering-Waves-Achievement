@@ -747,6 +747,93 @@ public sealed partial class AchievementWorkspace
         }
     }
 
+    public async Task<WorkspaceCommandResult> ChangeStatusesAsync(
+        IReadOnlyCollection<AchievementId> achievementIds,
+        ProgressStatus status,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(achievementIds);
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return Failure(
+                WorkspaceErrorCode.Cancelled,
+                "Changing the achievement statuses was cancelled.",
+                _state is null ? WorkspaceSnapshot.Empty : CreateSnapshot(_state));
+        }
+
+        try
+        {
+            if (_state is null)
+            {
+                return Failure(WorkspaceErrorCode.NotOpen, "The achievement workspace is not open.", WorkspaceSnapshot.Empty);
+            }
+
+            var previousSnapshot = CreateSnapshot(_state);
+            if (!Enum.IsDefined(status))
+            {
+                return Failure(WorkspaceErrorCode.InvalidStatus, "The requested progress status is not recognized.", previousSnapshot);
+            }
+
+            var selectedIds = achievementIds.ToHashSet();
+            if (selectedIds.Count == 0)
+            {
+                return Success(previousSnapshot);
+            }
+
+            var selectedAchievements = _state.Achievements
+                .Where(item => selectedIds.Contains(item.Id))
+                .OrderBy(item => item.AbsoluteOrder)
+                .ToArray();
+            if (selectedAchievements.Length != selectedIds.Count)
+            {
+                return Failure(WorkspaceErrorCode.AchievementNotFound, "One or more selected achievements do not exist.", previousSnapshot);
+            }
+
+            var statuses = new Dictionary<AchievementId, ProgressStatus>(_state.Statuses);
+            foreach (var selected in selectedAchievements)
+            {
+                ApplyStatusTransition(_state.Achievements, statuses, selected, status);
+            }
+
+            var candidate = new WorkspaceState(
+                _state.Revision + 1,
+                _state.Achievements,
+                statuses,
+                _state.Categories,
+                NormalizeTrackingMetadata(_state.Metadata, _state.Achievements, statuses, out _));
+
+            try
+            {
+                await _store.SaveAsync(candidate, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return Failure(
+                    WorkspaceErrorCode.Cancelled,
+                    "Saving the status changes was cancelled.",
+                    previousSnapshot);
+            }
+            catch (Exception exception)
+            {
+                return Failure(
+                    WorkspaceErrorCode.SaveFailed,
+                    $"Unable to save the status changes: {exception.Message}",
+                    previousSnapshot);
+            }
+
+            _state = candidate;
+            return Success(CreateSnapshot(candidate));
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private static void ApplyStatusTransition(
         IReadOnlyList<Achievement> achievements,
         IDictionary<AchievementId, ProgressStatus> statuses,
