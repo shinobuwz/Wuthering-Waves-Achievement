@@ -29,6 +29,10 @@ public partial class MainWindow : Window
     private const double SearchInputXRatio = 0.20;
     private const double SearchButtonXRatio = 0.328;
     private const double SearchControlYRatio = 0.138;
+    private const double SearchInputVerifyLeftRatio = 0.145;
+    private const double SearchInputVerifyTopRatio = 0.112;
+    private const double SearchInputVerifyRightRatio = 0.302;
+    private const double SearchInputVerifyBottomRatio = 0.164;
     private const int OcrCancelHotKeyId = 0x5741;
     private const int OcrForceStopHotKeyId = 0x5742;
     private const uint OcrCancelHotKeyModifiers = 0x0002 | 0x0004; // CTRL + SHIFT
@@ -180,7 +184,7 @@ public partial class MainWindow : Window
                 "追踪选中成就：将列表中选中的未完成成就加入追踪。\n取消追踪选中：取消当前选中成就的追踪，不改变完成状态。\n打开追踪浮窗：打开置顶追踪窗口，可在游戏旁查看追踪项目。"),
             "ocr" => (
                 "OCR 扫描区域",
-                "自动扫描当前分类：识别当前打开分类中的成就。\n全量扫描所有分类：自动切换分类并扫描全部成就。\n增量扫描未完成成就：逐条搜索，高置信识别为已完成后立即写入本地进度。\n取消：右上角“停止扫描”或 Ctrl+Shift+F12。强制中止：Ctrl+Alt+F12。"),
+                "自动扫描当前分类：识别当前打开分类中的成就。\n全量扫描所有分类：自动切换分类并扫描全部成就。\n增量扫描未完成成就：逐条搜索，高置信识别为已完成后立即写入本地进度。\n测试搜索框输入：单独检测游戏窗口聚焦、中文粘贴及搜索框 OCR，不执行搜索或修改进度。\n取消：右上角“停止扫描”或 Ctrl+Shift+F12。强制中止：Ctrl+Alt+F12。"),
             "data" => (
                 "数据管理区域",
                 "导入旧版进度：导入旧版本工具生成的进度文件。\n导入 JSON/Excel：从 JSON 或 Excel 恢复成就数据。\n导出 JSON/Excel：备份当前成就和进度。\n同步 Wiki：从 Wiki 获取最新成就数据并合并。"),
@@ -796,6 +800,7 @@ public partial class MainWindow : Window
         OcrScanButton.IsEnabled = false;
         OcrFullScanButton.IsEnabled = false;
         OcrSearchSyncButton.IsEnabled = false;
+        OcrSearchInputTestButton.IsEnabled = false;
         OcrSearchSyncDebugButton.IsEnabled = false;
         OcrNavigationDebugButton.IsEnabled = false;
         HintText.Text = message;
@@ -1005,6 +1010,7 @@ public partial class MainWindow : Window
         OcrScanButton.Content = "取消 OCR";
         OcrFullScanButton.IsEnabled = false;
         OcrSearchSyncButton.IsEnabled = false;
+        OcrSearchInputTestButton.IsEnabled = false;
         OcrSearchSyncDebugButton.IsEnabled = false;
         ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.Preparing, "正在检测游戏窗口并扫描当前页面…");
         ErrorText.Text = string.Empty;
@@ -1147,6 +1153,7 @@ public partial class MainWindow : Window
             OcrScanButton.Content = "OCR 自动扫描当前分类";
             OcrFullScanButton.IsEnabled = true;
             OcrSearchSyncButton.IsEnabled = true;
+            OcrSearchInputTestButton.IsEnabled = true;
             OcrSearchSyncDebugButton.IsEnabled = true;
             OcrScanButton.IsEnabled = true;
         }
@@ -1180,6 +1187,7 @@ public partial class MainWindow : Window
         OcrScanButton.IsEnabled = false;
         OcrFullScanButton.IsEnabled = false;
         OcrSearchSyncButton.IsEnabled = false;
+        OcrSearchInputTestButton.IsEnabled = false;
         OcrSearchSyncDebugButton.IsEnabled = false;
         HintText.Text = "正在准备分类切换测试…";
         ErrorText.Text = string.Empty;
@@ -1353,6 +1361,7 @@ public partial class MainWindow : Window
             OcrNavigationDebugButton.IsEnabled = true;
             OcrFullScanButton.IsEnabled = true;
             OcrSearchSyncButton.IsEnabled = true;
+            OcrSearchInputTestButton.IsEnabled = true;
             OcrSearchSyncDebugButton.IsEnabled = true;
             OcrScanButton.IsEnabled = true;
         }
@@ -1386,6 +1395,7 @@ public partial class MainWindow : Window
         OcrFullScanButton.Content = "取消 OCR";
         OcrScanButton.IsEnabled = false;
         OcrSearchSyncButton.IsEnabled = false;
+        OcrSearchInputTestButton.IsEnabled = false;
         OcrSearchSyncDebugButton.IsEnabled = false;
         ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.Preparing, "正在准备 OCR 全量扫描…");
         ErrorText.Text = string.Empty;
@@ -1596,8 +1606,191 @@ public partial class MainWindow : Window
             OcrFullScanButton.Content = "OCR 全量扫描所有分类";
             OcrFullScanButton.IsEnabled = true;
             OcrSearchSyncButton.IsEnabled = true;
+            OcrSearchInputTestButton.IsEnabled = true;
             OcrSearchSyncDebugButton.IsEnabled = true;
             OcrScanButton.IsEnabled = true;
+        }
+    }
+
+    private async void OcrSearchInputTest_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_ocrCancellation is not null)
+        {
+            RequestOcrCancellation("正在取消搜索框输入测试…");
+            return;
+        }
+
+        var testRow = AchievementGrid.SelectedItem as AchievementRow
+            ?? _workspace.Query(new AchievementQuery(Status: ProgressStatus.Incomplete))
+                .Rows
+                .Where(row => !row.IsTombstone)
+                .OrderBy(row => row.AbsoluteOrder)
+                .FirstOrDefault();
+        if (testRow is null)
+        {
+            HintText.Text = "没有可用于搜索框输入测试的成就名称。";
+            return;
+        }
+
+        var ocrAssets = FindOcrAssets();
+        if (ocrAssets is null)
+        {
+            ShowOcrError("当前程序目录未找到内置 OCR 组件。", "OCR 组件缺失");
+            return;
+        }
+
+        var gameProcessNames = new[] { "Client-Win64-Shipping.exe", "Wuthering Waves.exe" };
+        if (!IsAnyProcessRunning(gameProcessNames))
+        {
+            ShowOcrError("未检测到《鸣潮》游戏进程，请先启动游戏并打开成就页面。", "未检测到游戏");
+            return;
+        }
+
+        _ocrCancellation = new CancellationTokenSource();
+        _activeOcrMode = OcrScanMode.SearchSync;
+        OcrSearchInputTestButton.Content = "取消输入测试";
+        OcrSearchInputTestButton.IsEnabled = true;
+        OcrSearchSyncButton.IsEnabled = false;
+        OcrSearchSyncDebugButton.IsEnabled = false;
+        OcrScanButton.IsEnabled = false;
+        OcrFullScanButton.IsEnabled = false;
+        OcrNavigationDebugButton.IsEnabled = false;
+        ReportOcrProgress(OcrScanMode.SearchSync, OcrScanPhase.Preparing, $"正在测试搜索框输入：{testRow.Name}");
+        ErrorText.Text = string.Empty;
+        var previousState = WindowState;
+
+        try
+        {
+            var recognitionModel = Path.Combine(ocrAssets.ModelRoot, "rec", "rec.onnx");
+            var dictionary = Path.Combine(ocrAssets.ModelRoot, "ppocrv5_dict.txt");
+            using var client = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.0f));
+            var capture = new WindowsGameWindowCapture();
+            var gameWindow = await capture.TryFindGameWindowAsync(
+                gameProcessNames,
+                minimumWidth: 800,
+                minimumHeight: 600,
+                cancellationToken: _ocrCancellation.Token);
+            if (gameWindow is null)
+            {
+                ShowOcrError("找到了游戏进程，但没有找到可见且分辨率至少为 800×600 的游戏窗口。", "找不到游戏窗口");
+                return;
+            }
+
+            ShowOcrStopOverlay(capture, gameWindow);
+            WindowState = WindowState.Minimized;
+            await Task.Delay(350, _ocrCancellation.Token);
+
+            var inputX = (int)Math.Round(gameWindow.ClientWidth * SearchInputXRatio);
+            var inputY = (int)Math.Round(gameWindow.ClientHeight * SearchControlYRatio);
+            var clearX = (int)Math.Round(gameWindow.ClientWidth * SearchButtonXRatio);
+            var clearY = inputY;
+            var elapsed = Stopwatch.StartNew();
+            var inputAccepted = await capture.ReplaceTextAsync(
+                gameWindow,
+                inputX,
+                inputY,
+                testRow.Name,
+                _ocrCancellation.Token);
+            var gameFocused = inputAccepted && capture.IsForegroundWindow(gameWindow.Handle);
+            var verification = new SearchInputVerificationResult(false, string.Empty, 0, 0);
+            var additionalDelay = 0;
+            if (gameFocused)
+            {
+                verification = await VerifySearchInputAsync(
+                    capture,
+                    client,
+                    gameWindow,
+                    testRow.Name,
+                    "immediate",
+                    _ocrCancellation.Token);
+                if (!verification.IsVerified)
+                {
+                    additionalDelay = 300;
+                    await Task.Delay(300, _ocrCancellation.Token);
+                    verification = await VerifySearchInputAsync(
+                        capture,
+                        client,
+                        gameWindow,
+                        testRow.Name,
+                        "after-300ms",
+                        _ocrCancellation.Token);
+                }
+                if (!verification.IsVerified)
+                {
+                    additionalDelay = 800;
+                    await Task.Delay(500, _ocrCancellation.Token);
+                    verification = await VerifySearchInputAsync(
+                        capture,
+                        client,
+                        gameWindow,
+                        testRow.Name,
+                        "after-800ms",
+                        _ocrCancellation.Token);
+                }
+            }
+            elapsed.Stop();
+
+            if (inputAccepted)
+            {
+                _ = await capture.ClickAsync(gameWindow, clearX, clearY, _ocrCancellation.Token);
+            }
+
+            CloseOcrStopOverlay();
+            WindowState = previousState;
+            Activate();
+            var conclusion = !inputAccepted
+                ? "输入自动化调用失败：请检查管理员权限和游戏窗口状态。"
+                : !gameFocused
+                    ? "游戏窗口未保持前台：可能需要增加聚焦等待或重新激活窗口。"
+                    : verification.IsVerified && additionalDelay == 0
+                        ? "功能正常：当前聚焦和粘贴间隔足够。"
+                        : verification.IsVerified
+                            ? $"粘贴成功，但需要额外等待约 {additionalDelay} ms 才能稳定识别；建议增加粘贴后间隔。"
+                            : "未能确认搜索框中的文字：可能需要增加聚焦/粘贴间隔，或调整搜索框 OCR 区域。";
+            var details =
+                $"测试文本：{testRow.Name}\n" +
+                $"输入调用：{(inputAccepted ? "成功" : "失败")}\n" +
+                $"游戏前台：{(gameFocused ? "是" : "否")}\n" +
+                $"OCR 文字：{(string.IsNullOrWhiteSpace(verification.RecognizedText) ? "<空>" : verification.RecognizedText)}\n" +
+                $"OCR 分数：{verification.OcrScore:0.000}\n" +
+                $"名称匹配：{verification.MatchConfidence:0.000}\n" +
+                $"总耗时：{elapsed.ElapsedMilliseconds} ms\n\n" +
+                conclusion;
+            NativeOcrDiagnostics.Write(
+                $"SearchSync input test expected={testRow.Name} accepted={inputAccepted} gameFocused={gameFocused} verified={verification.IsVerified} additionalDelay={additionalDelay} elapsedMs={elapsed.ElapsedMilliseconds}");
+            MessageBox.Show(
+                this,
+                details,
+                verification.IsVerified ? "搜索框输入测试通过" : "搜索框输入测试未通过",
+                MessageBoxButton.OK,
+                verification.IsVerified ? MessageBoxImage.Information : MessageBoxImage.Warning);
+            HintText.Text = conclusion;
+        }
+        catch (OperationCanceledException)
+        {
+            HintText.Text = "搜索框输入测试已取消。";
+        }
+        catch (Exception exception)
+        {
+            NativeOcrDiagnostics.Write($"SearchSync input test exception: {exception}");
+            ShowOcrError($"搜索框输入测试失败：{exception.Message}", "输入测试失败");
+        }
+        finally
+        {
+            WindowState = previousState;
+            _ocrCancellation?.Dispose();
+            _ocrCancellation = null;
+            _activeOcrMode = null;
+            CloseOcrStopOverlay();
+            OcrSearchInputTestButton.Content = "测试搜索框输入";
+            OcrSearchInputTestButton.IsEnabled = true;
+            OcrSearchSyncButton.IsEnabled = true;
+            OcrSearchSyncDebugButton.IsEnabled = true;
+            OcrFullScanButton.IsEnabled = true;
+            OcrScanButton.IsEnabled = true;
+#if DEBUG
+            OcrNavigationDebugButton.IsEnabled = true;
+#endif
         }
     }
 
@@ -1648,6 +1841,7 @@ public partial class MainWindow : Window
         OcrSearchSyncButton.Content = "取消增量扫描";
         OcrSearchSyncDebugButton.Content = "取消前 10 个扫描";
         OcrSearchSyncButton.IsEnabled = !isLimitedDebugScan;
+        OcrSearchInputTestButton.IsEnabled = false;
         OcrSearchSyncDebugButton.IsEnabled = isLimitedDebugScan;
         OcrScanButton.IsEnabled = false;
         OcrFullScanButton.IsEnabled = false;
@@ -1878,6 +2072,7 @@ public partial class MainWindow : Window
             OcrSearchSyncButton.Content = "增量扫描未完成成就";
             OcrSearchSyncDebugButton.Content = "DEBUG：校验前 10 个";
             OcrSearchSyncButton.IsEnabled = true;
+            OcrSearchInputTestButton.IsEnabled = true;
             OcrSearchSyncDebugButton.IsEnabled = true;
             OcrFullScanButton.IsEnabled = true;
             OcrScanButton.IsEnabled = true;
@@ -1885,6 +2080,75 @@ public partial class MainWindow : Window
             OcrNavigationDebugButton.IsEnabled = true;
 #endif
         }
+    }
+
+    private sealed record SearchInputVerificationResult(
+        bool IsVerified,
+        string RecognizedText,
+        double OcrScore,
+        double MatchConfidence);
+
+    private static async Task<SearchInputVerificationResult> VerifySearchInputAsync(
+        WindowsGameWindowCapture capture,
+        NativeOcrClient client,
+        GameWindowCandidate window,
+        string expectedText,
+        string context,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var frame = await capture.CaptureClientAsync(
+            window,
+            expectedWidth: 1920,
+            expectedHeight: 1080,
+            cancellationToken).ConfigureAwait(true);
+        var crop = CropOcrRegion(
+            frame,
+            SearchInputVerifyLeftRatio,
+            SearchInputVerifyTopRatio,
+            SearchInputVerifyRightRatio,
+            SearchInputVerifyBottomRatio);
+        var recognition = await Task.Run(
+            () => client.RecognizeBgrClahe(crop.BgrPixels, crop.Width, crop.Height, crop.Stride),
+            cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var matched = AchievementOcrMatcher.MatchKnownText(recognition.Text, [expectedText], out var matchConfidence);
+        var verified = matched is not null;
+        NativeOcrDiagnostics.Write(
+            $"SearchSync input verification context={context} expected={expectedText} recognized={recognition.Text} ocrScore={recognition.Score:F3} matchConfidence={matchConfidence:F3} verified={verified}");
+        return new SearchInputVerificationResult(
+            verified,
+            recognition.Text,
+            recognition.Score,
+            matchConfidence);
+    }
+
+    private static OcrImageFrame CropOcrRegion(
+        OcrImageFrame frame,
+        double leftRatio,
+        double topRatio,
+        double rightRatio,
+        double bottomRatio)
+    {
+        frame.Validate();
+        var left = Math.Clamp((int)Math.Floor(frame.Width * leftRatio), 0, frame.Width - 1);
+        var top = Math.Clamp((int)Math.Floor(frame.Height * topRatio), 0, frame.Height - 1);
+        var right = Math.Clamp((int)Math.Ceiling(frame.Width * rightRatio), left + 1, frame.Width);
+        var bottom = Math.Clamp((int)Math.Ceiling(frame.Height * bottomRatio), top + 1, frame.Height);
+        var width = right - left;
+        var height = bottom - top;
+        var stride = checked(width * 3);
+        var pixels = new byte[checked(stride * height)];
+        for (var row = 0; row < height; row++)
+        {
+            var sourceOffset = checked((top + row) * frame.Stride + left * 3);
+            Buffer.BlockCopy(frame.BgrPixels, sourceOffset, pixels, row * stride, stride);
+        }
+
+        NativeOcrDiagnostics.Write(
+            $"SearchSync input crop source={frame.Width}x{frame.Height} region={left},{top}-{right},{bottom} crop={width}x{height}");
+        return new OcrImageFrame(pixels, width, height, stride);
     }
 
     private async Task<OcrCategoryScanStats> ScanAchievementCategoryAsync(

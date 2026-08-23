@@ -23,7 +23,7 @@ try {
     $process = Start-Process $Executable -PassThru
     for ($i = 0; $i -lt 100 -and $process.MainWindowHandle -eq 0 -and -not $process.HasExited; $i++) { Start-Sleep -Milliseconds 100; $process.Refresh() }
     if (-not $process.HasExited -and $process.MainWindowHandle -ne 0) {
-        $required = @('ThemeButton','TrackSelectedButton','UntrackSelectedButton','OpenTrackerButton','TrackingHelpButton','MapOverlayButton','OcrSearchSyncButton','OcrHelpButton','LegacyImportButton','ExchangeImportButton','ExchangeExportButton','WikiSyncButton','DataHelpButton','UpdateButton','SystemHelpButton','AchievementGrid')
+        $required = @('ThemeButton','TrackSelectedButton','UntrackSelectedButton','OpenTrackerButton','TrackingHelpButton','MapOverlayButton','OcrSearchSyncButton','OcrSearchInputTestButton','OcrHelpButton','LegacyImportButton','ExchangeImportButton','ExchangeExportButton','WikiSyncButton','DataHelpButton','UpdateButton','SystemHelpButton','AchievementGrid')
         foreach ($id in $required) {
             $found = $null
             for ($attempt = 0; $attempt -lt 30 -and -not $found -and -not $process.HasExited; $attempt++) {
