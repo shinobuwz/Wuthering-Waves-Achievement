@@ -20,7 +20,7 @@
 
         <StackPanel>
             <TextBlock Text="OCR 翻页设置" FontSize="22" FontWeight="SemiBold" />
-            <TextBlock Text="可主动切换滚轮或拖动，并为当前机器调整翻页距离。扫描时会等待画面停稳后再识别。"
+            <TextBlock Text="OCR 统一使用鼠标滚轮。成就列表与二级 Tag 列表分别保存距离，并在扫描时根据画面和 OCR 重叠结果自动调整。"
                        Foreground="{DynamicResource MutedTextBrush}"
                        TextWrapping="Wrap"
                        Margin="0,6,0,0" />
@@ -47,30 +47,27 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="翻页方式" VerticalAlignment="Center" Margin="0,0,12,10" />
-                <ComboBox Grid.Row="0" Grid.Column="1" x:Name="MethodCombo" Margin="0,0,0,10" />
-
-                <TextBlock Grid.Row="1" Text="滚轮总距离" VerticalAlignment="Center" Margin="0,0,12,10" />
-                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,10">
+                <TextBlock Grid.Row="0" Text="成就列表滚轮总距离" VerticalAlignment="Center" Margin="0,0,12,10" />
+                <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
                     <TextBox x:Name="WheelDistanceBox" />
-                    <TextBlock Text="正数，推荐 120–12000；默认 2400（等价于历史参数 160 × 15 次）。"
+                    <TextBlock Text="默认 2400；校准目标为一页 4 个成就中保留 1 个旧成就、翻出 3 个新成就。"
                                Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,4,0,0" />
                 </StackPanel>
 
-                <TextBlock Grid.Row="2" Text="拖动距离（像素）" VerticalAlignment="Center" Margin="0,0,12,10" />
-                <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,0,0,10">
-                    <TextBox x:Name="DragDistanceBox" />
-                    <TextBlock Text="正数，推荐 80–800；默认 550。程序会按翻页方向自动取正负号。"
+                <TextBlock Grid.Row="1" Text="二级 Tag 滚轮总距离" VerticalAlignment="Center" Margin="0,0,12,10" />
+                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,10">
+                    <TextBox x:Name="SecondaryWheelDistanceBox" />
+                    <TextBlock Text="默认 640；校准目标为一页 7 个 Tag 中保留 1 个旧 Tag、翻出 6 个新 Tag。"
                                Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,4,0,0" />
                 </StackPanel>
 
-                <TextBlock Grid.Row="3" Text="滚轮事件间隔（ms）" VerticalAlignment="Center" Margin="0,0,12,10" />
-                <TextBox Grid.Row="3" Grid.Column="1" x:Name="WheelIntervalBox" Margin="0,0,0,10" />
+                <TextBlock Grid.Row="2" Text="滚轮事件间隔（ms）" VerticalAlignment="Center" Margin="0,0,12,10" />
+                <TextBox Grid.Row="2" Grid.Column="1" x:Name="WheelIntervalBox" Margin="0,0,0,10" />
 
-                <TextBlock Grid.Row="4" Text="停稳检测起始等待（ms）" VerticalAlignment="Center" Margin="0,0,12,10" />
-                <TextBox Grid.Row="4" Grid.Column="1" x:Name="SettleDelayBox" Margin="0,0,0,10" />
+                <TextBlock Grid.Row="3" Text="停稳检测起始等待（ms）" VerticalAlignment="Center" Margin="0,0,12,10" />
+                <TextBox Grid.Row="3" Grid.Column="1" x:Name="SettleDelayBox" Margin="0,0,0,10" />
 
-                <CheckBox Grid.Row="5" Grid.ColumnSpan="2"
+                <CheckBox Grid.Row="4" Grid.ColumnSpan="2"
                           x:Name="AutoCalibrateCheckBox"
                           Content="根据实际画面位移自动校准后续翻页距离和停稳等待"
                           VerticalAlignment="Center" />
@@ -89,7 +86,7 @@
                            Foreground="{DynamicResource MutedTextBrush}"
                            TextWrapping="Wrap"
                            Margin="0,5,0,0" />
-                <TextBlock Text="“保存并校准”会在游戏成就页执行一次向下和向上翻页，测量实际位移并尽量回到原位置。请勿在校准期间操作游戏。"
+                <TextBlock Text="可分别手动校准成就列表和二级 Tag 列表。校准前请停留在游戏成就页面，并选择一个内容足够长的成就分类或二级 Tag 列表；程序会向下、向上滚动并尽量回到原位置。扫描过程中仍会继续自动微调。"
                            Foreground="{DynamicResource MutedTextBrush}"
                            TextWrapping="Wrap"
                            Margin="0,9,0,0" />
@@ -99,9 +96,10 @@
         <DockPanel Grid.Row="3" Margin="0,18,0,0">
             <TextBlock x:Name="ValidationText" Foreground="{DynamicResource ErrorBrush}" VerticalAlignment="Center" />
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                <Button Content="取消" Click="Cancel_OnClick" MinWidth="76" />
-                <Button Content="仅保存" Click="Save_OnClick" MinWidth="86" />
-                <Button Content="保存并校准" Click="SaveAndCalibrate_OnClick" MinWidth="112" Margin="0" />
+                <Button Content="取消" Click="Cancel_OnClick" MinWidth="66" />
+                <Button Content="仅保存" Click="Save_OnClick" MinWidth="72" />
+                <Button Content="校准成就列表" Click="CalibrateAchievement_OnClick" MinWidth="108" />
+                <Button Content="校准二级 Tag" Click="CalibrateSecondaryTags_OnClick" MinWidth="108" Margin="0" />
             </StackPanel>
         </DockPanel>
     </Grid>

@@ -9,9 +9,8 @@ public sealed class OcrPagingTests
     public void PagingOptions_RoundTripAndNormalizeUserValues()
     {
         var source = new OcrPagingOptions(
-            Method: OcrPagingMethod.Wheel,
             WheelDistance: -3600,
-            DragDistance: -620,
+            SecondaryWheelDistance: -720,
             WheelEventIntervalMilliseconds: 140,
             AutoCalibrate: false,
             MinimumSettleMilliseconds: 240,
@@ -23,9 +22,8 @@ public sealed class OcrPagingTests
         };
         var parsed = OcrPagingOptions.FromSettings(settings);
 
-        Assert.AreEqual(OcrPagingMethod.Wheel, parsed.Method);
         Assert.AreEqual(3600, parsed.WheelDistance);
-        Assert.AreEqual(620, parsed.DragDistance);
+        Assert.AreEqual(720, parsed.SecondaryWheelDistance);
         Assert.AreEqual(140, parsed.WheelEventIntervalMilliseconds);
         Assert.IsFalse(parsed.AutoCalibrate);
         Assert.AreEqual(240, parsed.MinimumSettleMilliseconds);
@@ -40,9 +38,17 @@ public sealed class OcrPagingTests
             [OcrPagingOptions.SettingKey] = "not-json"
         });
 
-        Assert.AreEqual(OcrPagingMethod.Drag, parsed.Method);
         Assert.AreEqual(OcrPagingOptions.DefaultWheelDistance, parsed.WheelDistance);
-        Assert.AreEqual(OcrPagingOptions.DefaultDragDistance, parsed.DragDistance);
+        Assert.AreEqual(OcrPagingOptions.DefaultSecondaryWheelDistance, parsed.SecondaryWheelDistance);
+    }
+
+    [TestMethod]
+    public void PagingOptions_SecondaryDistanceIsCappedToPreserveTagOverlap()
+    {
+        var parsed = new OcrPagingOptions(SecondaryWheelDistance: 9000).Normalize();
+
+        Assert.AreEqual(OcrPagingOptions.MaximumSecondaryWheelDistance, parsed.SecondaryWheelDistance);
+        Assert.AreEqual(OcrPagingOptions.DefaultWheelDistance, parsed.WheelDistance);
     }
 
     [TestMethod]

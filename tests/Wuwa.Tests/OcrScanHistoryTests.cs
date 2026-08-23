@@ -32,10 +32,12 @@ public sealed class OcrScanHistoryTests
         };
 
         var parsed = OcrScanHistory.FromSettings(settings);
+        var removed = parsed.Remove("一级", "二级");
         var cleared = parsed.Clear();
 
         Assert.IsFalse(parsed.SkipPreviouslyScanned);
         Assert.IsTrue(parsed.Contains("一级", "二级"));
+        Assert.IsFalse(removed.Contains("一级", "二级"));
         Assert.AreEqual(0, cleared.EffectiveCategories.Count);
         Assert.IsFalse(cleared.SkipPreviouslyScanned);
     }

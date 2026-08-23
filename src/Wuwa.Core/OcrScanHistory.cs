@@ -88,6 +88,17 @@ public sealed record OcrScanHistory(
         return (this with { Categories = categories }).Normalize();
     }
 
+    public OcrScanHistory Remove(string primaryName, string secondaryName)
+    {
+        var key = BuildKey(primaryName, secondaryName);
+        return (this with
+        {
+            Categories = EffectiveCategories
+                .Where(item => !string.Equals(BuildKey(item.PrimaryName, item.SecondaryName), key, StringComparison.Ordinal))
+                .ToArray()
+        }).Normalize();
+    }
+
     public OcrScanHistory Clear() => this with { Categories = Array.Empty<OcrScannedCategory>() };
 
     public int PrimaryCategoryCount => EffectiveCategories

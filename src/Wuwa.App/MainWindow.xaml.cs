@@ -51,7 +51,6 @@ public partial class MainWindow : Window
     private bool _initializingFilters;
     private CancellationTokenSource? _ocrCancellation;
     private AchievementTrackerWindow? _trackerWindow;
-    private OcrWorkbenchWindow? _ocrWorkbenchWindow;
     private OcrStopOverlayWindow? _ocrStopOverlay;
     private bool _restoringMainWindow;
     private bool _isClosing;
@@ -78,11 +77,20 @@ public partial class MainWindow : Window
     {
         _workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
         InitializeComponent();
+        OcrWorkbenchPage.Configure(
+            scanCurrent: () => OcrScan_OnClick(OcrScanButton, new RoutedEventArgs()),
+            scanFull: () => OcrFullScan_OnClick(OcrFullScanButton, new RoutedEventArgs()),
+            searchSync: () => OcrSearchSync_OnClick(OcrSearchSyncButton, new RoutedEventArgs()),
+            openPagingSettings: () => OcrPagingSettings_OnClick(OcrPagingSettingsButton, new RoutedEventArgs()),
+            back: ShowWorkspacePage,
+            setSkipPreviouslyScanned: SetSkipPreviouslyScannedAsync,
+            clearHistory: ClearOcrScanHistoryAsync,
+            setTagsMarked: SetOcrTagsMarkedAsync,
+            applyResults: ApplyOcrResultsAsync);
         Closing += (_, _) =>
         {
             _isClosing = true;
             _trackerWindow?.Close();
-            _ocrWorkbenchWindow?.Close();
             _ocrStopOverlay?.Close();
         };
         SourceInitialized += MainWindow_OnSourceInitialized;
@@ -110,6 +118,7 @@ public partial class MainWindow : Window
         }
         _ocrPagingOptions = OcrPagingOptions.FromSettings(opened.Snapshot.Metadata.EffectiveSettings);
         _ocrScanHistory = OcrScanHistory.FromSettings(opened.Snapshot.Metadata.EffectiveSettings);
+        OcrWorkbenchPage.ApplyWorkspaceState(_ocrScanHistory, opened.Snapshot.Rows);
         PopulateFilters(opened.Snapshot);
         RefreshView();
         var captureDirectory = Environment.GetEnvironmentVariable("WUWA_NATIVE_UI_CAPTURE_DIR");
@@ -185,7 +194,7 @@ public partial class MainWindow : Window
                 "追踪选中成就：将列表中选中的未完成成就加入追踪。\n取消追踪选中：取消当前选中成就的追踪，不改变完成状态。\n打开追踪浮窗：打开置顶追踪窗口，可在游戏旁查看追踪项目。"),
             "ocr" => (
                 "OCR 扫描区域",
-                "打开 OCR 工具：进入独立 OCR 工作台，集中使用当前分类扫描、全量扫描、未完成成就校验、翻页设置和扫描记录。\n全量扫描默认跳过已有的一级 / 二级分类组合，也可以在 OCR 工具中关闭跳过。\n翻页可主动切换滚轮/拖动，并自动检测画面停稳和校准实际位移。\n取消：Ctrl+Shift+F12。强制中止：Ctrl+Alt+F12。"),
+                "打开 OCR 工具：切换到主窗口内的 OCR 工作台页面，可随时返回成就工作区。\n工作台集中提供当前分类扫描、全量扫描、未完成成就校验、结果筛选、Tag 跳过管理和翻页校准。\n全量扫描默认跳过已标记的一级 / 二级 Tag 组合，也可以关闭跳过。\n取消：Ctrl+Shift+F12。强制中止：Ctrl+Alt+F12。"),
             "data" => (
                 "数据管理区域",
                 "导入旧版进度：导入旧版本工具生成的进度文件。\n导入 JSON/Excel：从 JSON 或 Excel 恢复成就数据。\n导出 JSON/Excel：备份当前成就和进度。\n同步 Wiki：从 Wiki 获取最新成就数据并合并。"),
@@ -970,29 +979,23 @@ public partial class MainWindow : Window
     {
         if (_ocrCancellation is not null)
         {
-            HintText.Text = "OCR 正在运行，可使用 Ctrl+Shift+F12 取消。";
+            OcrWorkbenchPage.SetStatus("OCR 正在运行，可使用 Ctrl+Shift+F12 取消。");
             return;
         }
+        ShowOcrWorkbenchPage();
+    }
 
-        if (_ocrWorkbenchWindow is null)
-        {
-            _ocrWorkbenchWindow = new OcrWorkbenchWindow(
-                _ocrScanHistory,
-                scanCurrent: () => OcrScan_OnClick(OcrScanButton, new RoutedEventArgs()),
-                scanFull: () => OcrFullScan_OnClick(OcrFullScanButton, new RoutedEventArgs()),
-                searchSync: () => OcrSearchSync_OnClick(OcrSearchSyncButton, new RoutedEventArgs()),
-                openPagingSettings: () => OcrPagingSettings_OnClick(OcrPagingSettingsButton, new RoutedEventArgs()),
-                setSkipPreviouslyScanned: SetSkipPreviouslyScannedAsync,
-                clearHistory: ClearOcrScanHistoryAsync)
-            {
-                Owner = this
-            };
-            _ocrWorkbenchWindow.Closed += (_, _) => _ocrWorkbenchWindow = null;
-        }
+    private void ShowOcrWorkbenchPage()
+    {
+        OcrWorkbenchPage.ApplyWorkspaceState(_ocrScanHistory, _workspace.GetSnapshot().Rows);
+        WorkspacePage.Visibility = Visibility.Collapsed;
+        OcrWorkbenchPage.Visibility = Visibility.Visible;
+    }
 
-        _ocrWorkbenchWindow.ApplyHistory(_ocrScanHistory);
-        _ocrWorkbenchWindow.Show();
-        _ocrWorkbenchWindow.Activate();
+    private void ShowWorkspacePage()
+    {
+        OcrWorkbenchPage.Visibility = Visibility.Collapsed;
+        WorkspacePage.Visibility = Visibility.Visible;
     }
 
     private async Task<bool> SetSkipPreviouslyScannedAsync(bool value)
@@ -1007,7 +1010,7 @@ public partial class MainWindow : Window
             _ocrScanHistory = previous;
             _ocrScanHistoryDirty = false;
         }
-        _ocrWorkbenchWindow?.ApplyHistory(_ocrScanHistory);
+        OcrWorkbenchPage.ApplyWorkspaceState(_ocrScanHistory, _workspace.GetSnapshot().Rows);
         return saved;
     }
 
@@ -1022,8 +1025,50 @@ public partial class MainWindow : Window
             _ocrScanHistory = previous;
             _ocrScanHistoryDirty = false;
         }
-        _ocrWorkbenchWindow?.ApplyHistory(_ocrScanHistory);
+        OcrWorkbenchPage.ApplyWorkspaceState(_ocrScanHistory, _workspace.GetSnapshot().Rows);
         return saved;
+    }
+
+    private async Task<bool> SetOcrTagsMarkedAsync(IReadOnlyList<OcrTagSelection> tags, bool marked)
+    {
+        if (tags.Count == 0) return true;
+        var previous = _ocrScanHistory;
+        foreach (var tag in tags)
+        {
+            _ocrScanHistory = marked
+                ? _ocrScanHistory.Record(tag.PrimaryName, tag.SecondaryName, pages: 0)
+                : _ocrScanHistory.Remove(tag.PrimaryName, tag.SecondaryName);
+        }
+        _ocrScanHistoryDirty = true;
+        var saved = await PersistOcrScanHistoryAsync(showError: true);
+        if (!saved)
+        {
+            _ocrScanHistory = previous;
+            _ocrScanHistoryDirty = false;
+        }
+        OcrWorkbenchPage.ApplyWorkspaceState(_ocrScanHistory, _workspace.GetSnapshot().Rows);
+        return saved;
+    }
+
+    private async Task<bool> ApplyOcrResultsAsync(IReadOnlyList<OcrAchievementCandidate> candidates)
+    {
+        if (candidates.Count == 0) return false;
+        var preview = new OcrScanPreview(
+            Array.AsReadOnly(candidates.ToArray()),
+            Array.Empty<OcrUnmatchedText>(),
+            candidates.Count(candidate => candidate.ProposedStatus == ProgressStatus.Completed),
+            candidates.Count(candidate => candidate.ProposedStatus == ProgressStatus.Incomplete),
+            candidates.Count(candidate => candidate.ProposedStatus is null));
+        var applied = await _workspace.ApplyOcrPreviewAsync(preview, confirm: true, cancellationToken: CancellationToken.None);
+        if (!applied.IsSuccess)
+        {
+            ShowOcrError(applied.Error?.Message ?? "OCR 结果应用失败。", "OCR 结果应用失败");
+            return false;
+        }
+        RefreshView();
+        OcrWorkbenchPage.ApplyWorkspaceState(_ocrScanHistory, applied.Snapshot.Rows);
+        OcrWorkbenchPage.SetStatus($"OCR 已应用 {applied.Updated} 条 · 防止降级 {applied.PreventedDowngrades} 条 · 未变化 {applied.Unchanged} 条");
+        return true;
     }
 
     private async Task<bool> PersistOcrScanHistoryAsync(bool showError)
@@ -1049,7 +1094,7 @@ public partial class MainWindow : Window
         if (updated == _ocrScanHistory) return;
         _ocrScanHistory = updated;
         _ocrScanHistoryDirty = true;
-        _ocrWorkbenchWindow?.ApplyHistory(_ocrScanHistory);
+        OcrWorkbenchPage.ApplyWorkspaceState(_ocrScanHistory, _workspace.GetSnapshot().Rows);
         NativeOcrDiagnostics.Write($"OCR scan history recorded primary={primaryName} secondary={secondaryName} pages={pages}");
     }
 
@@ -1082,12 +1127,16 @@ public partial class MainWindow : Window
         _ocrPagingOptions = dialog.AcceptedOptions.Normalize();
         _ocrPagingOptionsDirty = true;
         if (!await PersistOcrPagingOptionsAsync(showError: true)) return;
-        HintText.Text = $"OCR 翻页已切换为 {PagingMethodText(_ocrPagingOptions.Method)}。";
-        if (!dialog.CalibrationRequested) return;
+        HintText.Text = "OCR 翻页设置已保存，成就列表和二级 Tag 列表统一使用鼠标滚轮。";
+        if (dialog.CalibrationTarget == OcrPagingCalibrationTarget.None) return;
+        var calibrationSurface = dialog.CalibrationTarget == OcrPagingCalibrationTarget.SecondaryTags
+            ? OcrPagingSurface.SecondaryTags
+            : OcrPagingSurface.AchievementList;
+        var calibrationLabel = calibrationSurface == OcrPagingSurface.SecondaryTags ? "二级 Tag 列表" : "成就列表";
 
         if (!IsAnyProcessRunning(OcrGameProcessNames))
         {
-            ShowOcrError("未检测到《鸣潮》游戏进程。设置已经保存；如需校准，请启动游戏并打开成就列表后重试。", "无法开始翻页校准");
+            ShowOcrError($"未检测到《鸣潮》游戏进程。设置已经保存；如需校准{calibrationLabel}，请启动游戏并打开成就页面后重试。", "无法开始翻页校准");
             return;
         }
 
@@ -1111,15 +1160,15 @@ public partial class MainWindow : Window
                 cancellationToken: _ocrCancellation.Token);
             if (window is null)
             {
-                ShowOcrError("没有找到可见的游戏窗口。请退出最小化状态，并在游戏中打开成就列表。", "无法开始翻页校准");
+                ShowOcrError($"没有找到可见的游戏窗口。请退出最小化状态，并在游戏中打开包含{calibrationLabel}的成就页面。", "无法开始翻页校准");
                 return;
             }
 
             ShowOcrStopOverlay(capture, window);
-            ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.Preparing, "正在自动校准 OCR 翻页，请勿操作游戏窗口…");
+            ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.Preparing, $"正在校准{calibrationLabel}翻页，请勿操作游戏窗口…");
             WindowState = WindowState.Minimized;
             await Task.Delay(350, _ocrCancellation.Token);
-            var result = await CalibrateOcrPagingAsync(capture, window, _ocrCancellation.Token);
+            var result = await CalibrateOcrPagingAsync(capture, window, calibrationSurface, _ocrCancellation.Token);
             if (_ocrPagingOptionsDirty)
             {
                 await PersistOcrPagingOptionsAsync(showError: false);
@@ -1128,8 +1177,8 @@ public partial class MainWindow : Window
             WindowState = previousState;
             Activate();
             var icon = result.IsSuccess ? MessageBoxImage.Information : MessageBoxImage.Warning;
-            MessageBox.Show(this, result.Message, "OCR 翻页校准", MessageBoxButton.OK, icon);
-            HintText.Text = result.IsSuccess ? "OCR 翻页校准完成。" : "OCR 翻页校准未取得可靠位移，已保留当前设置。";
+            MessageBox.Show(this, result.Message, $"{calibrationLabel}翻页校准", MessageBoxButton.OK, icon);
+            HintText.Text = result.IsSuccess ? $"{calibrationLabel}翻页校准完成。" : $"{calibrationLabel}翻页校准未取得可靠位移，已保留当前设置。";
         }
         catch (OperationCanceledException)
         {
@@ -1162,17 +1211,31 @@ public partial class MainWindow : Window
     private async Task<OcrPagingCalibrationResult> CalibrateOcrPagingAsync(
         WindowsGameWindowCapture capture,
         GameWindowCandidate window,
+        OcrPagingSurface surface,
         CancellationToken cancellationToken)
     {
+        var isSecondaryTags = surface == OcrPagingSurface.SecondaryTags;
+        var region = isSecondaryTags ? OcrFrameRegion.SecondaryNavigation : OcrFrameRegion.AchievementList;
+        int? clientX = isSecondaryTags
+            ? (int)(window.ClientWidth * ((0.1005 + 0.3479) / 2))
+            : null;
+        int? clientY = isSecondaryTags ? (int)(window.ClientHeight * 0.78) : null;
+        var surfaceLabel = isSecondaryTags ? "二级 Tag 列表" : "成就列表";
+        var currentDistance = isSecondaryTags ? _ocrPagingOptions.SecondaryWheelDistance : _ocrPagingOptions.WheelDistance;
+        // Manual calibration must probe the exact value the user just saved. Automatic
+        // scan-time calibration can continue to make bounded adjustments afterwards.
+        var probeDistance = currentDistance;
         var forward = await MoveAndMeasureOcrPageAsync(
             capture,
             window,
             direction: -1,
-            OcrFrameRegion.AchievementList,
-            clientX: null,
-            clientY: null,
+            surface,
+            region,
+            clientX,
+            clientY,
             allowAutomaticAdjustment: false,
-            cancellationToken);
+            cancellationToken,
+            distanceOverride: probeDistance);
         if (!forward.InputAccepted)
         {
             return new OcrPagingCalibrationResult(false, "Windows 拒绝了翻页输入。请确认游戏与工具权限一致，且游戏窗口位于前台桌面。", false);
@@ -1182,11 +1245,13 @@ public partial class MainWindow : Window
             capture,
             window,
             direction: 1,
-            OcrFrameRegion.AchievementList,
-            clientX: null,
-            clientY: null,
+            surface,
+            region,
+            clientX,
+            clientY,
             allowAutomaticAdjustment: false,
-            cancellationToken);
+            cancellationToken,
+            distanceOverride: probeDistance);
         OcrPageMovementResult? restoredForward = null;
         var restored = forward.Moved && reverse.Moved;
         if (!forward.Moved && reverse.Moved)
@@ -1197,11 +1262,13 @@ public partial class MainWindow : Window
                 capture,
                 window,
                 direction: -1,
-                OcrFrameRegion.AchievementList,
-                clientX: null,
-                clientY: null,
+                surface,
+                region,
+                clientX,
+                clientY,
                 allowAutomaticAdjustment: false,
-                cancellationToken);
+                cancellationToken,
+                distanceOverride: probeDistance);
             restored = restoredForward.Moved;
         }
 
@@ -1214,42 +1281,42 @@ public partial class MainWindow : Window
             NativeOcrDiagnostics.Write($"OCR paging calibration no-motion forwardChanged={forward.Difference.HasVisualChange} reverseChanged={reverse.Difference.HasVisualChange}");
             return new OcrPagingCalibrationResult(
                 false,
-                "没有检测到可靠的上下翻页位移。当前分类可能只有一页，或鼠标位置不在可滚动区域。设置已保留，可换到较长的成就分类后再次校准。",
+                $"没有检测到可靠的{surfaceLabel}上下翻页位移。当前列表可能只有一页，或鼠标位置不在可滚动区域。设置已保留，请换到内容足够长的列表后再次校准。",
                 restored);
         }
 
         var measured = (int)Math.Round(measurements.Average());
-        var target = TargetPageMovement(window.ClientHeight);
-        var currentDistance = _ocrPagingOptions.Method == OcrPagingMethod.Drag
-            ? _ocrPagingOptions.DragDistance
-            : _ocrPagingOptions.WheelDistance;
-        var suggestedDistance = ScalePagingDistance(currentDistance, measured, target, _ocrPagingOptions.Method);
+        var target = TargetPageMovement(window.ClientHeight, surface);
+        var suggestedDistance = ScalePagingDistance(probeDistance, measured, target, surface);
         var settleElapsed = new[] { forward.StableElapsed, reverse.StableElapsed, restoredForward?.StableElapsed ?? TimeSpan.Zero }.Max();
         var suggestedSettle = SuggestedMinimumSettle(settleElapsed);
         _ocrPagingOptions = (_ocrPagingOptions with
         {
-            DragDistance = _ocrPagingOptions.Method == OcrPagingMethod.Drag ? suggestedDistance : _ocrPagingOptions.DragDistance,
-            WheelDistance = _ocrPagingOptions.Method == OcrPagingMethod.Wheel ? suggestedDistance : _ocrPagingOptions.WheelDistance,
+            WheelDistance = isSecondaryTags ? _ocrPagingOptions.WheelDistance : suggestedDistance,
+            SecondaryWheelDistance = isSecondaryTags ? suggestedDistance : _ocrPagingOptions.SecondaryWheelDistance,
             MinimumSettleMilliseconds = suggestedSettle,
             CalibratedWidth = window.ClientWidth,
             CalibratedHeight = window.ClientHeight,
-            LastForwardPixels = forwardPixels == 0 ? null : forwardPixels,
-            LastReversePixels = reversePixels == 0 ? null : reversePixels,
+            LastForwardPixels = isSecondaryTags ? _ocrPagingOptions.LastForwardPixels : forwardPixels == 0 ? null : forwardPixels,
+            LastReversePixels = isSecondaryTags ? _ocrPagingOptions.LastReversePixels : reversePixels == 0 ? null : reversePixels,
+            LastSecondaryPixels = isSecondaryTags ? measured : _ocrPagingOptions.LastSecondaryPixels,
             CalibratedAtUtc = DateTimeOffset.UtcNow
         }).Normalize();
         _ocrPagingOptionsDirty = true;
 
         var stableText = forward.IsStable && reverse.IsStable ? "画面已稳定" : "部分探测达到最长等待，已提高停稳余量";
         var restoreText = restored ? "已尽量回到校准前位置" : "未能确认已回到原位置，请在扫描前检查列表位置";
-        var distanceLabel = _ocrPagingOptions.Method == OcrPagingMethod.Drag ? "拖动距离" : "滚轮总距离";
-        var message = $"方式：{PagingMethodText(_ocrPagingOptions.Method)}\n" +
+        var distanceLabel = isSecondaryTags ? "二级 Tag 滚轮总距离" : "成就列表滚轮总距离";
+        var message = $"校准对象：{surfaceLabel}\n" +
+                      "方式：鼠标滚轮\n" +
                       $"向下翻页内容位移：{(forwardPixels == 0 ? "未测得" : $"{forwardPixels} px")}\n" +
                       $"向上翻页内容位移：{(reversePixels == 0 ? "未测得" : $"{reversePixels} px")}\n" +
+                      $"本次校准滚轮距离：{probeDistance}\n" +
                       $"目标位移：约 {target} px\n" +
                       $"{distanceLabel}：{currentDistance} → {suggestedDistance}\n" +
                       $"停稳检测起始等待：{suggestedSettle} ms（{stableText}）\n" +
                       restoreText;
-        NativeOcrDiagnostics.Write($"OCR paging calibration method={_ocrPagingOptions.Method} forward={forwardPixels} reverse={reversePixels} target={target} distance={currentDistance}->{suggestedDistance} settle={suggestedSettle} restored={restored}");
+        NativeOcrDiagnostics.Write($"OCR paging calibration surface={surface} probeDistance={probeDistance} forward={forwardPixels} reverse={reversePixels} target={target} distance={currentDistance}->{suggestedDistance} settle={suggestedSettle} restored={restored}");
         return new OcrPagingCalibrationResult(true, message, restored);
     }
 
@@ -1264,6 +1331,7 @@ public partial class MainWindow : Window
             capture,
             window,
             direction: -1,
+            clientX is null ? OcrPagingSurface.AchievementList : OcrPagingSurface.SecondaryTags,
             region,
             clientX,
             clientY,
@@ -1274,15 +1342,17 @@ public partial class MainWindow : Window
         WindowsGameWindowCapture capture,
         GameWindowCandidate window,
         int direction,
+        OcrPagingSurface surface,
         OcrFrameRegion region,
         int? clientX,
         int? clientY,
         bool allowAutomaticAdjustment,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? distanceOverride = null)
     {
         if (direction is not (-1 or 1)) throw new ArgumentOutOfRangeException(nameof(direction));
         var before = await capture.CaptureClientAsync(window, window.ClientWidth, window.ClientHeight, cancellationToken);
-        var accepted = await ApplyOcrPagingInputAsync(capture, window, direction, clientX, clientY, cancellationToken);
+        var accepted = await ApplyOcrPagingInputAsync(capture, window, direction, surface, clientX, clientY, cancellationToken, distanceOverride);
         if (!accepted)
         {
             return new OcrPageMovementResult(false, false, false, TimeSpan.Zero, before, new OcrFrameDifference(0, 0), new OcrVerticalMotion(0, 0, double.MaxValue, double.MaxValue));
@@ -1305,13 +1375,13 @@ public partial class MainWindow : Window
         }
 
         NativeOcrDiagnostics.Write(
-            $"OCR paging measured method={_ocrPagingOptions.Method} direction={direction} accepted={accepted} stable={stable.IsStable} elapsed={stable.Elapsed.TotalMilliseconds:0}ms " +
+            $"OCR paging measured surface={surface} method=wheel direction={direction} accepted={accepted} stable={stable.IsStable} elapsed={stable.Elapsed.TotalMilliseconds:0}ms " +
             $"offset={motion.OffsetPixels} confidence={motion.Confidence:0.000} meanDiff={difference.MeanAbsoluteDifference:0.00} changed={difference.ChangedSampleRatio:0.000} moved={moved}");
 
         var result = new OcrPageMovementResult(accepted, moved, stable.IsStable, stable.Elapsed, stable.Frame, difference, motion);
         if (allowAutomaticAdjustment && _ocrPagingOptions.AutoCalibrate && hasExpectedDirection)
         {
-            ApplyAutomaticPagingMeasurement(window, direction, result);
+            ApplyAutomaticPagingMeasurement(window, surface, direction, result);
         }
         return result;
     }
@@ -1320,23 +1390,20 @@ public partial class MainWindow : Window
         WindowsGameWindowCapture capture,
         GameWindowCandidate window,
         int direction,
+        OcrPagingSurface surface,
         int? clientX,
         int? clientY,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? distanceOverride = null)
     {
         var options = _ocrPagingOptions.Normalize();
-        if (options.Method == OcrPagingMethod.Wheel)
-        {
-            var distance = checked(direction * options.WheelDistance);
-            return clientX is not null && clientY is not null
-                ? await capture.ScrollAtAsync(window, clientX.Value, clientY.Value, distance, options.WheelEventIntervalMilliseconds, cancellationToken)
-                : await capture.ScrollAsync(window, distance, options.WheelEventIntervalMilliseconds, cancellationToken);
-        }
-
-        var dragPixels = checked(direction * options.DragDistance);
+        var configuredDistance = distanceOverride ?? (surface == OcrPagingSurface.SecondaryTags
+            ? options.SecondaryWheelDistance
+            : options.WheelDistance);
+        var distance = checked(direction * configuredDistance);
         return clientX is not null && clientY is not null
-            ? await capture.DragScrollAtAsync(window, clientX.Value, clientY.Value, dragPixels, cancellationToken)
-            : await capture.DragScrollAsync(window, dragPixels, cancellationToken);
+            ? await capture.ScrollAtAsync(window, clientX.Value, clientY.Value, distance, options.WheelEventIntervalMilliseconds, cancellationToken)
+            : await capture.ScrollAsync(window, distance, options.WheelEventIntervalMilliseconds, cancellationToken);
     }
 
     private async Task<OcrStableFrameResult> WaitForOcrFrameStableAsync(
@@ -1370,34 +1437,37 @@ public partial class MainWindow : Window
 
     private void ApplyAutomaticPagingMeasurement(
         GameWindowCandidate window,
+        OcrPagingSurface surface,
         int direction,
         OcrPageMovementResult movement)
     {
         var measured = Math.Abs(movement.Motion.OffsetPixels);
         if (measured < 18) return;
-        var target = TargetPageMovement(window.ClientHeight);
-        var method = _ocrPagingOptions.Method;
-        var currentDistance = method == OcrPagingMethod.Drag ? _ocrPagingOptions.DragDistance : _ocrPagingOptions.WheelDistance;
-        var suggestedDistance = ScalePagingDistance(currentDistance, measured, target, method);
+        var target = TargetPageMovement(window.ClientHeight, surface);
+        var currentDistance = surface == OcrPagingSurface.SecondaryTags
+            ? _ocrPagingOptions.SecondaryWheelDistance
+            : _ocrPagingOptions.WheelDistance;
+        var suggestedDistance = ScalePagingDistance(currentDistance, measured, target, surface);
         var suggestedSettle = movement.IsStable
             ? SuggestedMinimumSettle(movement.StableElapsed)
             : Math.Clamp(_ocrPagingOptions.MinimumSettleMilliseconds + 150, 50, 1500);
         var updated = (_ocrPagingOptions with
         {
-            DragDistance = method == OcrPagingMethod.Drag ? suggestedDistance : _ocrPagingOptions.DragDistance,
-            WheelDistance = method == OcrPagingMethod.Wheel ? suggestedDistance : _ocrPagingOptions.WheelDistance,
+            WheelDistance = surface == OcrPagingSurface.AchievementList ? suggestedDistance : _ocrPagingOptions.WheelDistance,
+            SecondaryWheelDistance = surface == OcrPagingSurface.SecondaryTags ? suggestedDistance : _ocrPagingOptions.SecondaryWheelDistance,
             MinimumSettleMilliseconds = suggestedSettle,
             MaximumSettleMilliseconds = movement.IsStable
                 ? _ocrPagingOptions.MaximumSettleMilliseconds
                 : Math.Clamp(_ocrPagingOptions.MaximumSettleMilliseconds + 800, 800, 6000),
             CalibratedWidth = window.ClientWidth,
             CalibratedHeight = window.ClientHeight,
-            LastForwardPixels = direction < 0 ? measured : _ocrPagingOptions.LastForwardPixels,
-            LastReversePixels = direction > 0 ? measured : _ocrPagingOptions.LastReversePixels,
+            LastForwardPixels = surface == OcrPagingSurface.AchievementList && direction < 0 ? measured : _ocrPagingOptions.LastForwardPixels,
+            LastReversePixels = surface == OcrPagingSurface.AchievementList && direction > 0 ? measured : _ocrPagingOptions.LastReversePixels,
+            LastSecondaryPixels = surface == OcrPagingSurface.SecondaryTags ? measured : _ocrPagingOptions.LastSecondaryPixels,
             CalibratedAtUtc = DateTimeOffset.UtcNow
         }).Normalize();
         if (updated == _ocrPagingOptions) return;
-        NativeOcrDiagnostics.Write($"OCR paging auto-adjust method={method} measured={measured} target={target} distance={currentDistance}->{suggestedDistance} settle={_ocrPagingOptions.MinimumSettleMilliseconds}->{suggestedSettle}");
+        NativeOcrDiagnostics.Write($"OCR paging auto-adjust surface={surface} method=wheel measured={measured} target={target} distance={currentDistance}->{suggestedDistance} settle={_ocrPagingOptions.MinimumSettleMilliseconds}->{suggestedSettle}");
         _ocrPagingOptions = updated;
         _ocrPagingOptionsDirty = true;
     }
@@ -1421,18 +1491,61 @@ public partial class MainWindow : Window
     private static int ReliableMagnitude(OcrPageMovementResult result) =>
         result.Motion.IsReliable ? Math.Abs(result.Motion.OffsetPixels) : 0;
 
-    private static int TargetPageMovement(int clientHeight) => Math.Clamp((int)Math.Round(clientHeight * 0.50), 320, 620);
+    private static int TargetPageMovement(int clientHeight, OcrPagingSurface surface) =>
+        surface == OcrPagingSurface.SecondaryTags
+            // Seven Tags are visible: advance six rows so exactly one old Tag remains.
+            ? Math.Clamp((int)Math.Round(clientHeight * (0.95 - 0.18) * 6 / 7), 560, 780)
+            // Four achievements are visible: advance three rows so exactly one old row remains.
+            : Math.Clamp((int)Math.Round(clientHeight * (0.96 - 0.20) * 3 / 4), 480, 700);
 
-    private static int ScalePagingDistance(int currentDistance, int measuredPixels, int targetPixels, OcrPagingMethod method)
+    private static int ScalePagingDistance(int currentDistance, int measuredPixels, int targetPixels, OcrPagingSurface surface)
     {
         if (measuredPixels <= 0) return currentDistance;
         var ratio = targetPixels / (double)measuredPixels;
         if (ratio is >= 0.82 and <= 1.18) return currentDistance;
-        ratio = Math.Clamp(ratio, 0.55, 1.80);
+        ratio = surface == OcrPagingSurface.SecondaryTags
+            ? Math.Clamp(ratio, 0.45, 3.20)
+            : Math.Clamp(ratio, 0.55, 1.80);
         var scaled = (int)Math.Round(currentDistance * ratio);
-        return method == OcrPagingMethod.Drag
-            ? Math.Clamp(scaled, 80, 800)
+        return surface == OcrPagingSurface.SecondaryTags
+            ? Math.Clamp(scaled, 120, OcrPagingOptions.MaximumSecondaryWheelDistance)
             : Math.Clamp(scaled, 120, 12000);
+    }
+
+    private void AdjustPagingDistanceFromOcrOverlap(
+        OcrPagingSurface surface,
+        bool previousLastItemVisible,
+        int overlapItemCount,
+        int newItemCount)
+    {
+        if (!_ocrPagingOptions.AutoCalibrate) return;
+        if (newItemCount <= 0)
+        {
+            NativeOcrDiagnostics.Write($"OCR paging overlap reached list end surface={surface} overlap={overlapItemCount}; distance unchanged");
+            return;
+        }
+        var current = surface == OcrPagingSurface.SecondaryTags
+            ? _ocrPagingOptions.SecondaryWheelDistance
+            : _ocrPagingOptions.WheelDistance;
+        var desiredNewItemCount = surface == OcrPagingSurface.SecondaryTags ? 6 : 3;
+        var maximumGrowth = surface == OcrPagingSurface.SecondaryTags ? 3.0 : 2.0;
+        var factor = !previousLastItemVisible || overlapItemCount == 0
+            ? 0.82
+            : overlapItemCount == 1
+                ? 1.0
+                : Math.Clamp(desiredNewItemCount / (double)Math.Max(1, newItemCount), 1.12, maximumGrowth);
+        if (factor == 1.0) return;
+        var adjusted = surface == OcrPagingSurface.SecondaryTags
+            ? Math.Clamp((int)Math.Round(current * factor), 120, OcrPagingOptions.MaximumSecondaryWheelDistance)
+            : Math.Clamp((int)Math.Round(current * factor), 120, 12000);
+        if (adjusted == current) return;
+        _ocrPagingOptions = (_ocrPagingOptions with
+        {
+            WheelDistance = surface == OcrPagingSurface.AchievementList ? adjusted : _ocrPagingOptions.WheelDistance,
+            SecondaryWheelDistance = surface == OcrPagingSurface.SecondaryTags ? adjusted : _ocrPagingOptions.SecondaryWheelDistance
+        }).Normalize();
+        _ocrPagingOptionsDirty = true;
+        NativeOcrDiagnostics.Write($"OCR paging overlap-adjust surface={surface} previousLastVisible={previousLastItemVisible} overlap={overlapItemCount} new={newItemCount} desiredNew={desiredNewItemCount} distance={current}->{adjusted}");
     }
 
     private static int SuggestedMinimumSettle(TimeSpan elapsed)
@@ -1442,8 +1555,6 @@ public partial class MainWindow : Window
         return Math.Clamp((int)Math.Ceiling(elapsed.TotalMilliseconds * 0.35), 80, 1200);
     }
 
-    private static string PagingMethodText(OcrPagingMethod method) =>
-        method == OcrPagingMethod.Wheel ? "鼠标滚轮" : "鼠标拖动";
 
     private async void OcrScan_OnClick(object sender, RoutedEventArgs e)
     {
@@ -1513,6 +1624,8 @@ public partial class MainWindow : Window
             var scannedPages = 0;
             var detectedLineCount = 0;
             var repeatedPages = 0;
+            var emptyPages = 0;
+            AchievementId? previousLastAchievementId = null;
             OcrScanPreview? preview = null;
 
             WindowState = WindowState.Minimized;
@@ -1539,19 +1652,43 @@ public partial class MainWindow : Window
                 detectedLineCount += scan.Lines.Count;
                 preview = AchievementOcrMatcher.CreatePreview(scan.Lines, rows);
                 var pageIds = preview.Candidates.Select(candidate => candidate.AchievementId).ToHashSet();
-                NativeOcrDiagnostics.Write($"OCR page={page} lines={scan.Lines.Count} candidates={preview.Candidates.Count} unmatched={preview.Unmatched.Count} ids=[{string.Join(",", preview.Candidates.Select(candidate => candidate.LegacyCode))}]");
+                var overlapItemCount = pageIds.Count(seenIds.Contains);
+                var newItemCount = pageIds.Count - overlapItemCount;
+                var foundNewItems = newItemCount > 0;
+                NativeOcrDiagnostics.Write($"OCR page={page} lines={scan.Lines.Count} candidates={preview.Candidates.Count} unmatched={preview.Unmatched.Count} overlap={overlapItemCount} new={newItemCount} ids=[{string.Join(",", preview.Candidates.Select(candidate => candidate.LegacyCode))}]");
+                if (page > 1 && pageIds.Count > 0 && previousLastAchievementId is not null)
+                {
+                    AdjustPagingDistanceFromOcrOverlap(
+                        OcrPagingSurface.AchievementList,
+                        pageIds.Contains(previousLastAchievementId.Value),
+                        overlapItemCount,
+                        newItemCount);
+                }
                 if (page > 1 && pageIds.Count == 0)
                 {
-                    NativeOcrDiagnostics.Write($"OCR stop page={page} reason=empty-page");
-                    break;
+                    emptyPages++;
+                    NativeOcrDiagnostics.Write($"OCR empty page={page} count={emptyPages}; waiting for a second empty OCR page before stopping");
+                    if (emptyPages >= 2)
+                    {
+                        NativeOcrDiagnostics.Write($"OCR stop page={page} reason=repeated-empty-page");
+                        break;
+                    }
                 }
-                if (page > 1 && pageIds.IsSubsetOf(seenIds))
+                else
+                {
+                    emptyPages = 0;
+                }
+                if (page > 1 && pageIds.Count > 0 && !foundNewItems)
                 {
                     repeatedPages++;
                     NativeOcrDiagnostics.Write($"OCR repeated page={page} count={repeatedPages}");
-                    if (repeatedPages >= 2) break;
+                    if (repeatedPages >= 2)
+                    {
+                        NativeOcrDiagnostics.Write($"OCR stop page={page} reason=repeated-achievements");
+                        break;
+                    }
                 }
-                else
+                else if (pageIds.Count > 0)
                 {
                     repeatedPages = 0;
                 }
@@ -1569,13 +1706,17 @@ public partial class MainWindow : Window
                     mergedUnmatched.TryAdd(key, unmatched);
                 }
                 seenIds.UnionWith(pageIds);
+                if (preview.Candidates.Count > 0)
+                {
+                    previousLastAchievementId = preview.Candidates[^1].AchievementId;
+                }
                 ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.ScanningCurrentCategory,
                     $"第 {page} 页识别完成，已识别 {mergedCandidates.Count} 条。",
                     page: page, matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
 
                 if (scan.Window is null || page == 80) break;
                 ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.ScrollingCategory,
-                    $"正在使用{PagingMethodText(_ocrPagingOptions.Method)}翻页并等待画面停稳…", page: page, matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
+                    "正在使用滚轮翻页并等待画面停稳…", page: page, matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
                 var movement = await AdvanceOcrPageAsync(
                     capture,
                     scan.Window,
@@ -1590,8 +1731,7 @@ public partial class MainWindow : Window
                 }
                 if (!movement.Moved)
                 {
-                    NativeOcrDiagnostics.Write($"OCR stop page={page} reason=no-visual-movement");
-                    break;
+                    NativeOcrDiagnostics.Write($"OCR paging movement was not confirmed on page={page}; continuing and using OCR page repetition to decide the list end");
                 }
             }
 
@@ -1606,20 +1746,9 @@ public partial class MainWindow : Window
                 return;
             }
             RecordScannedCategoriesFromPreview(mergedPreview, rows, scannedPages);
-            var previewWindow = new OcrPreviewWindow(mergedPreview) { Owner = this };
-            if (previewWindow.ShowDialog() != true || previewWindow.AcceptedPreview is null)
-            {
-                HintText.Text = "OCR 结果未应用，当前进度保持不变。";
-                return;
-            }
-            var applied = await _workspace.ApplyOcrPreviewAsync(previewWindow.AcceptedPreview, confirm: true, cancellationToken: _ocrCancellation.Token);
-            if (!applied.IsSuccess)
-            {
-                ShowOcrError(applied.Error?.Message ?? "OCR 结果应用失败。", "OCR 结果应用失败");
-                return;
-            }
-            RefreshView();
-            HintText.Text = $"OCR 已应用 {applied.Updated} 条 · 防止降级 {applied.PreventedDowngrades} 条 · 未变化 {applied.Unchanged} 条";
+            ShowOcrWorkbenchPage();
+            OcrWorkbenchPage.SetScanResults(mergedPreview, rows, $"当前分类扫描（{scannedPages} 页）");
+            HintText.Text = "OCR 扫描结果已加载到 OCR 工具，尚未写入进度。";
         }
         catch (OperationCanceledException)
         {
@@ -1767,6 +1896,7 @@ public partial class MainWindow : Window
                 var knownSecondaryNames = FindKnownSecondaryNames(rows, primaryName, categories);
                 var visited = new HashSet<string>(StringComparer.Ordinal);
                 var noNewRounds = 0;
+                string? previousLastSecondaryTag = null;
                 for (var secondaryRound = 0; secondaryRound < 64; secondaryRound++)
                 {
                     _ocrCancellation.Token.ThrowIfCancellationRequested();
@@ -1783,13 +1913,18 @@ public partial class MainWindow : Window
                         currentWindow.ClientHeight,
                         knownSecondaryNames);
                     var visibleSignature = BuildNavigationSignature(visibleTabs);
-                    var foundNew = false;
+                    var visibleTagKeys = visibleTabs
+                        .Select(tab => AchievementOcrMatcher.NormalizeName(tab.Name))
+                        .Distinct(StringComparer.Ordinal)
+                        .ToArray();
+                    var overlapItemCount = visibleTagKeys.Count(visited.Contains);
+                    var newItemCount = visibleTagKeys.Length - overlapItemCount;
+                    var foundNew = newItemCount > 0;
                     foreach (var tab in visibleTabs)
                     {
                         _ocrCancellation.Token.ThrowIfCancellationRequested();
                         var key = AchievementOcrMatcher.NormalizeName(tab.Name);
                         if (!visited.Add(key)) continue;
-                        foundNew = true;
                         var secondaryX = tab.ClientX;
                         HintText.Text = $"DEBUG：点击二级分类 {primaryName} / {tab.Name}（已发现 {visited.Count} 个）";
                         var clicked = await capture.ClickAsync(currentWindow, secondaryX, tab.ClientY, _ocrCancellation.Token);
@@ -1804,7 +1939,18 @@ public partial class MainWindow : Window
                         await Task.Delay(500, _ocrCancellation.Token);
                     }
 
-                    NativeOcrDiagnostics.Write($"OCR navigation debug secondary-round={secondaryRound + 1} visible={visibleTabs.Count} foundNew={foundNew} visited={visited.Count} signature={visibleSignature}");
+                    NativeOcrDiagnostics.Write($"OCR navigation debug secondary-round={secondaryRound + 1} visible={visibleTabs.Count} overlap={overlapItemCount} new={newItemCount} visited={visited.Count} signature={visibleSignature}");
+                    if (previousLastSecondaryTag is not null && visibleTabs.Count > 0)
+                    {
+                        AdjustPagingDistanceFromOcrOverlap(
+                            OcrPagingSurface.SecondaryTags,
+                            visibleTagKeys.Contains(previousLastSecondaryTag, StringComparer.Ordinal),
+                            overlapItemCount,
+                            newItemCount);
+                    }
+                    previousLastSecondaryTag = visibleTabs.Count == 0
+                        ? previousLastSecondaryTag
+                        : AchievementOcrMatcher.NormalizeName(visibleTabs[^1].Name);
                     if (visibleTabs.Count == 0)
                     {
                         NativeOcrDiagnostics.Write($"OCR navigation debug secondary-stop reason=no-visible-tabs round={secondaryRound + 1} visited={visited.Count}");
@@ -1819,7 +1965,7 @@ public partial class MainWindow : Window
 
                     var scrollX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
                     var scrollY = (int)(currentWindow.ClientHeight * 0.78);
-                    HintText.Text = $"DEBUG：使用{PagingMethodText(_ocrPagingOptions.Method)}翻动二级分类列表 {primaryName}（已发现 {visited.Count} 个）";
+                    HintText.Text = $"DEBUG：使用滚轮翻动二级分类列表 {primaryName}（已发现 {visited.Count} 个）";
                     var movement = await AdvanceOcrPageAsync(
                         capture,
                         currentWindow,
@@ -1832,7 +1978,10 @@ public partial class MainWindow : Window
                         failures.Add($"一级 {primaryName}：二级分类列表翻页输入失败");
                         break;
                     }
-                    if (!movement.Moved) break;
+                    if (!movement.Moved)
+                    {
+                        NativeOcrDiagnostics.Write($"OCR navigation debug secondary paging movement was not confirmed primary={primaryName} round={secondaryRound + 1}; continuing and using repeated Tag detection to decide the list end");
+                    }
                 }
             }
 
@@ -1998,6 +2147,7 @@ public partial class MainWindow : Window
                 var canonicalPrimaryName = FindCanonicalPrimaryName(rows, primaryName) ?? primaryName;
                 var visited = new HashSet<string>(StringComparer.Ordinal);
                 var noNewRounds = 0;
+                string? previousLastSecondaryTag = null;
                 for (var secondaryRound = 0; secondaryRound < 64; secondaryRound++)
                 {
                     _ocrCancellation.Token.ThrowIfCancellationRequested();
@@ -2018,13 +2168,18 @@ public partial class MainWindow : Window
                         currentWindow.ClientHeight,
                         knownSecondaryNames);
                     var visibleSignature = BuildNavigationSignature(visibleTabs);
-                    var foundNew = false;
+                    var visibleTagKeys = visibleTabs
+                        .Select(tab => AchievementOcrMatcher.NormalizeName(tab.Name))
+                        .Distinct(StringComparer.Ordinal)
+                        .ToArray();
+                    var overlapItemCount = visibleTagKeys.Count(visited.Contains);
+                    var newItemCount = visibleTagKeys.Length - overlapItemCount;
+                    var foundNew = newItemCount > 0;
                     foreach (var tab in visibleTabs)
                     {
                         _ocrCancellation.Token.ThrowIfCancellationRequested();
                         var key = AchievementOcrMatcher.NormalizeName(tab.Name);
                         if (!visited.Add(key)) continue;
-                        foundNew = true;
                         if (_ocrScanHistory.SkipPreviouslyScanned && _ocrScanHistory.Contains(canonicalPrimaryName, tab.Name))
                         {
                             ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.ScanningCategory,
@@ -2068,7 +2223,18 @@ public partial class MainWindow : Window
                         }
                     }
 
-                    NativeOcrDiagnostics.Write($"OCR full secondary-round={secondaryRound + 1} visible={visibleTabs.Count} foundNew={foundNew} visited={visited.Count} signature={visibleSignature}");
+                    NativeOcrDiagnostics.Write($"OCR full secondary-round={secondaryRound + 1} visible={visibleTabs.Count} overlap={overlapItemCount} new={newItemCount} visited={visited.Count} signature={visibleSignature}");
+                    if (previousLastSecondaryTag is not null && visibleTabs.Count > 0)
+                    {
+                        AdjustPagingDistanceFromOcrOverlap(
+                            OcrPagingSurface.SecondaryTags,
+                            visibleTagKeys.Contains(previousLastSecondaryTag, StringComparer.Ordinal),
+                            overlapItemCount,
+                            newItemCount);
+                    }
+                    previousLastSecondaryTag = visibleTabs.Count == 0
+                        ? previousLastSecondaryTag
+                        : AchievementOcrMatcher.NormalizeName(visibleTabs[^1].Name);
                     if (visibleTabs.Count == 0)
                     {
                         NativeOcrDiagnostics.Write($"OCR full secondary-stop reason=no-visible-tabs round={secondaryRound + 1} visited={visited.Count}");
@@ -2084,10 +2250,10 @@ public partial class MainWindow : Window
                     var scrollX = (int)(currentWindow.ClientWidth * ((0.1005 + 0.3479) / 2));
                     var scrollY = (int)(currentWindow.ClientHeight * 0.78);
                     ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.ScrollingCategory,
-                        $"正在使用{PagingMethodText(_ocrPagingOptions.Method)}翻动二级分类列表并等待画面停稳：{primaryName}（已发现 {visited.Count} 个）",
+                        $"正在使用滚轮翻动二级分类列表并等待画面停稳：{primaryName}（已发现 {visited.Count} 个）",
                         primaryName: primaryName, visitedCount: primaryIndex, totalCount: primaryYPercentages.Length,
                         matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
-                    HintText.Text = $"正在使用{PagingMethodText(_ocrPagingOptions.Method)}翻动二级分类列表：{primaryName}（已发现 {visited.Count} 个）";
+                    HintText.Text = $"正在使用滚轮翻动二级分类列表：{primaryName}（已发现 {visited.Count} 个）";
                     var movement = await AdvanceOcrPageAsync(
                         capture,
                         currentWindow,
@@ -2100,7 +2266,10 @@ public partial class MainWindow : Window
                         AddScanWarning(mergedUnmatched, primaryName, "二级分类列表翻页输入失败");
                         break;
                     }
-                    if (!movement.Moved) break;
+                    if (!movement.Moved)
+                    {
+                        NativeOcrDiagnostics.Write($"OCR full secondary paging movement was not confirmed primary={primaryName} round={secondaryRound + 1}; continuing and using repeated Tag detection to decide the list end");
+                    }
                 }
             }
 
@@ -2113,26 +2282,19 @@ public partial class MainWindow : Window
                 if (skippedCategories > 0 && scannedCategories == 0)
                 {
                     HintText.Text = $"OCR 全量扫描已跳过 {skippedCategories} 个已有记录的分类，没有需要重新扫描的分类。";
-                    MessageBox.Show(this, HintText.Text + "\n可在 OCR 工具中取消“跳过已扫描分类”后重新运行。", "OCR 全量扫描", MessageBoxButton.OK, MessageBoxImage.Information);
+                    ShowOcrWorkbenchPage();
+                    OcrWorkbenchPage.SetStatus(HintText.Text + " 可在 Tag 跳过管理中取消标记后重新运行。");
                     return;
                 }
                 ShowOcrError($"OCR 全量扫描没有匹配到成就。实际扫描 {scannedCategories} 个分类，跳过 {skippedCategories} 个分类。请确认游戏处于成就页面，并检查 log 目录中的 native-ocr-YYYY-MM-DD.log。", "OCR 扫描结果");
                 return;
             }
-            var previewWindow = new OcrPreviewWindow(mergedPreview) { Owner = this };
-            if (previewWindow.ShowDialog() != true || previewWindow.AcceptedPreview is null)
-            {
-                HintText.Text = "OCR 全量扫描结果未应用，当前进度保持不变。";
-                return;
-            }
-            var applied = await _workspace.ApplyOcrPreviewAsync(previewWindow.AcceptedPreview, confirm: true, cancellationToken: _ocrCancellation.Token);
-            if (!applied.IsSuccess)
-            {
-                ShowOcrError(applied.Error?.Message ?? "OCR 结果应用失败。", "OCR 结果应用失败");
-                return;
-            }
-            RefreshView();
-            HintText.Text = $"OCR 全量扫描已应用 {applied.Updated} 条 · 防止降级 {applied.PreventedDowngrades} 条 · 未变化 {applied.Unchanged} 条";
+            ShowOcrWorkbenchPage();
+            OcrWorkbenchPage.SetScanResults(
+                mergedPreview,
+                rows,
+                $"全量扫描（扫描 {scannedCategories} 个分类，跳过 {skippedCategories} 个）");
+            HintText.Text = "OCR 全量扫描结果已加载到 OCR 工具，尚未写入进度。";
         }
         catch (OperationCanceledException)
         {
@@ -2381,6 +2543,8 @@ public partial class MainWindow : Window
                 HintText.Text = failures.Count == 0
                     ? $"已校验 {checkedCount} 条未完成成就，没有确认到已完成结果。"
                     : $"已校验 {checkedCount} 条，未确认到已完成结果；异常 {failures.Count} 条。";
+                ShowOcrWorkbenchPage();
+                OcrWorkbenchPage.SetStatus(HintText.Text);
                 return;
             }
 
@@ -2393,30 +2557,16 @@ public partial class MainWindow : Window
                 orderedCandidates.Length,
                 0,
                 0);
-            var names = string.Join("、", orderedCandidates.Take(12).Select(candidate => candidate.MatchedName));
-            if (orderedCandidates.Length > 12) names += "……";
-            var confirm = MessageBox.Show(
-                this,
-                $"逐条搜索已完成。\n\n共校验 {checkedCount} 条，确认右侧已完成 {orderedCandidates.Length} 条：\n{names}\n\n是否将这些结果写入本地进度？",
-                "确认自动校验结果",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-            if (confirm != MessageBoxResult.Yes)
-            {
-                HintText.Text = "自动校验结果未应用，当前进度保持不变。";
-                return;
-            }
-
-            var applied = await _workspace.ApplyOcrPreviewAsync(preview, confirm: true, cancellationToken: CancellationToken.None);
-            if (!applied.IsSuccess)
-            {
-                ShowOcrError(applied.Error?.Message ?? "自动校验结果应用失败。", "自动校验结果应用失败");
-                return;
-            }
-            RefreshView();
+            ShowOcrWorkbenchPage();
+            OcrWorkbenchPage.SetScanResults(
+                preview,
+                _workspace.GetSnapshot().Rows,
+                maximumCount is > 0
+                    ? $"DEBUG 前 {maximumCount.Value} 条校验（实际校验 {checkedCount} 条）"
+                    : $"未完成成就校验（校验 {checkedCount} 条）");
             HintText.Text = failures.Count == 0
-                ? $"自动校验已应用 {applied.Updated} 条已完成成就。"
-                : $"自动校验已应用 {applied.Updated} 条；另有 {failures.Count} 条未确认或失败。";
+                ? $"自动校验结果已加载，共确认 {orderedCandidates.Length} 条，尚未写入。"
+                : $"自动校验结果已加载，共确认 {orderedCandidates.Length} 条；另有 {failures.Count} 条未确认或失败。";
         }
         catch (OperationCanceledException)
         {
@@ -2473,6 +2623,8 @@ public partial class MainWindow : Window
         var pages = 0;
         var lines = 0;
         var repeatedPages = 0;
+        var emptyPages = 0;
+        AchievementId? previousLastAchievementId = null;
         for (var page = 1; page <= 80; page++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -2492,13 +2644,43 @@ public partial class MainWindow : Window
             lines += scan.Lines.Count;
             var preview = AchievementOcrMatcher.CreatePreview(scan.Lines, rows);
             var pageIds = preview.Candidates.Select(candidate => candidate.AchievementId).ToHashSet();
-            if (page > 1 && pageIds.Count == 0) break;
-            if (page > 1 && pageIds.IsSubsetOf(seenIds))
+            var overlapItemCount = pageIds.Count(seenIds.Contains);
+            var newItemCount = pageIds.Count - overlapItemCount;
+            var foundNewItems = newItemCount > 0;
+            NativeOcrDiagnostics.Write($"OCR full category-page primary={primaryName} secondary={secondaryName} page={page} candidates={pageIds.Count} overlap={overlapItemCount} new={newItemCount} seen={seenIds.Count}");
+            if (page > 1 && pageIds.Count > 0 && previousLastAchievementId is not null)
             {
-                repeatedPages++;
-                if (repeatedPages >= 2) break;
+                AdjustPagingDistanceFromOcrOverlap(
+                    OcrPagingSurface.AchievementList,
+                    pageIds.Contains(previousLastAchievementId.Value),
+                    overlapItemCount,
+                    newItemCount);
+            }
+            if (page > 1 && pageIds.Count == 0)
+            {
+                emptyPages++;
+                NativeOcrDiagnostics.Write($"OCR full category empty-page primary={primaryName} secondary={secondaryName} page={page} count={emptyPages}");
+                if (emptyPages >= 2)
+                {
+                    NativeOcrDiagnostics.Write($"OCR full category-stop primary={primaryName} secondary={secondaryName} page={page} reason=repeated-empty-page");
+                    break;
+                }
             }
             else
+            {
+                emptyPages = 0;
+            }
+            if (page > 1 && pageIds.Count > 0 && !foundNewItems)
+            {
+                repeatedPages++;
+                NativeOcrDiagnostics.Write($"OCR full category repeated-page primary={primaryName} secondary={secondaryName} page={page} count={repeatedPages}");
+                if (repeatedPages >= 2)
+                {
+                    NativeOcrDiagnostics.Write($"OCR full category-stop primary={primaryName} secondary={secondaryName} page={page} reason=repeated-achievements");
+                    break;
+                }
+            }
+            else if (pageIds.Count > 0)
             {
                 repeatedPages = 0;
             }
@@ -2514,13 +2696,17 @@ public partial class MainWindow : Window
                 mergedUnmatched.TryAdd($"{primaryName}/{secondaryName}/{unmatched.Text}\u001f{unmatched.Reason}", unmatched);
             }
             seenIds.UnionWith(pageIds);
+            if (preview.Candidates.Count > 0)
+            {
+                previousLastAchievementId = preview.Candidates[^1].AchievementId;
+            }
             ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.ScanningCategory,
                 $"{primaryName} / {secondaryName} 第 {page} 页识别完成。",
                 primaryName: primaryName, secondaryName: secondaryName, page: page,
                 matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
             if (scan.Window is null || page == 80) break;
             ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.ScrollingCategory,
-                $"正在使用{PagingMethodText(_ocrPagingOptions.Method)}翻页并等待画面停稳：{primaryName} / {secondaryName}…",
+                $"正在使用滚轮翻页并等待画面停稳：{primaryName} / {secondaryName}…",
                 primaryName: primaryName, secondaryName: secondaryName, page: page,
                 matchedCount: mergedCandidates.Count, unmatchedCount: mergedUnmatched.Count);
             var movement = await AdvanceOcrPageAsync(
@@ -2535,7 +2721,10 @@ public partial class MainWindow : Window
                 AddScanWarning(mergedUnmatched, $"{primaryName}/{secondaryName}", "成就列表翻页输入失败");
                 return new OcrCategoryScanStats(pages, lines, false);
             }
-            if (!movement.Moved) break;
+            if (!movement.Moved)
+            {
+                NativeOcrDiagnostics.Write($"OCR full category paging movement was not confirmed primary={primaryName} secondary={secondaryName} page={page}; continuing and using OCR page repetition to decide the list end");
+            }
         }
         return new OcrCategoryScanStats(pages, lines, true);
     }
@@ -2695,6 +2884,7 @@ public partial class MainWindow : Window
         int unmatchedCount = 0)
     {
         HintText.Text = message;
+        OcrWorkbenchPage.SetStatus(message);
         NativeOcrDiagnostics.Write($"OCR progress mode={mode} phase={phase} page={page} primary={primaryName} secondary={secondaryName} matched={matchedCount} unmatched={unmatchedCount} message={message}");
     }
 
@@ -2703,6 +2893,12 @@ public partial class MainWindow : Window
         if (!warnings.TryAdd($"warning:{scope}:{reason}", new OcrUnmatchedText($"[{scope}]", reason, 0))) return;
         HintText.Text = $"{scope}：{reason}";
         NativeOcrDiagnostics.Write($"OCR warning scope={scope} reason={reason}");
+    }
+
+    private enum OcrPagingSurface
+    {
+        AchievementList,
+        SecondaryTags
     }
 
     private sealed record NavigationTab(string Name, int ClientX, int ClientY);
@@ -3060,6 +3256,7 @@ public partial class MainWindow : Window
     private void ShowOcrError(string message, string title)
     {
         ShowError(message);
+        OcrWorkbenchPage.SetStatus(message);
         MessageBox.Show(this, message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 

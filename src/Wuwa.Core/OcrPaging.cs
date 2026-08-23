@@ -2,16 +2,9 @@ using System.Text.Json;
 
 namespace Wuwa.Core;
 
-public enum OcrPagingMethod
-{
-    Drag,
-    Wheel
-}
-
 public sealed record OcrPagingOptions(
-    OcrPagingMethod Method = OcrPagingMethod.Drag,
     int WheelDistance = 2400,
-    int DragDistance = 550,
+    int SecondaryWheelDistance = 640,
     int WheelEventIntervalMilliseconds = 100,
     bool AutoCalibrate = true,
     int MinimumSettleMilliseconds = 150,
@@ -20,11 +13,15 @@ public sealed record OcrPagingOptions(
     int? CalibratedHeight = null,
     int? LastForwardPixels = null,
     int? LastReversePixels = null,
+    int? LastSecondaryPixels = null,
     DateTimeOffset? CalibratedAtUtc = null)
 {
     public const string SettingKey = "ocr.paging";
+    // Historical native wheel values were -160 × 15 for achievement pages and
+    // -160 × 4 for the narrower secondary-Tag list. Keep those proven totals as defaults.
     public const int DefaultWheelDistance = 2400;
-    public const int DefaultDragDistance = 550;
+    public const int DefaultSecondaryWheelDistance = 640;
+    public const int MaximumSecondaryWheelDistance = 8000;
     public const int DefaultWheelEventIntervalMilliseconds = 100;
     public const int DefaultMinimumSettleMilliseconds = 150;
     public const int DefaultMaximumSettleMilliseconds = 2800;
@@ -53,9 +50,8 @@ public sealed record OcrPagingOptions(
 
     public OcrPagingOptions Normalize() => this with
     {
-        Method = Enum.IsDefined(Method) ? Method : OcrPagingMethod.Drag,
         WheelDistance = Math.Clamp(Math.Abs(WheelDistance), 120, 12000),
-        DragDistance = Math.Clamp(Math.Abs(DragDistance), 80, 800),
+        SecondaryWheelDistance = Math.Clamp(Math.Abs(SecondaryWheelDistance), 120, MaximumSecondaryWheelDistance),
         WheelEventIntervalMilliseconds = Math.Clamp(WheelEventIntervalMilliseconds, 20, 300),
         MinimumSettleMilliseconds = Math.Clamp(MinimumSettleMilliseconds, 50, 1500),
         MaximumSettleMilliseconds = Math.Clamp(
@@ -74,6 +70,7 @@ public sealed record OcrPagingOptions(
         CalibratedHeight = null,
         LastForwardPixels = null,
         LastReversePixels = null,
+        LastSecondaryPixels = null,
         CalibratedAtUtc = null
     };
 }
