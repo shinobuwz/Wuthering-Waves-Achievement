@@ -25,10 +25,6 @@ public partial class MainWindow : Window
     private const double SearchInputXRatio = 0.20;
     private const double SearchButtonXRatio = 0.328;
     private const double SearchControlYRatio = 0.138;
-    private const double SearchResultX1Ratio = 0.36;
-    private const double SearchResultY1Ratio = 0.20;
-    private const double SearchResultX2Ratio = 0.985;
-    private const double SearchResultY2Ratio = 0.98;
     private const int OcrCancelHotKeyId = 0x5741;
     private const int OcrForceStopHotKeyId = 0x5742;
     private const uint OcrCancelHotKeyModifiers = 0x0002 | 0x0004; // CTRL + SHIFT
@@ -92,6 +88,7 @@ public partial class MainWindow : Window
         SourceInitialized += MainWindow_OnSourceInitialized;
         Closed += MainWindow_OnClosed;
 #if DEBUG
+        OcrSearchSyncDebugButton.Visibility = Visibility.Visible;
         OcrNavigationDebugButton.Visibility = Visibility.Visible;
 #endif
         Loaded += MainWindow_OnLoaded;
@@ -798,6 +795,7 @@ public partial class MainWindow : Window
         OcrScanButton.IsEnabled = false;
         OcrFullScanButton.IsEnabled = false;
         OcrSearchSyncButton.IsEnabled = false;
+        OcrSearchSyncDebugButton.IsEnabled = false;
         OcrNavigationDebugButton.IsEnabled = false;
         OcrPagingSettingsButton.IsEnabled = false;
         OcrWorkbenchButton.IsEnabled = false;
@@ -1098,6 +1096,7 @@ public partial class MainWindow : Window
         OcrScanButton.IsEnabled = false;
         OcrFullScanButton.IsEnabled = false;
         OcrSearchSyncButton.IsEnabled = false;
+        OcrSearchSyncDebugButton.IsEnabled = false;
         OcrNavigationDebugButton.IsEnabled = false;
         OcrPagingSettingsButton.IsEnabled = false;
         OcrWorkbenchButton.IsEnabled = false;
@@ -1151,6 +1150,7 @@ public partial class MainWindow : Window
             OcrScanButton.IsEnabled = true;
             OcrFullScanButton.IsEnabled = true;
             OcrSearchSyncButton.IsEnabled = true;
+            OcrSearchSyncDebugButton.IsEnabled = true;
             OcrPagingSettingsButton.IsEnabled = true;
             OcrWorkbenchButton.IsEnabled = true;
 #if DEBUG
@@ -1487,6 +1487,7 @@ public partial class MainWindow : Window
         OcrSearchSyncButton.IsEnabled = false;
         OcrPagingSettingsButton.IsEnabled = false;
         OcrWorkbenchButton.IsEnabled = false;
+        OcrSearchSyncDebugButton.IsEnabled = false;
         ReportOcrProgress(OcrScanMode.CurrentCategory, OcrScanPhase.Preparing, "正在检测游戏窗口并扫描当前页面…");
         ErrorText.Text = string.Empty;
         var previousState = WindowState;
@@ -1653,6 +1654,7 @@ public partial class MainWindow : Window
             OcrSearchSyncButton.IsEnabled = true;
             OcrPagingSettingsButton.IsEnabled = true;
             OcrWorkbenchButton.IsEnabled = true;
+            OcrSearchSyncDebugButton.IsEnabled = true;
             OcrScanButton.IsEnabled = true;
         }
     }
@@ -1687,6 +1689,7 @@ public partial class MainWindow : Window
         OcrSearchSyncButton.IsEnabled = false;
         OcrPagingSettingsButton.IsEnabled = false;
         OcrWorkbenchButton.IsEnabled = false;
+        OcrSearchSyncDebugButton.IsEnabled = false;
         HintText.Text = "正在准备分类切换测试…";
         ErrorText.Text = string.Empty;
         var previousState = WindowState;
@@ -1876,6 +1879,7 @@ public partial class MainWindow : Window
             OcrSearchSyncButton.IsEnabled = true;
             OcrPagingSettingsButton.IsEnabled = true;
             OcrWorkbenchButton.IsEnabled = true;
+            OcrSearchSyncDebugButton.IsEnabled = true;
             OcrScanButton.IsEnabled = true;
         }
     }
@@ -1910,6 +1914,7 @@ public partial class MainWindow : Window
         OcrSearchSyncButton.IsEnabled = false;
         OcrPagingSettingsButton.IsEnabled = false;
         OcrWorkbenchButton.IsEnabled = false;
+        OcrSearchSyncDebugButton.IsEnabled = false;
         ReportOcrProgress(OcrScanMode.FullScan, OcrScanPhase.Preparing, "正在准备 OCR 全量扫描…");
         ErrorText.Text = string.Empty;
         var previousState = WindowState;
@@ -2162,11 +2167,18 @@ public partial class MainWindow : Window
             OcrSearchSyncButton.IsEnabled = true;
             OcrPagingSettingsButton.IsEnabled = true;
             OcrWorkbenchButton.IsEnabled = true;
+            OcrSearchSyncDebugButton.IsEnabled = true;
             OcrScanButton.IsEnabled = true;
         }
     }
 
-    private async void OcrSearchSync_OnClick(object sender, RoutedEventArgs e)
+    private async void OcrSearchSync_OnClick(object sender, RoutedEventArgs e) =>
+        await RunOcrSearchSyncAsync(maximumCount: null);
+
+    private async void OcrSearchSyncDebug_OnClick(object sender, RoutedEventArgs e) =>
+        await RunOcrSearchSyncAsync(maximumCount: 10);
+
+    private async Task RunOcrSearchSyncAsync(int? maximumCount)
     {
         if (_ocrCancellation is not null)
         {
@@ -2174,10 +2186,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        var incompleteRows = _workspace.Query(new AchievementQuery(Status: ProgressStatus.Incomplete))
+        var incompleteQuery = _workspace.Query(new AchievementQuery(Status: ProgressStatus.Incomplete))
             .Rows
             .Where(row => !row.IsTombstone)
-            .OrderBy(row => row.AbsoluteOrder)
+            .OrderBy(row => row.AbsoluteOrder);
+        var incompleteRows = (maximumCount is > 0 ? incompleteQuery.Take(maximumCount.Value) : incompleteQuery)
             .ToArray();
         if (incompleteRows.Length == 0)
         {
@@ -2186,9 +2199,10 @@ public partial class MainWindow : Window
         }
 
         var ocrAssets = FindOcrAssets();
-        if (ocrAssets is null)
+        var templateDirectory = FindOcrTemplateDirectory();
+        if (ocrAssets is null || templateDirectory is null)
         {
-            ShowOcrError("当前程序目录未找到内置 OCR 组件。请使用包含 ocr/ 目录的 Native 发布包运行；如果是源码开发环境，请先构建 Native OCR 资源后重新生成 Release 输出。", "OCR 组件缺失");
+            ShowOcrError("当前程序目录未找到内置 OCR 组件或成就图标模板。请使用包含 ocr/ 和 resources/ocr_templates/ 的 Native 发布包运行。", "OCR 组件缺失");
             return;
         }
 
@@ -2199,9 +2213,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        var isLimitedDebugScan = maximumCount is > 0;
         _ocrCancellation = new CancellationTokenSource();
         _activeOcrMode = OcrScanMode.SearchSync;
         OcrSearchSyncButton.Content = "取消校验";
+        OcrSearchSyncDebugButton.Content = "取消前 10 个校验";
+        OcrSearchSyncButton.IsEnabled = !isLimitedDebugScan;
+        OcrSearchSyncDebugButton.IsEnabled = isLimitedDebugScan;
         OcrScanButton.IsEnabled = false;
         OcrFullScanButton.IsEnabled = false;
         OcrNavigationDebugButton.IsEnabled = false;
@@ -2223,19 +2241,9 @@ public partial class MainWindow : Window
         {
             var modelRoot = ocrAssets.ModelRoot;
             var recognitionModel = Path.Combine(modelRoot, "rec", "rec.onnx");
-            var detectionModel = Path.Combine(modelRoot, "det", "det.onnx");
-            var classifierModel = Path.Combine(modelRoot, "cls", "cls.onnx");
             var dictionary = Path.Combine(modelRoot, "ppocrv5_dict.txt");
             using var client = new NativeOcrClient(new NativeOcrOptions(recognitionModel, dictionary, MinimumScore: 0.0f));
-            client.EnableDetection(detectionModel);
-            client.EnableClassifier(classifierModel);
-            using var reader = new NativeOcrTextReader(client);
-            var resultReader = new RegionOcrTextReader(
-                reader,
-                SearchResultX1Ratio,
-                SearchResultY1Ratio,
-                SearchResultX2Ratio,
-                SearchResultY2Ratio);
+            var resultReader = new NativeOcrTemplateTextReader(client, templateDirectory);
             var capture = new WindowsGameWindowCapture();
             var resultService = new SinglePageOcrScanService(capture, resultReader);
 
@@ -2286,12 +2294,15 @@ public partial class MainWindow : Window
                         continue;
                     }
 
-                    // Let the game's result panel settle before capturing it. The
-                    // result reader is limited to the right panel so the search
-                    // box and left category list cannot become false matches.
+                    // Let the game's result panel settle before capturing it. Search
+                    // results use the same achievement-card layout as category pages,
+                    // so reuse icon anchoring and fixed name/status crops instead of a
+                    // broad text region that can clip the title at the top of the card.
                     await Task.Delay(700, _ocrCancellation.Token);
                     var scan = await resultService.ScanAsync(
                         gameProcessNames,
+                        expectedWidth: 1920,
+                        expectedHeight: 1080,
                         cancellationToken: _ocrCancellation.Token);
                     if (!scan.IsSuccess)
                     {
@@ -2434,7 +2445,9 @@ public partial class MainWindow : Window
             _activeOcrMode = null;
             CloseOcrStopOverlay();
             OcrSearchSyncButton.Content = "自动校验未完成成就";
+            OcrSearchSyncDebugButton.Content = "DEBUG：校验前 10 个";
             OcrSearchSyncButton.IsEnabled = true;
+            OcrSearchSyncDebugButton.IsEnabled = true;
             OcrFullScanButton.IsEnabled = true;
             OcrScanButton.IsEnabled = true;
             OcrPagingSettingsButton.IsEnabled = true;
