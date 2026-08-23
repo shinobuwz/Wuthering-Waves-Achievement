@@ -460,7 +460,7 @@
                        Foreground="{DynamicResource MutedTextBrush}"
                        VerticalAlignment="Center" />
             <TextBlock DockPanel.Dock="Right"
-                       Text="扫描运行中：Ctrl+Shift+F12 取消 · Ctrl+Alt+F12 强制中止"
+                       Text="扫描运行中：Ctrl+Shift+F12 停止并保留 · Ctrl+Alt+F12 强制中止（不保留）"
                        Foreground="{DynamicResource MutedTextBrush}"
                        VerticalAlignment="Center" />
         </DockPanel>

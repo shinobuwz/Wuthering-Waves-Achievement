@@ -20,7 +20,7 @@
 
         <StackPanel>
             <TextBlock Text="OCR 翻页设置" FontSize="22" FontWeight="SemiBold" />
-            <TextBlock Text="OCR 统一使用鼠标滚轮。成就列表与二级 Tag 列表分别保存距离，并在扫描时根据画面和 OCR 重叠结果自动调整。"
+            <TextBlock Text="OCR 统一使用鼠标滚轮。成就列表与二级 Tag 列表分别保存固定距离，扫描期间不会自动改写。"
                        Foreground="{DynamicResource MutedTextBrush}"
                        TextWrapping="Wrap"
                        Margin="0,6,0,0" />
@@ -57,7 +57,7 @@
                 <TextBlock Grid.Row="1" Text="二级 Tag 滚轮总距离" VerticalAlignment="Center" Margin="0,0,12,10" />
                 <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,10">
                     <TextBox x:Name="SecondaryWheelDistanceBox" />
-                    <TextBlock Text="默认 640；校准目标为一页 7 个 Tag 中保留 1 个旧 Tag、翻出 6 个新 Tag。"
+                    <TextBlock Text="默认 4500。扫描期间不会自动改写该距离。"
                                Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,4,0,0" />
                 </StackPanel>
 
@@ -67,10 +67,10 @@
                 <TextBlock Grid.Row="3" Text="停稳检测起始等待（ms）" VerticalAlignment="Center" Margin="0,0,12,10" />
                 <TextBox Grid.Row="3" Grid.Column="1" x:Name="SettleDelayBox" Margin="0,0,0,10" />
 
-                <CheckBox Grid.Row="4" Grid.ColumnSpan="2"
-                          x:Name="AutoCalibrateCheckBox"
-                          Content="根据实际画面位移自动校准后续翻页距离和停稳等待"
-                          VerticalAlignment="Center" />
+                <TextBlock Grid.Row="4" Grid.ColumnSpan="2"
+                           Text="扫描期间不会自动计算或改写滚轮距离；如需验证，请使用下方独立校准按钮。"
+                           Foreground="{DynamicResource MutedTextBrush}"
+                           TextWrapping="Wrap" />
             </Grid>
         </Border>
 
@@ -86,7 +86,7 @@
                            Foreground="{DynamicResource MutedTextBrush}"
                            TextWrapping="Wrap"
                            Margin="0,5,0,0" />
-                <TextBlock Text="可分别手动校准成就列表和二级 Tag 列表。校准前请停留在游戏成就页面，并选择一个内容足够长的成就分类或二级 Tag 列表；程序会向下、向上滚动并尽量回到原位置。扫描过程中仍会继续自动微调。"
+                <TextBlock Text="手动校准会按当前输入距离执行一次向下、向上滚动，用于验证滚轮输入、实测位移和停稳等待。校准不会根据像素比例或扫描结果自动改写距离。"
                            Foreground="{DynamicResource MutedTextBrush}"
                            TextWrapping="Wrap"
                            Margin="0,9,0,0" />

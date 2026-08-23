@@ -146,7 +146,7 @@ public partial class OcrWorkbenchView : UserControl
         UnmatchedSummaryText.Text = preview.Unmatched.Count == 0
             ? "没有未匹配文字。"
             : $"未匹配 {preview.Unmatched.Count} 条：{string.Join("；", preview.Unmatched.Take(6).Select(item => item.Text))}";
-        StatusText.Text = $"{sourceLabel}完成，结果尚未写入。请筛选、勾选后点击“应用勾选结果”。";
+        StatusText.Text = $"{sourceLabel}，结果尚未写入。请筛选、勾选后点击“应用勾选结果”。";
         ResultsViewButton.IsChecked = true;
         ShowWorkbenchPage(showResults: true);
         RefreshResultFilter();

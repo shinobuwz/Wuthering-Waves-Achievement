@@ -4,9 +4,9 @@ namespace Wuwa.Core;
 
 public sealed record OcrPagingOptions(
     int WheelDistance = 2400,
-    int SecondaryWheelDistance = 640,
+    int SecondaryWheelDistance = 4500,
     int WheelEventIntervalMilliseconds = 100,
-    bool AutoCalibrate = true,
+    bool AutoCalibrate = false,
     int MinimumSettleMilliseconds = 150,
     int MaximumSettleMilliseconds = 2800,
     int? CalibratedWidth = null,
@@ -17,10 +17,10 @@ public sealed record OcrPagingOptions(
     DateTimeOffset? CalibratedAtUtc = null)
 {
     public const string SettingKey = "ocr.paging";
-    // Historical native wheel values were -160 × 15 for achievement pages and
-    // -160 × 4 for the narrower secondary-Tag list. Keep those proven totals as defaults.
+    // Keep deterministic defaults. Scan-time logic must not rewrite these distances;
+    // users may validate them explicitly through the calibration actions.
     public const int DefaultWheelDistance = 2400;
-    public const int DefaultSecondaryWheelDistance = 640;
+    public const int DefaultSecondaryWheelDistance = 4500;
     public const int MaximumSecondaryWheelDistance = 8000;
     public const int DefaultWheelEventIntervalMilliseconds = 100;
     public const int DefaultMinimumSettleMilliseconds = 150;
@@ -53,16 +53,13 @@ public sealed record OcrPagingOptions(
         WheelDistance = Math.Clamp(Math.Abs(WheelDistance), 120, 12000),
         SecondaryWheelDistance = Math.Clamp(Math.Abs(SecondaryWheelDistance), 120, MaximumSecondaryWheelDistance),
         WheelEventIntervalMilliseconds = Math.Clamp(WheelEventIntervalMilliseconds, 20, 300),
+        AutoCalibrate = false,
         MinimumSettleMilliseconds = Math.Clamp(MinimumSettleMilliseconds, 50, 1500),
         MaximumSettleMilliseconds = Math.Clamp(
             MaximumSettleMilliseconds,
             Math.Max(800, Math.Clamp(MinimumSettleMilliseconds, 50, 1500) + 300),
             6000)
     };
-
-    public bool NeedsCalibration(int width, int height) =>
-        AutoCalibrate &&
-        (CalibratedAtUtc is null || CalibratedWidth != width || CalibratedHeight != height);
 
     public OcrPagingOptions ClearCalibration() => this with
     {

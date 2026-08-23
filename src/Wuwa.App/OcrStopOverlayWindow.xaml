@@ -33,7 +33,7 @@
                            Margin="8,0,0,0" />
             </DockPanel>
             <StackPanel Grid.Row="1" Margin="0,8,0,9">
-                <TextBlock Text="Ctrl+Shift+F12  取消"
+                <TextBlock Text="Ctrl+Shift+F12  停止并保留"
                            Foreground="{DynamicResource TextBrush}"
                            FontSize="11" />
                 <TextBlock Text="Ctrl+Alt+F12  强制中止"
@@ -42,10 +42,10 @@
                            Margin="0,3,0,0" />
             </StackPanel>
             <Button Grid.Row="2"
-                    Content="立即停止"
+                    Content="停止并保留结果"
                     Click="Stop_OnClick"
                     HorizontalAlignment="Right"
-                    MinWidth="86"
+                    MinWidth="118"
                     MinHeight="28"
                     Padding="10,4"
                     Margin="0" />
