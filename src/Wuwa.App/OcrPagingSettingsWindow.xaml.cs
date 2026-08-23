@@ -16,6 +16,11 @@ public partial class OcrPagingSettingsWindow : Window
         SecondaryWheelDistanceBox.Text = _original.SecondaryWheelDistance.ToString(CultureInfo.InvariantCulture);
         WheelIntervalBox.Text = _original.WheelEventIntervalMilliseconds.ToString(CultureInfo.InvariantCulture);
         SettleDelayBox.Text = _original.MinimumSettleMilliseconds.ToString(CultureInfo.InvariantCulture);
+        TextFieldFocusDelayBox.Text = _original.TextFieldFocusSettleMilliseconds.ToString(CultureInfo.InvariantCulture);
+        ModifierDelayBox.Text = _original.ModifierSettleMilliseconds.ToString(CultureInfo.InvariantCulture);
+        KeyPressDelayBox.Text = _original.KeyPressMilliseconds.ToString(CultureInfo.InvariantCulture);
+        SelectAllDelayBox.Text = _original.SelectAllSettleMilliseconds.ToString(CultureInfo.InvariantCulture);
+        ClipboardPasteDelayBox.Text = _original.ClipboardPasteSettleMilliseconds.ToString(CultureInfo.InvariantCulture);
         CalibrationText.Text = BuildCalibrationText(_original);
     }
 
@@ -27,6 +32,8 @@ public partial class OcrPagingSettingsWindow : Window
     private void CalibrateAchievement_OnClick(object sender, RoutedEventArgs e) => Accept(OcrPagingCalibrationTarget.AchievementList);
 
     private void CalibrateSecondaryTags_OnClick(object sender, RoutedEventArgs e) => Accept(OcrPagingCalibrationTarget.SecondaryTags);
+
+    private void TestSearchInput_OnClick(object sender, RoutedEventArgs e) => Accept(OcrPagingCalibrationTarget.SearchInput);
 
     private void Cancel_OnClick(object sender, RoutedEventArgs e)
     {
@@ -40,7 +47,12 @@ public partial class OcrPagingSettingsWindow : Window
         if (!TryReadRange(WheelDistanceBox.Text, 120, 12000, "成就列表滚轮总距离", out var wheelDistance) ||
             !TryReadRange(SecondaryWheelDistanceBox.Text, 120, OcrPagingOptions.MaximumSecondaryWheelDistance, "二级 Tag 滚轮总距离", out var secondaryWheelDistance) ||
             !TryReadRange(WheelIntervalBox.Text, 20, 300, "滚轮事件间隔", out var wheelInterval) ||
-            !TryReadRange(SettleDelayBox.Text, 50, 1500, "停稳检测起始等待", out var settleDelay))
+            !TryReadRange(SettleDelayBox.Text, 50, 1500, "停稳检测起始等待", out var settleDelay) ||
+            !TryReadRange(TextFieldFocusDelayBox.Text, 50, 2000, "聚焦搜索框后等待", out var textFieldFocusDelay) ||
+            !TryReadRange(ModifierDelayBox.Text, 10, 500, "修饰键切换间隔", out var modifierDelay) ||
+            !TryReadRange(KeyPressDelayBox.Text, 10, 300, "按键按下时间", out var keyPressDelay) ||
+            !TryReadRange(SelectAllDelayBox.Text, 20, 1000, "Ctrl+A 后等待", out var selectAllDelay) ||
+            !TryReadRange(ClipboardPasteDelayBox.Text, 50, 2500, "Ctrl+V 后等待", out var clipboardPasteDelay))
         {
             return;
         }
@@ -51,7 +63,12 @@ public partial class OcrPagingSettingsWindow : Window
             SecondaryWheelDistance = secondaryWheelDistance,
             WheelEventIntervalMilliseconds = wheelInterval,
             MinimumSettleMilliseconds = settleDelay,
-            AutoCalibrate = false
+            AutoCalibrate = false,
+            TextFieldFocusSettleMilliseconds = textFieldFocusDelay,
+            ModifierSettleMilliseconds = modifierDelay,
+            KeyPressMilliseconds = keyPressDelay,
+            SelectAllSettleMilliseconds = selectAllDelay,
+            ClipboardPasteSettleMilliseconds = clipboardPasteDelay
         }).Normalize();
         if (wheelDistance != _original.WheelDistance)
         {
@@ -96,5 +113,6 @@ public enum OcrPagingCalibrationTarget
 {
     None,
     AchievementList,
-    SecondaryTags
+    SecondaryTags,
+    SearchInput
 }

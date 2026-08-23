@@ -33,7 +33,7 @@
                            Margin="8,0,0,0" />
             </DockPanel>
             <StackPanel Grid.Row="1" Margin="0,8,0,9">
-                <TextBlock Text="Ctrl+Shift+F12  停止并保留"
+                <TextBlock Text="Ctrl+Shift+F12  取消"
                            Foreground="{DynamicResource TextBrush}"
                            FontSize="11" />
                 <TextBlock Text="Ctrl+Alt+F12  强制中止"
@@ -41,14 +41,16 @@
                            FontSize="11"
                            Margin="0,3,0,0" />
             </StackPanel>
-            <Button Grid.Row="2"
+            <Button x:Name="StopButton"
+                    Grid.Row="2"
                     Content="停止并保留结果"
-                    Click="Stop_OnClick"
+                    PreviewMouseLeftButtonDown="Stop_OnPreviewMouseLeftButtonDown"
                     HorizontalAlignment="Right"
                     MinWidth="118"
-                    MinHeight="28"
-                    Padding="10,4"
-                    Margin="0" />
+                    MinHeight="32"
+                    Padding="12,4"
+                    Margin="0"
+                    Cursor="Hand" />
         </Grid>
     </Border>
 </Window>

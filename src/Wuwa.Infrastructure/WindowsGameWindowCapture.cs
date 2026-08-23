@@ -181,13 +181,25 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         int clientX,
         int clientY,
         string text,
+        CancellationToken cancellationToken = default) =>
+        ReplaceTextAsync(window, clientX, clientY, text, new OcrTextInputTiming(), cancellationToken);
+
+    public Task<bool> ReplaceTextAsync(
+        GameWindowCandidate window,
+        int clientX,
+        int clientY,
+        string text,
+        OcrTextInputTiming timing,
         CancellationToken cancellationToken = default)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Game-window input currently supports Windows only.");
         if (window.Handle == 0) throw new ArgumentException("A valid window handle is required.", nameof(window));
         if (text is null) throw new ArgumentNullException(nameof(text));
-        NativeOcrDiagnostics.Write($"ReplaceText requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} client={clientX},{clientY} length={text.Length} method=clipboard-paste");
-        return Task.Run(() => ReplaceText(window, clientX, clientY, text, cancellationToken), cancellationToken);
+        timing = (timing ?? throw new ArgumentNullException(nameof(timing))).Normalize();
+        NativeOcrDiagnostics.Write(
+            $"ReplaceText requested handle=0x{window.Handle.ToInt64():X} pid={window.ProcessId} client={clientX},{clientY} length={text.Length} method=clipboard-paste " +
+            $"focus={timing.TextFieldFocusSettleMilliseconds}ms modifier={timing.ModifierSettleMilliseconds}ms key={timing.KeyPressMilliseconds}ms selectAll={timing.SelectAllSettleMilliseconds}ms paste={timing.ClipboardPasteSettleMilliseconds}ms");
+        return Task.Run(() => ReplaceText(window, clientX, clientY, text, timing, cancellationToken), cancellationToken);
     }
 
     private static void ValidateScrollArguments(GameWindowCandidate window, int scrollDistance, int eventIntervalMilliseconds)
@@ -320,6 +332,7 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         int clientX,
         int clientY,
         string text,
+        OcrTextInputTiming timing,
         CancellationToken cancellationToken)
     {
         // The game's text field accepts clipboard paste reliably, while
@@ -327,34 +340,73 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         // by the game's Slate/IME text widget for Chinese achievement names.
         if (!SetClipboardUnicodeText(text)) return false;
         if (!ClickWindow(window, clientX, clientY, cancellationToken)) return false;
-        Thread.Sleep(120);
-        cancellationToken.ThrowIfCancellationRequested();
+        WaitForInput(timing.TextFieldFocusSettleMilliseconds, cancellationToken);
 
-        if (!SendKeyChord(NativeMethods.VirtualKeyA, cancellationToken)) return false;
-        Thread.Sleep(100);
-        if (!SendKeyChord(NativeMethods.VirtualKeyV, cancellationToken)) return false;
-        Thread.Sleep(220);
-        cancellationToken.ThrowIfCancellationRequested();
+        if (!SendPacedKeyChord(NativeMethods.VirtualKeyA, timing, cancellationToken)) return false;
+        WaitForInput(timing.SelectAllSettleMilliseconds, cancellationToken);
+        if (!SendPacedKeyChord(NativeMethods.VirtualKeyV, timing, cancellationToken)) return false;
+        WaitForInput(timing.ClipboardPasteSettleMilliseconds, cancellationToken);
         NativeOcrDiagnostics.Write($"ReplaceText paste completed text={text}");
         return true;
     }
 
-    private static bool SendKeyChord(ushort key, CancellationToken cancellationToken)
+    private static bool SendPacedKeyChord(
+        ushort key,
+        OcrTextInputTiming timing,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var controlPressed = false;
+        var keyPressed = false;
+        try
+        {
+            if (!SendKeyEvent(NativeMethods.VirtualKeyControl, keyUp: false)) return false;
+            controlPressed = true;
+            WaitForInput(timing.ModifierSettleMilliseconds, cancellationToken);
+
+            if (!SendKeyEvent(key, keyUp: false)) return false;
+            keyPressed = true;
+            WaitForInput(timing.KeyPressMilliseconds, cancellationToken);
+
+            if (!SendKeyEvent(key, keyUp: true)) return false;
+            keyPressed = false;
+            WaitForInput(timing.ModifierSettleMilliseconds, cancellationToken);
+
+            if (!SendKeyEvent(NativeMethods.VirtualKeyControl, keyUp: true)) return false;
+            controlPressed = false;
+            NativeOcrDiagnostics.Write($"ReplaceText paced-keychord key=0x{key:X2} result=success");
+            return true;
+        }
+        finally
+        {
+            if (keyPressed) _ = SendKeyEvent(key, keyUp: true);
+            if (controlPressed) _ = SendKeyEvent(NativeMethods.VirtualKeyControl, keyUp: true);
+        }
+    }
+
+    private static bool SendKeyEvent(ushort key, bool keyUp)
+    {
         var inputs = new[]
         {
-            CreateKeyInput(NativeMethods.VirtualKeyControl, 0),
-            CreateKeyInput(key, 0),
-            CreateKeyInput(key, NativeMethods.KeyboardEventKeyUp),
-            CreateKeyInput(NativeMethods.VirtualKeyControl, NativeMethods.KeyboardEventKeyUp)
+            CreateKeyInput(key, keyUp ? NativeMethods.KeyboardEventKeyUp : 0)
         };
         var sent = NativeMethods.SendKeyboardInput(
-            (uint)inputs.Length,
+            1,
             inputs,
             Marshal.SizeOf<NativeKeyboardInput>());
-        NativeOcrDiagnostics.Write($"ReplaceText keychord key=0x{key:X2} requested={inputs.Length} sent={sent}");
-        return sent == (uint)inputs.Length;
+        if (sent != 1)
+        {
+            NativeOcrDiagnostics.Write($"ReplaceText key-event key=0x{key:X2} keyUp={keyUp} requested=1 sent={sent}");
+        }
+        return sent == 1;
+    }
+
+    private static void WaitForInput(int milliseconds, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.WaitHandle.WaitOne(milliseconds))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
     }
 
     private static bool SetClipboardUnicodeText(string text)

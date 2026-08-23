@@ -41,18 +41,19 @@ Visual Studio 用户打开根目录的 `WutheringWavesAchievement.sln`，启动�
 - Kuro Wiki 数据同步与稳定身份匹配
 - Native PP-OCRv5 检测、分类、识别和 OCR 结果预览
 - 当前分类 OCR 扫描及全量分类 OCR 扫描入口
-- 逐条搜索未完成成就，识别右侧完成结果并确认写入本地进度
+- 增量扫描未完成成就；高置信识别为已完成后立即通过工作区写入本地进度
+- “校准与输入设置”内提供安全的搜索框输入测试，并可调整聚焦、修饰键、按键、全选和粘贴等待时间；测试不执行搜索或修改进度
 - 深色/浅色主题和便携发布
 
 ## 数据位置
 
 - 随程序发布的只读资源：`resources/base_achievements.json`、`resources/category_config.json`、`resources/ocr_templates/`
-- Native 可变工作区：`%LocalAppData%\WutheringWavesAchievement`
-- Native OCR 诊断日志：`%LocalAppData%\WutheringWavesAchievement\native-ocr.log`
+- Native 可变工作区：默认位于 `<程序目录>\data`；设置 `WUWA_NATIVE_DATA_ROOT` 时使用指定目录
+- Native OCR 诊断日志：`<程序目录>\log\native-ocr-YYYY-MM-DD.log`
 
 游戏窗口若以管理员权限运行，Native 应用也会请求管理员权限，以保证 Windows 鼠标/键盘输入不会被完整性级别拦截。
 
-OCR/自动校验运行时：`Ctrl+Shift+F12` 为协作取消；`Ctrl+Alt+F12` 为强制中止，会直接退出工具且不会应用内存中的待确认结果。
+OCR/增量扫描运行时：右上角“停止扫描”或 `Ctrl+Shift+F12` 为协作取消；`Ctrl+Alt+F12` 为强制中止。增量扫描已高置信识别并成功入库的完成状态会保留，当前尚未识别完成的项目不会写入。
 
 仓库中保留的 `resources/config.json` 和 `resources/user_progress_{uid}.json` 仅作为旧数据的一次性、只读导入来源，不再对应一个可运行的 Python 应用。
 

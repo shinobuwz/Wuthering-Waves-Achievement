@@ -1,106 +1,296 @@
 <Window x:Class="Wuwa.App.OcrPagingSettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="OCR 翻页设置"
-        Width="540"
-        Height="620"
-        MinWidth="520"
-        MinHeight="590"
-        ResizeMode="NoResize"
+        Title="OCR 校准与输入设置"
+        Width="720"
+        Height="660"
+        MinWidth="640"
+        MinHeight="620"
+        ResizeMode="CanResize"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource WindowBrush}"
         Foreground="{DynamicResource TextBrush}">
-    <Grid Margin="22">
+    <Window.Resources>
+        <Style TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}" />
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal">
+                            <Border x:Name="CheckBorder"
+                                    Width="16"
+                                    Height="16"
+                                    Background="{DynamicResource InputBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="3"
+                                    VerticalAlignment="Center">
+                                <Path x:Name="CheckMark"
+                                      Data="M 3,8 L 6.5,11.5 L 13,4"
+                                      Stroke="{DynamicResource AccentBrush}"
+                                      StrokeThickness="2"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      Visibility="Collapsed" />
+                            </Border>
+                            <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="CheckBorder" Property="Background" Value="{DynamicResource SelectionBrush}" />
+                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid KeyboardNavigation.TabNavigation="Local" SnapsToDevicePixels="True">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <UniformGrid x:Name="HeaderPanel"
+                                         Grid.Row="0"
+                                         Panel.ZIndex="1"
+                                         IsItemsHost="True"
+                                         Rows="1"
+                                         KeyboardNavigation.TabIndex="1"
+                                         Background="Transparent"
+                                         Margin="0,0,0,8" />
+                            <Border Grid.Row="1"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8">
+                                <ContentPresenter x:Name="PART_SelectedContentHost"
+                                                  ContentSource="SelectedContent"
+                                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource PanelAltBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="16,7" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="TabBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource SelectionBrush}" />
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="18">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <StackPanel>
-            <TextBlock Text="OCR 翻页设置" FontSize="22" FontWeight="SemiBold" />
-            <TextBlock Text="OCR 统一使用鼠标滚轮。成就列表与二级 Tag 列表分别保存固定距离，扫描期间不会自动改写。"
+            <TextBlock Text="OCR 校准与输入设置" FontSize="25" FontWeight="SemiBold" />
+            <TextBlock Text="集中调整固定翻页距离、画面停稳检测，以及增量扫描使用的搜索框聚焦和粘贴间隔。"
                        Foreground="{DynamicResource MutedTextBrush}"
                        TextWrapping="Wrap"
                        Margin="0,6,0,0" />
         </StackPanel>
 
-        <Border Grid.Row="1"
-                Background="{DynamicResource PanelBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1"
-                CornerRadius="7"
-                Padding="16"
-                Margin="0,18,0,12">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="155" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+        <TabControl Grid.Row="1" Margin="0,18,0,12">
+            <TabItem Header="翻页与停稳">
+                <Grid Margin="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="178" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="成就列表滚轮总距离" VerticalAlignment="Center" Margin="0,0,12,10" />
-                <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
-                    <TextBox x:Name="WheelDistanceBox" />
-                    <TextBlock Text="默认 2400；校准目标为一页 4 个成就中保留 1 个旧成就、翻出 3 个新成就。"
-                               Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,4,0,0" />
-                </StackPanel>
+                    <TextBlock Grid.Row="0" Text="成就列表滚轮总距离" VerticalAlignment="Center" Margin="0,0,12,10" />
+                    <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
+                        <TextBox x:Name="WheelDistanceBox" />
+                        <TextBlock Text="默认 2400；扫描期间不会自动计算或改写该距离。"
+                                   Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,4,0,0" />
+                    </StackPanel>
 
-                <TextBlock Grid.Row="1" Text="二级 Tag 滚轮总距离" VerticalAlignment="Center" Margin="0,0,12,10" />
-                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,10">
-                    <TextBox x:Name="SecondaryWheelDistanceBox" />
-                    <TextBlock Text="默认 4500。扫描期间不会自动改写该距离。"
-                               Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,4,0,0" />
-                </StackPanel>
+                    <TextBlock Grid.Row="1" Text="二级 Tag 滚轮总距离" VerticalAlignment="Center" Margin="0,0,12,10" />
+                    <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,10">
+                        <TextBox x:Name="SecondaryWheelDistanceBox" />
+                        <TextBlock Text="默认 4500；扫描期间不会自动计算或改写该距离。"
+                                   Foreground="{DynamicResource MutedTextBrush}" FontSize="11" Margin="0,4,0,0" />
+                    </StackPanel>
 
-                <TextBlock Grid.Row="2" Text="滚轮事件间隔（ms）" VerticalAlignment="Center" Margin="0,0,12,10" />
-                <TextBox Grid.Row="2" Grid.Column="1" x:Name="WheelIntervalBox" Margin="0,0,0,10" />
+                    <TextBlock Grid.Row="2" Text="滚轮事件间隔（ms）" VerticalAlignment="Center" Margin="0,0,12,10" />
+                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="WheelIntervalBox" Margin="0,0,0,10" />
 
-                <TextBlock Grid.Row="3" Text="停稳检测起始等待（ms）" VerticalAlignment="Center" Margin="0,0,12,10" />
-                <TextBox Grid.Row="3" Grid.Column="1" x:Name="SettleDelayBox" Margin="0,0,0,10" />
+                    <TextBlock Grid.Row="3" Text="停稳检测起始等待（ms）" VerticalAlignment="Center" Margin="0,0,12,10" />
+                    <TextBox Grid.Row="3" Grid.Column="1" x:Name="SettleDelayBox" Margin="0,0,0,10" />
 
-                <TextBlock Grid.Row="4" Grid.ColumnSpan="2"
-                           Text="扫描期间不会自动计算或改写滚轮距离；如需验证，请使用下方独立校准按钮。"
-                           Foreground="{DynamicResource MutedTextBrush}"
-                           TextWrapping="Wrap" />
-            </Grid>
-        </Border>
+                    <TextBlock Grid.Row="4" Grid.ColumnSpan="2"
+                               Text="扫描严格使用上方固定距离；手动校准只验证滚轮输入、记录实测位移并调整停稳等待。"
+                               Foreground="{DynamicResource MutedTextBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,12" />
 
-        <Border Grid.Row="2"
-                Background="{DynamicResource PanelAltBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1"
-                CornerRadius="6"
-                Padding="12">
-            <StackPanel>
-                <TextBlock Text="最近校准" FontWeight="SemiBold" />
-                <TextBlock x:Name="CalibrationText"
-                           Foreground="{DynamicResource MutedTextBrush}"
-                           TextWrapping="Wrap"
-                           Margin="0,5,0,0" />
-                <TextBlock Text="手动校准会按当前输入距离执行一次向下、向上滚动，用于验证滚轮输入、实测位移和停稳等待。校准不会根据像素比例或扫描结果自动改写距离。"
-                           Foreground="{DynamicResource MutedTextBrush}"
-                           TextWrapping="Wrap"
-                           Margin="0,9,0,0" />
+                    <Border Grid.Row="5" Grid.ColumnSpan="2"
+                            MinHeight="126"
+                            Background="{DynamicResource PanelAltBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="最近校准" FontWeight="SemiBold" />
+                            <TextBlock x:Name="CalibrationText"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,5,0,0" />
+                            <TextBlock Text="手动校准前请停留在游戏成就页面，并选择内容足够长的成就或二级 Tag 列表。程序会按当前固定距离向下、向上滚动并尽量回到原位置，不会重新计算距离。"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,9,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Grid.Row="6" Grid.ColumnSpan="2"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Margin="0,12,0,0">
+                        <Button Style="{StaticResource InlineActionButtonStyle}" Content="保存并校准成就列表" Click="CalibrateAchievement_OnClick" MinWidth="142" />
+                        <Button Style="{StaticResource TerminalInlineActionButtonStyle}" Content="保存并校准二级 Tag" Click="CalibrateSecondaryTags_OnClick" MinWidth="142" />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- Shared TabItem style supplies the inter-item gap; the final tab must not carry a trailing margin. -->
+            <TabItem Header="搜索框输入" Margin="0">
+                <Grid Margin="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="178" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="聚焦搜索框后等待（ms）" VerticalAlignment="Center" Margin="0,0,12,12" />
+                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="TextFieldFocusDelayBox" Margin="0,0,0,12" />
+
+                    <TextBlock Grid.Row="1" Text="修饰键切换间隔（ms）" VerticalAlignment="Center" Margin="0,0,12,12" />
+                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="ModifierDelayBox" Margin="0,0,0,12" />
+
+                    <TextBlock Grid.Row="2" Text="按键按下时间（ms）" VerticalAlignment="Center" Margin="0,0,12,12" />
+                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="KeyPressDelayBox" Margin="0,0,0,12" />
+
+                    <TextBlock Grid.Row="3" Text="Ctrl+A 后等待（ms）" VerticalAlignment="Center" Margin="0,0,12,12" />
+                    <TextBox Grid.Row="3" Grid.Column="1" x:Name="SelectAllDelayBox" Margin="0,0,0,12" />
+
+                    <TextBlock Grid.Row="4" Text="Ctrl+V 后等待（ms）" VerticalAlignment="Center" Margin="0,0,12,12" />
+                    <TextBox Grid.Row="4" Grid.Column="1" x:Name="ClipboardPasteDelayBox" Margin="0,0,0,12" />
+
+                    <Border Grid.Row="5" Grid.ColumnSpan="2"
+                            MinHeight="126"
+                            Background="{DynamicResource PanelAltBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="输入测试说明" FontWeight="SemiBold" />
+                            <TextBlock Text="“保存并测试搜索输入”会先保存以上参数，再使用所选成就名称（未选择时使用第一条未完成成就）测试游戏窗口聚焦、中文剪贴板粘贴和搜索框 OCR。不会点击搜索按钮，也不会修改成就进度。"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,6,0,0" />
+                            <TextBlock Text="如果测试提示需要额外等待，可优先增加 Ctrl+V 后等待；若游戏窗口未保持前台，则增加聚焦搜索框后等待。"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,7,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Grid.Row="6" Grid.ColumnSpan="2"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Margin="0,12,0,0">
+                        <Button AutomationProperties.AutomationId="OcrSearchInputTestButton"
+                                Style="{StaticResource TerminalInlineActionButtonStyle}"
+                                Content="保存并测试搜索输入"
+                                ToolTip="保存当前间隔后运行安全输入测试，不执行搜索或修改进度"
+                                Click="TestSearchInput_OnClick"
+                                MinWidth="154" />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <DockPanel Grid.Row="2">
+            <!-- Match the page action edge: TabControl border (1) + selected-content Grid margin (16). -->
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,17,0">
+                <Button Style="{StaticResource InlineActionButtonStyle}" Content="取消" Click="Cancel_OnClick" MinWidth="72" />
+                <Button Style="{StaticResource TerminalInlineActionButtonStyle}" Content="仅保存" Click="Save_OnClick" MinWidth="80" />
             </StackPanel>
-        </Border>
-
-        <DockPanel Grid.Row="3" Margin="0,18,0,0">
-            <TextBlock x:Name="ValidationText" Foreground="{DynamicResource ErrorBrush}" VerticalAlignment="Center" />
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                <Button Content="取消" Click="Cancel_OnClick" MinWidth="66" />
-                <Button Content="仅保存" Click="Save_OnClick" MinWidth="72" />
-                <Button Content="校准成就列表" Click="CalibrateAchievement_OnClick" MinWidth="108" />
-                <Button Content="校准二级 Tag" Click="CalibrateSecondaryTags_OnClick" MinWidth="108" Margin="0" />
-            </StackPanel>
+            <TextBlock x:Name="ValidationText" Foreground="{DynamicResource ErrorBrush}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,10,0" />
         </DockPanel>
     </Grid>
 </Window>

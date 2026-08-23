@@ -134,8 +134,8 @@
                                 <Button x:Name="OcrWorkbenchButton" AutomationProperties.AutomationId="OcrWorkbenchButton" Content="打开 OCR 工具" ToolTip="集中管理扫描、翻页校准和已扫描分类记录" Click="OcrWorkbench_OnClick" />
                                 <Button x:Name="OcrScanButton" AutomationProperties.AutomationId="OcrScanButton" Content="自动扫描当前分类" Click="OcrScan_OnClick" Visibility="Collapsed" />
                                 <Button x:Name="OcrFullScanButton" AutomationProperties.AutomationId="OcrFullScanButton" Content="全量扫描所有分类" Click="OcrFullScan_OnClick" Visibility="Collapsed" />
-                                <Button x:Name="OcrSearchSyncButton" AutomationProperties.AutomationId="OcrSearchSyncButton" Content="自动校验未完成成就" ToolTip="逐条搜索未完成成就；Ctrl+Shift+F12 停止并保留结果，Ctrl+Alt+F12 强制中止且不保留" Click="OcrSearchSync_OnClick" Visibility="Collapsed" />
-                                <Button x:Name="OcrPagingSettingsButton" AutomationProperties.AutomationId="OcrPagingSettingsButton" Content="翻页设置" ToolTip="设置成就列表和二级 Tag 的固定滚轮距离，并手动执行校准验证" Click="OcrPagingSettings_OnClick" Visibility="Collapsed" />
+                                <Button x:Name="OcrSearchSyncButton" AutomationProperties.AutomationId="OcrSearchSyncButton" Content="增量扫描未完成成就" ToolTip="逐条搜索未完成成就，高置信完成结果立即入库；Ctrl+Shift+F12 停止并保留已入库结果，Ctrl+Alt+F12 强制中止" Click="OcrSearchSync_OnClick" Visibility="Collapsed" />
+                                <Button x:Name="OcrPagingSettingsButton" AutomationProperties.AutomationId="OcrPagingSettingsButton" Content="校准与输入设置" ToolTip="设置固定翻页距离、停稳检测和搜索框输入间隔，并手动执行校准验证" Click="OcrPagingSettings_OnClick" Visibility="Collapsed" />
                                 <Button x:Name="OcrSearchSyncDebugButton" AutomationProperties.AutomationId="OcrSearchSyncDebugButton" Content="DEBUG：校验前 10 个" ToolTip="仅逐条搜索当前未完成成就中的前 10 个，用于快速验证增量扫描" Click="OcrSearchSyncDebug_OnClick" Visibility="Collapsed" />
                                 <Button x:Name="OcrNavigationDebugButton" AutomationProperties.AutomationId="OcrNavigationDebugButton" Content="DEBUG：测试分类切换" Click="OcrNavigationDebug_OnClick" Visibility="Collapsed" />
                             </WrapPanel>
