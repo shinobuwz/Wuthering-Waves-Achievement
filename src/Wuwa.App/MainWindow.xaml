@@ -122,6 +122,7 @@
                                 <Button x:Name="OcrScanButton" AutomationProperties.AutomationId="OcrScanButton" Content="自动扫描当前分类" Click="OcrScan_OnClick" />
                                 <Button x:Name="OcrFullScanButton" AutomationProperties.AutomationId="OcrFullScanButton" Content="全量扫描所有分类" Click="OcrFullScan_OnClick" />
                                 <Button x:Name="OcrSearchSyncButton" AutomationProperties.AutomationId="OcrSearchSyncButton" Content="自动校验未完成成就" ToolTip="逐条搜索未完成成就，识别右侧结果后写入已完成状态；Ctrl+Shift+F12 取消，Ctrl+Alt+F12 强制中止" Click="OcrSearchSync_OnClick" />
+                                <Button x:Name="OcrSearchSyncDebugButton" AutomationProperties.AutomationId="OcrSearchSyncDebugButton" Content="DEBUG：校验前 10 个" ToolTip="仅逐条搜索当前未完成成就中的前 10 个，用于快速验证增量扫描" Click="OcrSearchSyncDebug_OnClick" Visibility="Collapsed" />
                                 <Button x:Name="OcrNavigationDebugButton" AutomationProperties.AutomationId="OcrNavigationDebugButton" Content="DEBUG：测试分类切换" Click="OcrNavigationDebug_OnClick" Visibility="Collapsed" />
                             </WrapPanel>
                         </StackPanel>
