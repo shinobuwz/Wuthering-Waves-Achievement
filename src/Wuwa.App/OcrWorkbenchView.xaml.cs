@@ -463,7 +463,7 @@ public sealed class OcrResultViewRow : INotifyPropertyChanged
         Candidate = candidate;
         FirstCategory = firstCategory;
         SecondCategory = secondCategory;
-        _apply = candidate.CanApply;
+        _apply = candidate.ShouldApplyByDefault;
     }
 
     public OcrAchievementCandidate Candidate { get; }

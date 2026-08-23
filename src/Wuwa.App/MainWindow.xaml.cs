@@ -3446,7 +3446,7 @@ public partial class MainWindow : Window
 
     private static bool PreferOcrCandidate(OcrAchievementCandidate candidate, OcrAchievementCandidate existing)
     {
-        if (candidate.CanApply != existing.CanApply) return candidate.CanApply;
+        if (candidate.ShouldApplyByDefault != existing.ShouldApplyByDefault) return candidate.ShouldApplyByDefault;
         if (candidate.ProposedStatus == ProgressStatus.Completed && existing.ProposedStatus != ProgressStatus.Completed) return true;
         if (existing.ProposedStatus == ProgressStatus.Completed && candidate.ProposedStatus != ProgressStatus.Completed) return false;
         return candidate.MatchConfidence > existing.MatchConfidence;

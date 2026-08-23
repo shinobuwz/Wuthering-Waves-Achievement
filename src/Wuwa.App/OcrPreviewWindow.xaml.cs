@@ -62,7 +62,7 @@ public sealed class OcrPreviewRow : INotifyPropertyChanged
     public OcrPreviewRow(OcrAchievementCandidate candidate)
     {
         Candidate = candidate;
-        _apply = candidate.CanApply;
+        _apply = candidate.ShouldApplyByDefault;
     }
 
     public OcrAchievementCandidate Candidate { get; }

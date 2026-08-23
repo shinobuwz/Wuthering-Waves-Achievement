@@ -14,10 +14,10 @@ public sealed record OcrAchievementCandidate(
 {
     public const double MinimumApplicableConfidence = 0.75;
 
-    public bool CanApply =>
-        MatchConfidence >= MinimumApplicableConfidence &&
-        ProposedStatus is not null &&
-        !IsAmbiguous;
+    public bool CanApply => ProposedStatus is not null && !IsAmbiguous;
+
+    public bool ShouldApplyByDefault =>
+        CanApply && MatchConfidence >= MinimumApplicableConfidence;
 }
 
 public sealed record OcrUnmatchedText(string Text, string Reason, float OcrScore);

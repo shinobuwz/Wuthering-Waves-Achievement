@@ -84,7 +84,8 @@ public sealed class OcrMatchingTests
         Assert.AreEqual("2025/09/26", candidate.StatusText);
         Assert.IsFalse(candidate.IsAmbiguous);
         Assert.IsTrue(candidate.MatchConfidence < OcrAchievementCandidate.MinimumApplicableConfidence);
-        Assert.IsFalse(candidate.CanApply);
+        Assert.IsTrue(candidate.CanApply);
+        Assert.IsFalse(candidate.ShouldApplyByDefault);
     }
 
     [TestMethod]
@@ -101,10 +102,11 @@ public sealed class OcrMatchingTests
         Assert.IsNull(candidate.ProposedStatus);
         Assert.IsFalse(candidate.IsAmbiguous);
         Assert.IsFalse(candidate.CanApply);
+        Assert.IsFalse(candidate.ShouldApplyByDefault);
     }
 
     [TestMethod]
-    public async Task ApplyOcrPreview_DoesNotUseCandidatesBelowSeventyFivePercentConfidence()
+    public async Task ApplyOcrPreview_AllowsExplicitlySelectedLowConfidenceCandidate()
     {
         var achievement = Achievement("100", 1, "先行之证·今州");
         var store = new InMemoryAppDataStore();
@@ -121,13 +123,16 @@ public sealed class OcrMatchingTests
             "2025/04/21");
         var preview = new OcrScanPreview([lowConfidence], [], 0, 0, 1);
 
+        Assert.IsTrue(lowConfidence.CanApply);
+        Assert.IsFalse(lowConfidence.ShouldApplyByDefault);
+
         var applied = await workspace.ApplyOcrPreviewAsync(preview, confirm: true);
 
         Assert.IsTrue(applied.IsSuccess);
-        Assert.AreEqual(0, applied.Updated);
-        Assert.AreEqual(1, applied.Unchanged);
-        Assert.AreEqual(before, applied.Snapshot.Revision);
-        Assert.AreEqual(ProgressStatus.Incomplete, applied.Snapshot.Rows.Single().Status);
+        Assert.AreEqual(1, applied.Updated);
+        Assert.AreEqual(0, applied.Unchanged);
+        Assert.AreEqual(before + 1, applied.Snapshot.Revision);
+        Assert.AreEqual(ProgressStatus.Completed, applied.Snapshot.Rows.Single().Status);
     }
 
     [TestMethod]
