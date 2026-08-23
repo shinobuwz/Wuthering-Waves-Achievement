@@ -15,6 +15,11 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
     // Use client coordinates so window placement and multi-monitor desktop centers do not change the target.
     private const double AchievementListScrollXRatio = 0.62;
     private const int DragReleaseHoldMilliseconds = 300;
+    private const int TextFieldFocusSettleMilliseconds = 220;
+    private const int ModifierSettleMilliseconds = 40;
+    private const int KeyPressMilliseconds = 30;
+    private const int SelectAllSettleMilliseconds = 160;
+    private const int ClipboardPasteSettleMilliseconds = 320;
 
     public Task<GameWindowCandidate> FindGameWindowAsync(
         IReadOnlyCollection<string> processNames,
@@ -324,34 +329,72 @@ public sealed partial class WindowsGameWindowCapture : IGameWindowCapture
         // by the game's Slate/IME text widget for Chinese achievement names.
         if (!SetClipboardUnicodeText(text)) return false;
         if (!ClickWindow(window, clientX, clientY, cancellationToken)) return false;
-        Thread.Sleep(120);
-        cancellationToken.ThrowIfCancellationRequested();
+        WaitForInput(TextFieldFocusSettleMilliseconds, cancellationToken);
 
-        if (!SendKeyChord(NativeMethods.VirtualKeyA, cancellationToken)) return false;
-        Thread.Sleep(100);
-        if (!SendKeyChord(NativeMethods.VirtualKeyV, cancellationToken)) return false;
-        Thread.Sleep(220);
-        cancellationToken.ThrowIfCancellationRequested();
+        if (!SendPacedKeyChord(NativeMethods.VirtualKeyA, cancellationToken)) return false;
+        WaitForInput(SelectAllSettleMilliseconds, cancellationToken);
+        if (!SendPacedKeyChord(NativeMethods.VirtualKeyV, cancellationToken)) return false;
+        WaitForInput(ClipboardPasteSettleMilliseconds, cancellationToken);
         NativeOcrDiagnostics.Write($"ReplaceText paste completed text={text}");
         return true;
     }
 
-    private static bool SendKeyChord(ushort key, CancellationToken cancellationToken)
+    private static bool SendPacedKeyChord(ushort key, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var controlPressed = false;
+        var keyPressed = false;
+        try
+        {
+            if (!SendKeyEvent(NativeMethods.VirtualKeyControl, keyUp: false)) return false;
+            controlPressed = true;
+            Thread.Sleep(ModifierSettleMilliseconds);
+
+            if (!SendKeyEvent(key, keyUp: false)) return false;
+            keyPressed = true;
+            Thread.Sleep(KeyPressMilliseconds);
+
+            if (!SendKeyEvent(key, keyUp: true)) return false;
+            keyPressed = false;
+            Thread.Sleep(ModifierSettleMilliseconds);
+
+            if (!SendKeyEvent(NativeMethods.VirtualKeyControl, keyUp: true)) return false;
+            controlPressed = false;
+            NativeOcrDiagnostics.Write($"ReplaceText paced-keychord key=0x{key:X2} result=success");
+            return true;
+        }
+        finally
+        {
+            // Never leave a modifier or character key held if SendInput fails partway
+            // through the chord. Cancellation is checked before/after the short chord.
+            if (keyPressed) _ = SendKeyEvent(key, keyUp: true);
+            if (controlPressed) _ = SendKeyEvent(NativeMethods.VirtualKeyControl, keyUp: true);
+        }
+    }
+
+    private static bool SendKeyEvent(ushort key, bool keyUp)
+    {
         var inputs = new[]
         {
-            CreateKeyInput(NativeMethods.VirtualKeyControl, 0),
-            CreateKeyInput(key, 0),
-            CreateKeyInput(key, NativeMethods.KeyboardEventKeyUp),
-            CreateKeyInput(NativeMethods.VirtualKeyControl, NativeMethods.KeyboardEventKeyUp)
+            CreateKeyInput(key, keyUp ? NativeMethods.KeyboardEventKeyUp : 0)
         };
         var sent = NativeMethods.SendKeyboardInput(
-            (uint)inputs.Length,
+            1,
             inputs,
             Marshal.SizeOf<NativeKeyboardInput>());
-        NativeOcrDiagnostics.Write($"ReplaceText keychord key=0x{key:X2} requested={inputs.Length} sent={sent}");
-        return sent == (uint)inputs.Length;
+        if (sent != 1)
+        {
+            NativeOcrDiagnostics.Write($"ReplaceText key-event key=0x{key:X2} keyUp={keyUp} requested=1 sent={sent}");
+        }
+        return sent == 1;
+    }
+
+    private static void WaitForInput(int milliseconds, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.WaitHandle.WaitOne(milliseconds))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
     }
 
     private static bool SetClipboardUnicodeText(string text)
