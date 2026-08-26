@@ -174,7 +174,7 @@ public sealed class AchievementWorkspaceTests
         AssertStatuses(transferred, (a.Id, ProgressStatus.Occupied), (b.Id, ProgressStatus.Completed), (c.Id, ProgressStatus.Occupied));
         Assert.AreEqual(firstCompletion.Snapshot.Revision + 1, transferred.Snapshot.Revision);
         Assert.AreEqual(transferred.Snapshot.Revision, transferred.Snapshot.Statistics.Revision);
-        Assert.AreEqual(1, transferred.Snapshot.Statistics.Total);
+        Assert.AreEqual(3, transferred.Snapshot.Statistics.Total);
         Assert.AreEqual(1, transferred.Snapshot.Statistics.Completed);
         Assert.AreEqual(1, transferred.Snapshot.Statistics.GroupedChoiceCount);
     }
@@ -191,9 +191,9 @@ public sealed class AchievementWorkspaceTests
         var reopened = await workspace.ChangeStatusAsync(a.Id, ProgressStatus.Incomplete);
 
         AssertStatuses(reopened, (a.Id, ProgressStatus.Incomplete), (b.Id, ProgressStatus.Incomplete));
-        Assert.AreEqual(1, reopened.Snapshot.Statistics.Total);
+        Assert.AreEqual(2, reopened.Snapshot.Statistics.Total);
         Assert.AreEqual(0, reopened.Snapshot.Statistics.Completed);
-        Assert.AreEqual(1, reopened.Snapshot.Statistics.Incomplete);
+        Assert.AreEqual(2, reopened.Snapshot.Statistics.Incomplete);
     }
 
     [TestMethod]
@@ -211,7 +211,7 @@ public sealed class AchievementWorkspaceTests
     }
 
     [TestMethod]
-    public async Task Statistics_CountEachGroupOnceAndExposeFilteredDistributions()
+    public async Task Statistics_CountEachRowAndExposeFilteredDistributions()
     {
         var a = Achievement("201", 1, "1.0", "探索", "区域一", groupId: "choice-2");
         var b = Achievement("202", 2, "1.0", "探索", "区域一", groupId: "choice-2", isHidden: true);
@@ -222,15 +222,15 @@ public sealed class AchievementWorkspaceTests
 
         var view = workspace.Query(new AchievementQuery(FirstCategory: "探索"));
 
-        Assert.AreEqual(2, view.Statistics.Total);
+        Assert.AreEqual(3, view.Statistics.Total);
         Assert.AreEqual(1, view.Statistics.Completed);
         Assert.AreEqual(1, view.Statistics.Incomplete);
         Assert.AreEqual(1, view.Statistics.Hidden);
         Assert.AreEqual(1, view.Statistics.GroupedChoiceCount);
-        Assert.AreEqual(50d, view.Statistics.CompletionRatePercent, 0.001);
-        Assert.AreEqual(2, view.Statistics.ByFirstCategory["探索"]);
-        Assert.AreEqual(1, view.Statistics.BySecondCategory["区域一"]);
-        Assert.AreEqual(2, view.Statistics.ByVersion["1.0"]);
+        Assert.AreEqual(33.333333d, view.Statistics.CompletionRatePercent, 0.001);
+        Assert.AreEqual(3, view.Statistics.ByFirstCategory["探索"]);
+        Assert.AreEqual(2, view.Statistics.BySecondCategory["区域一"]);
+        Assert.AreEqual(3, view.Statistics.ByVersion["1.0"]);
     }
 
     [TestMethod]

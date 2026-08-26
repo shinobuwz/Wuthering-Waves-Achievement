@@ -946,38 +946,25 @@ public sealed partial class AchievementWorkspace
 
     private static WorkspaceStatistics CalculateStatistics(long revision, IReadOnlyList<AchievementRow> rows)
     {
-        var logicalRows = rows
-            .GroupBy(row => string.IsNullOrWhiteSpace(row.GroupId) ? $"achievement:{row.Id}" : $"group:{row.GroupId}")
-            .Select(group =>
-            {
-                var members = group.OrderBy(row => row.AbsoluteOrder).ToArray();
-                var representative = members[0];
-                var status = members.Any(row => row.Status == ProgressStatus.Completed)
-                    ? ProgressStatus.Completed
-                    : members.All(row => row.Status == ProgressStatus.Unavailable)
-                        ? ProgressStatus.Unavailable
-                        : ProgressStatus.Incomplete;
-                return new LogicalAchievement(
-                    representative.Version,
-                    representative.FirstCategory,
-                    representative.SecondCategory,
-                    members.Any(row => row.IsHidden),
-                    status,
-                    !string.IsNullOrWhiteSpace(representative.GroupId));
-            })
-            .ToArray();
+        // GroupId controls status transitions, but it must not collapse the
+        // displayed/statistical count: every source row is an achievement row.
+        var groupedChoiceCount = rows
+            .Where(row => !string.IsNullOrWhiteSpace(row.GroupId))
+            .Select(row => row.GroupId!)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
 
         return new WorkspaceStatistics(
             revision,
-            logicalRows.Length,
-            logicalRows.Count(item => item.Status == ProgressStatus.Completed),
-            logicalRows.Count(item => item.Status == ProgressStatus.Incomplete),
-            logicalRows.Count(item => item.Status == ProgressStatus.Unavailable),
-            logicalRows.Count(item => item.IsHidden),
-            logicalRows.Count(item => item.IsGrouped),
-            Distribution(logicalRows.Select(item => item.FirstCategory)),
-            Distribution(logicalRows.Select(item => item.SecondCategory)),
-            Distribution(logicalRows.Select(item => item.Version)));
+            rows.Count,
+            rows.Count(item => item.Status == ProgressStatus.Completed),
+            rows.Count(item => item.Status == ProgressStatus.Incomplete),
+            rows.Count(item => item.Status == ProgressStatus.Unavailable),
+            rows.Count(item => item.IsHidden),
+            groupedChoiceCount,
+            Distribution(rows.Select(item => item.FirstCategory)),
+            Distribution(rows.Select(item => item.SecondCategory)),
+            Distribution(rows.Select(item => item.Version)));
     }
 
     private static IReadOnlyDictionary<string, int> Distribution(IEnumerable<string> values) =>
@@ -1245,11 +1232,4 @@ public sealed partial class AchievementWorkspace
         string message,
         WorkspaceSnapshot snapshot) => new(false, snapshot, new WorkspaceError(code, message));
 
-    private sealed record LogicalAchievement(
-        string Version,
-        string FirstCategory,
-        string SecondCategory,
-        bool IsHidden,
-        ProgressStatus Status,
-        bool IsGrouped);
 }
