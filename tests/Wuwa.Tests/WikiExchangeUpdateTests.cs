@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Xml.Linq;
 using Wuwa.Core;
 using Wuwa.Infrastructure;
 
@@ -235,6 +236,37 @@ public sealed class WikiExchangeUpdateTests
     }
 
     [TestMethod]
+    public async Task XlsxImport_AcceptsV1CrawlerSevenColumnLayout()
+    {
+        await WithRoot(async root =>
+        {
+            var path = Path.Combine(root, "v1-crawler.xlsx");
+            WriteInlineXlsx(path,
+                ["名称", "描述", "奖励", "版本", "是否隐藏", "第一分类", "第二分类"],
+                ["「隐藏成就」旧版成就", "完成旧版任务。", "5", "3", "", "探索", "区域一"]);
+
+            var workspace = new AchievementWorkspace(
+                new InMemoryAppDataStore(),
+                new FixedAchievementLibrarySource(new AchievementLibrary([Achievement("existing")], Categories())));
+            await workspace.OpenAsync();
+
+            var imported = await workspace.ImportExchangeAsync(
+                new ExcelAchievementExchange(path),
+                replace: true,
+                confirmReplace: true);
+
+            Assert.IsTrue(imported.IsSuccess, imported.Error?.Message);
+            var row = imported.Snapshot.Rows.Single();
+            Assert.AreEqual("旧版成就", row.Name);
+            Assert.AreEqual("3.0", row.Version);
+            Assert.AreEqual("星声*5", row.Reward);
+            Assert.IsTrue(row.IsHidden);
+            Assert.IsTrue(row.LegacyCode.StartsWith("legacy-", StringComparison.Ordinal));
+            Assert.AreEqual(ProgressStatus.Incomplete, row.Status);
+        });
+    }
+
+    [TestMethod]
     public void ExchangeFactory_UsesExplicitExtensions()
     {
         Assert.IsInstanceOfType<JsonAchievementExchange>(AchievementExchangeFactory.CreateImport("a.json"));
@@ -288,6 +320,43 @@ public sealed class WikiExchangeUpdateTests
         var root = Path.Combine(Path.GetTempPath(), "wuwa-native-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try { await action(root); } finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    private static void WriteInlineXlsx(string path, params string[][] rows)
+    {
+        using var file = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+        using var archive = new ZipArchive(file, ZipArchiveMode.Create);
+        var entry = archive.CreateEntry("xl/worksheets/sheet1.xml");
+        using var stream = entry.Open();
+        XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        var sheetData = new XElement(ns + "sheetData");
+        for (var rowIndex = 0; rowIndex < rows.Length; rowIndex++)
+        {
+            var row = new XElement(ns + "row", new XAttribute("r", rowIndex + 1));
+            for (var columnIndex = 0; columnIndex < rows[rowIndex].Length; columnIndex++)
+            {
+                var cellReference = ColumnName(columnIndex) + (rowIndex + 1);
+                row.Add(new XElement(
+                    ns + "c",
+                    new XAttribute("r", cellReference),
+                    new XAttribute("t", "inlineStr"),
+                    new XElement(ns + "is", new XElement(ns + "t", rows[rowIndex][columnIndex]))));
+            }
+            sheetData.Add(row);
+        }
+
+        using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+        writer.Write(new XDocument(new XDeclaration("1.0", "UTF-8", "yes"), new XElement(ns + "worksheet", sheetData)).ToString(SaveOptions.DisableFormatting));
+    }
+
+    private static string ColumnName(int index)
+    {
+        var result = string.Empty;
+        for (var value = index + 1; value > 0; value = (value - 1) / 26)
+        {
+            result = (char)('A' + (value - 1) % 26) + result;
+        }
+        return result;
     }
 
     private sealed class FixtureHandler(HttpStatusCode status, string content) : HttpMessageHandler

@@ -40,6 +40,7 @@ Visual Studio 用户打开根目录的 `WutheringWavesAchievement.sln`，启动�
 - 成就状态管理、成就组状态转换和统计
 - generation 事务化本地存储、故障恢复和原子激活
 - JSON、TSV、XLSX 导入导出
+- 兼容 v1.0.0 爬虫导出的 7 列 XLSX（自动生成稳定兼容编号并默认标记为未完成）
 - Kuro Wiki 数据同步与稳定身份匹配
 - Native PP-OCRv5 检测、分类、识别和 OCR 结果预览
 - 当前分类 OCR 扫描及全量分类 OCR 扫描入口
