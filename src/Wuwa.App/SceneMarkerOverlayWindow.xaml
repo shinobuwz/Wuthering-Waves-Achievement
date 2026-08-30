@@ -1,0 +1,176 @@
+<Window x:Class="Wuwa.App.SceneMarkerOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="场景标记采集"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="True"
+        Topmost="True"
+        WindowStartupLocation="Manual"
+        Background="Black"
+        UseLayoutRounding="True"
+        PreviewKeyDown="Window_OnPreviewKeyDown"
+        AutomationProperties.AutomationId="SceneMarkerOverlayWindow">
+    <Grid>
+        <Image x:Name="FrozenFrameImage"
+               Stretch="Fill"
+               SnapsToDevicePixels="True"
+               IsHitTestVisible="False" />
+
+        <Canvas x:Name="SelectionCanvas"
+                Background="#01000000"
+                Cursor="Cross"
+                Focusable="True"
+                AutomationProperties.AutomationId="SceneMarkerSelectionCanvas"
+                AutomationProperties.Name="场景标记框选区域"
+                MouseLeftButtonDown="SelectionCanvas_OnMouseLeftButtonDown"
+                MouseMove="SelectionCanvas_OnMouseMove"
+                MouseLeftButtonUp="SelectionCanvas_OnMouseLeftButtonUp">
+            <Rectangle x:Name="SelectionRectangle"
+                       Visibility="Collapsed"
+                       Stroke="#FF42D8C2"
+                       StrokeThickness="2"
+                       Fill="#3042D8C2"
+                       IsHitTestVisible="False" />
+        </Canvas>
+
+        <Border HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Margin="14"
+                Padding="12,8"
+                CornerRadius="6"
+                Background="#E6182124"
+                BorderBrush="#CC42D8C2"
+                BorderThickness="1"
+                IsHitTestVisible="False">
+            <StackPanel>
+                <TextBlock Text="场景标记采集"
+                           Foreground="#FF42D8C2"
+                           FontWeight="SemiBold" />
+                <TextBlock x:Name="OverlayStatusText"
+                           Text="在冻结游戏画面上拖拽框选 · Esc 取消"
+                           AutomationProperties.LiveSetting="Polite"
+                           Foreground="White"
+                           FontSize="12"
+                           Margin="0,4,0,0" />
+            </StackPanel>
+        </Border>
+
+        <Border x:Name="EditorPanel"
+                Visibility="Collapsed"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Width="410"
+                Margin="14"
+                Padding="14"
+                CornerRadius="8"
+                Background="#F0182124"
+                BorderBrush="#FF42D8C2"
+                BorderThickness="1">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <DockPanel Grid.Row="0">
+                    <TextBlock Text="确认场景标记"
+                               Foreground="#FF42D8C2"
+                               FontSize="16"
+                               FontWeight="SemiBold" />
+                    <Button Content="重新框选"
+                            AutomationProperties.AutomationId="SceneMarkerRedrawButton"
+                            DockPanel.Dock="Right"
+                            Click="Redraw_OnClick"
+                            Padding="10,4"
+                            Margin="8,0,0,0" />
+                </DockPanel>
+
+                <Grid Grid.Row="1" Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Scene ID"
+                                   Foreground="White"
+                                   Margin="0,0,0,4" />
+                        <TextBox x:Name="SceneIdBox"
+                                 AutomationProperties.AutomationId="SceneMarkerSceneIdBox"
+                                 AutomationProperties.Name="Scene ID"
+                                 MaxLength="64"
+                                 ToolTip="例如 achievement-list；仅小写字母、数字、点、下划线和连字符" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Marker 名称"
+                                   Foreground="White"
+                                   Margin="0,0,0,4" />
+                        <TextBox x:Name="MarkerNameBox"
+                                 AutomationProperties.AutomationId="SceneMarkerNameBox"
+                                 AutomationProperties.Name="Marker 名称"
+                                 MaxLength="64"
+                                 ToolTip="例如 title-anchor；仅小写字母、数字、点、下划线和连字符" />
+                    </StackPanel>
+                </Grid>
+
+                <Border Grid.Row="2"
+                        Height="150"
+                        Margin="0,12,0,0"
+                        Background="#FF0E1416"
+                        BorderBrush="#667A9993"
+                        BorderThickness="1">
+                    <Image x:Name="MarkerPreviewImage"
+                           Stretch="Uniform"
+                           SnapsToDevicePixels="True" />
+                </Border>
+
+                <TextBlock x:Name="SelectionInfoText"
+                           Grid.Row="3"
+                           Foreground="#FFD6E5E2"
+                           FontFamily="Consolas"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Margin="0,10,0,0" />
+
+                <TextBlock x:Name="SaveLocationText"
+                           Grid.Row="4"
+                           Foreground="#FF9BB3AF"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Margin="0,8,0,0" />
+
+                <TextBlock x:Name="EditorErrorText"
+                           Grid.Row="5"
+                           AutomationProperties.LiveSetting="Assertive"
+                           Foreground="#FFFF9A8D"
+                           TextWrapping="Wrap"
+                           Margin="0,8,0,0" />
+
+                <StackPanel Grid.Row="6"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Margin="0,12,0,0">
+                    <Button Content="取消"
+                            AutomationProperties.AutomationId="SceneMarkerCancelButton"
+                            Click="Cancel_OnClick"
+                            MinWidth="72"
+                            Padding="12,5"
+                            Margin="0,0,8,0" />
+                    <Button x:Name="SaveButton"
+                            AutomationProperties.AutomationId="SceneMarkerSaveButton"
+                            Content="保存 PNG + JSON"
+                            Click="Save_OnClick"
+                            MinWidth="132"
+                            Padding="12,5" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

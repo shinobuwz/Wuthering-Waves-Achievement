@@ -69,6 +69,7 @@ public partial class MainWindow : Window
     private GameWindowCandidate? _mapGameWindow;
     private DispatcherTimer? _mapTrackingTimer;
     private bool _mapToggleInProgress;
+    private bool _sceneMarkerCaptureActive;
     private bool _isLightTheme;
     private OcrPagingOptions _ocrPagingOptions = new();
     private bool _ocrPagingOptionsDirty;
@@ -104,6 +105,9 @@ public partial class MainWindow : Window
         OcrSearchSyncDebugButton.Visibility = Visibility.Visible;
         OcrNavigationDebugButton.Visibility = Visibility.Visible;
 #endif
+        SceneMarkerLabButton.Visibility = IsSceneMarkerLabEnabled()
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         Loaded += MainWindow_OnLoaded;
     }
 
@@ -918,6 +922,11 @@ public partial class MainWindow : Window
 
     private async Task ToggleMapOverlayAsync()
     {
+        if (_sceneMarkerCaptureActive)
+        {
+            NativeOcrDiagnostics.Write("Map overlay toggle ignored while scene marker capture is active");
+            return;
+        }
         if (_mapToggleInProgress)
         {
             return;
@@ -1082,6 +1091,130 @@ public partial class MainWindow : Window
             return;
         }
         ShowOcrWorkbenchPage();
+    }
+
+    private async void SceneMarkerLab_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_ocrCancellation is not null)
+        {
+            MessageBox.Show(this, "请先停止正在运行的 OCR 或分类测试。", "无法采集场景标记", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (_mapToggleInProgress)
+        {
+            MessageBox.Show(this, "游戏地图正在切换，请等待地图稳定后再采集场景标记。", "暂时无法采集", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var mapWasVisible = _mapOverlay?.IsVisible == true;
+        _sceneMarkerCaptureActive = true;
+        if (mapWasVisible)
+        {
+            HideMapOverlay(restoreGameFocus: false);
+        }
+        SceneMarkerLabButton.IsEnabled = false;
+        MapOverlayButton.IsEnabled = false;
+        HintText.Text = "正在查找并冻结游戏画面…";
+        var mainWindowHidden = false;
+        try
+        {
+            var capture = new WindowsGameWindowCapture();
+            var gameWindow = await capture.TryFindGameWindowAsync(
+                OcrGameProcessNames,
+                minimumWidth: 800,
+                minimumHeight: 600);
+            if (gameWindow is null)
+            {
+                throw new GameWindowNotFoundException("未找到可见的《鸣潮》游戏窗口，请先以无边框或窗口化全屏模式打开游戏。");
+            }
+            if (!capture.TryGetClientBounds(gameWindow, out var boundsBeforeCapture))
+            {
+                throw new GameWindowCaptureException("无法读取游戏客户区的屏幕位置和尺寸。");
+            }
+
+            Hide();
+            mainWindowHidden = true;
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            await Task.Delay(150);
+
+            var frame = await capture.CaptureClientAsync(
+                gameWindow,
+                boundsBeforeCapture.Width,
+                boundsBeforeCapture.Height);
+            var capturedAtUtc = DateTimeOffset.UtcNow;
+            if (!capture.TryGetClientBounds(gameWindow, out var currentBounds))
+            {
+                throw new GameWindowCaptureException("截图后游戏窗口已不可用。");
+            }
+            if (currentBounds.Left != boundsBeforeCapture.Left ||
+                currentBounds.Top != boundsBeforeCapture.Top ||
+                currentBounds.Width != frame.Width ||
+                currentBounds.Height != frame.Height)
+            {
+                throw new GameWindowCaptureException("截图期间游戏客户区的位置或尺寸发生变化，请保持窗口不动后重试。");
+            }
+
+            NativeOcrDiagnostics.Write(
+                $"Scene marker overlay opening handle=0x{gameWindow.Handle.ToInt64():X} frame={frame.Width}x{frame.Height} bounds={currentBounds.Left},{currentBounds.Top},{currentBounds.Width}x{currentBounds.Height}");
+            var overlay = new SceneMarkerOverlayWindow(
+                gameWindow,
+                currentBounds,
+                frame,
+                capturedAtUtc);
+            var saved = overlay.ShowDialog() == true ? overlay.SavedResult : null;
+            RestoreAfterSceneMarkerCapture();
+            mainWindowHidden = false;
+            if (saved is null)
+            {
+                HintText.Text = "已取消场景标记采集，未创建文件。";
+                return;
+            }
+
+            HintText.Text = $"已保存场景标记：{saved.Metadata.SceneId} / {saved.Metadata.MarkerName}";
+            MessageBox.Show(
+                this,
+                $"场景标记已保存。\n\nPNG：{saved.ImagePath}\nJSON：{saved.MetadataPath}",
+                "场景标记采集完成",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception exception)
+        {
+            if (mainWindowHidden)
+            {
+                RestoreAfterSceneMarkerCapture();
+                mainWindowHidden = false;
+            }
+            NativeOcrDiagnostics.Write($"Scene marker capture failed: {exception}");
+            ShowError($"场景标记采集失败：{exception.Message}");
+            MessageBox.Show(this, exception.Message, "场景标记采集失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            if (mainWindowHidden)
+            {
+                RestoreAfterSceneMarkerCapture();
+            }
+            _sceneMarkerCaptureActive = false;
+            SceneMarkerLabButton.IsEnabled = true;
+            MapOverlayButton.IsEnabled = true;
+            if (mapWasVisible && !_isClosing)
+            {
+                var markerHint = HintText.Text;
+                await ToggleMapOverlayAsync();
+                HintText.Text = markerHint;
+            }
+        }
+    }
+
+    private void RestoreAfterSceneMarkerCapture()
+    {
+        if (_isClosing) return;
+        if (!IsVisible)
+        {
+            Show();
+        }
+        Activate();
     }
 
     private void ShowOcrWorkbenchPage()
@@ -3497,6 +3630,18 @@ public partial class MainWindow : Window
         }
 
         return null;
+    }
+
+    private static bool IsSceneMarkerLabEnabled()
+    {
+#if DEBUG
+        const bool isDebugBuild = true;
+#else
+        const bool isDebugBuild = false;
+#endif
+        return SceneMarkerLabSettings.IsEnabled(
+            isDebugBuild,
+            Environment.GetEnvironmentVariable(SceneMarkerLabSettings.EnvironmentVariableName));
     }
 
     private static bool IsAnyProcessRunning(IEnumerable<string> processNames)

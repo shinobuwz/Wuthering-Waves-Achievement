@@ -71,3 +71,41 @@ OpenCV matcher, and `WindowsGameWindowCapture` to these interfaces. Scene
 recognition must not write progress directly: OCR results still become an
 `OcrScanPreview` and are applied only through
 `AchievementWorkspace.ApplyOcrPreviewAsync` after explicit confirmation.
+
+## Internal scene marker lab
+
+The WPF app also contains a capture-only test tool for preparing future scene
+templates. In Debug builds, use **DEBUG：采集场景标记** in the OCR action area.
+In Release builds, explicitly opt in before starting the app:
+
+```powershell
+$env:WUWA_SCENE_MARKER_LAB = "1"
+```
+
+The tool finds the game window, temporarily hides any active map overlay and
+the main app, waits briefly for desktop composition to settle, captures the game
+client, and displays that frozen frame in a topmost borderless overlay positioned
+over the same physical screen rectangle. Map hotkey toggles are blocked during
+the marker session. The main app and prior map-overlay state are restored after
+save, cancellation, or failure. Drag
+a rectangle, enter lowercase `Scene ID` and `Marker`
+identifiers, inspect the exact BGR crop, and save it. Escape or Cancel closes
+the overlay without creating files.
+
+Captures are written below the executable by default:
+
+```text
+<exe>/scene-marker-lab/<scene-id>/
+  <timestamp>-<marker>-<hash>-<unique>.png
+  <timestamp>-<marker>-<hash>-<unique>.json
+```
+
+If the executable directory cannot be written, the tool reports the error and
+opens a folder picker. It never silently falls back to LocalAppData. The JSON
+records schema version, source dimensions and stride, process/window context,
+physical client bounds, pixel and normalized ROI, capture time, and separate
+SHA-256 hashes for source BGR, cropped marker BGR, and exact PNG bytes. PNG
+chunks, CRCs, and dimensions are validated before commit. This tool only
+acquires marker fixtures: it does not run a scene
+matcher, edit production scene configuration, write repository resources, or
+change OCR/workspace state.

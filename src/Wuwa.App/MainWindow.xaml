@@ -138,6 +138,7 @@
                                 <Button x:Name="OcrPagingSettingsButton" AutomationProperties.AutomationId="OcrPagingSettingsButton" Content="校准与输入设置" ToolTip="设置固定翻页距离、停稳检测和搜索框输入间隔，并手动执行校准验证" Click="OcrPagingSettings_OnClick" Visibility="Collapsed" />
                                 <Button x:Name="OcrSearchSyncDebugButton" AutomationProperties.AutomationId="OcrSearchSyncDebugButton" Content="DEBUG：校验前 10 个" ToolTip="仅逐条搜索当前未完成成就中的前 10 个，用于快速验证增量扫描" Click="OcrSearchSyncDebug_OnClick" Visibility="Collapsed" />
                                 <Button x:Name="OcrNavigationDebugButton" AutomationProperties.AutomationId="OcrNavigationDebugButton" Content="DEBUG：测试分类切换" Click="OcrNavigationDebug_OnClick" Visibility="Collapsed" />
+                                <Button x:Name="SceneMarkerLabButton" AutomationProperties.AutomationId="SceneMarkerLabButton" Content="DEBUG：采集场景标记" ToolTip="捕获当前游戏客户区，在冻结画面 Overlay 上框选并保存场景标记 PNG/JSON" Click="SceneMarkerLab_OnClick" Visibility="Collapsed" />
                             </WrapPanel>
                         </StackPanel>
                         <Border Grid.Column="3" Width="1" Background="{DynamicResource BorderBrush}" />
