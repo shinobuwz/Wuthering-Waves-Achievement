@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "badges": {
+    "start": "START",
+    "basic": "BASIC",
+    "heavy": "HEAVY",
+    "skill": "SKILL",
+    "liberation": "LIBERATION",
+    "echo": "ECHO",
+    "jump": "JUMP",
+    "dodge": "DODGE",
+    "execution": "EXECUTION",
+    "intro": "INTRO"
+  }
+}

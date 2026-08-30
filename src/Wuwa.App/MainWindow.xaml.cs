@@ -34,8 +34,11 @@ public partial class MainWindow : Window
     private const uint OcrCancelHotKeyModifiers = 0x0002 | 0x0004; // CTRL + SHIFT
     private const uint OcrForceStopHotKeyModifiers = 0x0002 | 0x0001; // CTRL + ALT
     private const int MapHotKeyId = 0x5743;
+    private const int RotationStopHotKeyId = 0x5744;
+    private const uint RotationStopHotKeyModifiers = 0x0002 | 0x0004 | 0x4000; // CTRL + SHIFT + MOD_NOREPEAT
     private const uint MapHotKeyAltModifiers = 0x0001 | 0x4000; // ALT + MOD_NOREPEAT
     private const uint MapHotKeyFallbackModifiers = 0x0001 | 0x0002 | 0x4000; // CTRL + ALT + MOD_NOREPEAT
+    private const uint VirtualKeyF11 = 0x7A;
     private const uint VirtualKeyF12 = 0x7B;
     private const uint VirtualKeyM = 0x4D;
     private const int WmHotKey = 0x0312;
@@ -63,6 +66,7 @@ public partial class MainWindow : Window
     private bool _ocrCancelHotKeyRegistered;
     private bool _ocrForceStopHotKeyRegistered;
     private bool _mapHotKeyRegistered;
+    private bool _rotationStopHotKeyRegistered;
     private string _mapHotKeyLabel = "未注册";
     private MapOverlayWindow? _mapOverlay;
     private WindowsGameWindowCapture? _mapCapture;
@@ -76,18 +80,63 @@ public partial class MainWindow : Window
     private bool _ocrScanHistoryDirty;
     private string? _gridSortMemberPath;
     private ListSortDirection? _gridSortDirection;
+    private ShellRoute _currentRoute = ShellRoute.Dashboard;
+    private ShellRoute _routeBeforeHelp = ShellRoute.Dashboard;
+    private readonly RotationRuntimeCoordinator _rotationRuntime;
+
+    private TextBlock RevisionText => AchievementPage.RevisionText;
+    private TextBlock FilterSummaryText => AchievementPage.FilterSummaryText;
+    private TextBox SearchBox => AchievementPage.SearchBox;
+    private TextBlock SearchPlaceholder => AchievementPage.SearchPlaceholder;
+    private ComboBox VersionCombo => AchievementPage.VersionCombo;
+    private ComboBox FirstCategoryCombo => AchievementPage.FirstCategoryCombo;
+    private ComboBox SecondCategoryCombo => AchievementPage.SecondCategoryCombo;
+    private ComboBox StatusCombo => AchievementPage.StatusCombo;
+    private Button OcrWorkbenchButton => AchievementPage.OcrWorkbenchButton;
+    private Button OcrScanButton => AchievementPage.OcrScanButton;
+    private Button OcrFullScanButton => AchievementPage.OcrFullScanButton;
+    private Button OcrSearchSyncButton => AchievementPage.OcrSearchSyncButton;
+    private Button OcrPagingSettingsButton => AchievementPage.OcrPagingSettingsButton;
+    private Button OcrSearchSyncDebugButton => AchievementPage.OcrSearchSyncDebugButton;
+    private Button OcrNavigationDebugButton => AchievementPage.OcrNavigationDebugButton;
+    private TextBlock TotalText => AchievementPage.TotalText;
+    private TextBlock CompletedText => AchievementPage.CompletedText;
+    private TextBlock IncompleteText => AchievementPage.IncompleteText;
+    private TextBlock UnavailableText => AchievementPage.UnavailableText;
+    private TextBlock HiddenText => AchievementPage.HiddenText;
+    private TextBlock RateText => AchievementPage.RateText;
+    private DataGrid AchievementGrid => AchievementPage.AchievementGrid;
 
     public MainWindow(AchievementWorkspace workspace)
     {
         _workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
         InitializeComponent();
-        WorkspaceHelpPage.Configure(ShowWorkspacePage);
+        WireAchievementWorkspaceEvents();
+        _rotationRuntime = new RotationRuntimeCoordinator(this, RestoreFromRotation);
+        DashboardPage.Configure(
+            () => NavigateTo(ShellRoute.Achievements),
+            () => NavigateTo(ShellRoute.Rotation),
+            () => NavigateTo(ShellRoute.GameTools));
+        GameToolsPage.Configure(
+            () => ConveneLink_OnClick(GameToolsPage, new RoutedEventArgs()),
+            () => ConveneHelp_OnClick(GameToolsPage, new RoutedEventArgs()),
+            ToggleMapOverlayAsync);
+        SettingsPage.Configure(
+            () => Theme_OnClick(SettingsPage, new RoutedEventArgs()),
+            () => Update_OnClick(SettingsPage, new RoutedEventArgs()),
+            () => ActionHelp_OnClick(new FrameworkElement { Tag = "system" }, new RoutedEventArgs()));
+        WorkspaceHelpPage.Configure(() => NavigateTo(_routeBeforeHelp));
+        RotationPage.Configure(
+            Environment.GetEnvironmentVariable("WUWA_NATIVE_DATA_ROOT"),
+            FindRotationResourceRoot(),
+            StartRotationAsync);
+        RotationPage.SelectedProfileChanged += (_, _) => ApplyDashboardSnapshot();
         OcrWorkbenchPage.Configure(
             scanCurrent: () => OcrScan_OnClick(OcrScanButton, new RoutedEventArgs()),
             scanFull: () => OcrFullScan_OnClick(OcrFullScanButton, new RoutedEventArgs()),
             searchSync: () => OcrSearchSync_OnClick(OcrSearchSyncButton, new RoutedEventArgs()),
             openPagingSettings: () => OcrPagingSettings_OnClick(OcrPagingSettingsButton, new RoutedEventArgs()),
-            back: ShowWorkspacePage,
+            back: () => NavigateTo(ShellRoute.Achievements),
             setSkipPreviouslyScanned: SetSkipPreviouslyScannedAsync,
             clearHistory: ClearOcrScanHistoryAsync,
             setTagsMarked: SetOcrTagsMarkedAsync,
@@ -95,6 +144,7 @@ public partial class MainWindow : Window
         Closing += (_, _) =>
         {
             _isClosing = true;
+            _rotationRuntime.Dispose();
             _trackerWindow?.Close();
             _ocrStopOverlay?.Close();
         };
@@ -105,6 +155,36 @@ public partial class MainWindow : Window
         OcrNavigationDebugButton.Visibility = Visibility.Visible;
 #endif
         Loaded += MainWindow_OnLoaded;
+    }
+
+    private void WireAchievementWorkspaceEvents()
+    {
+        AchievementPage.ClearFiltersButton.Click += ClearFilters_OnClick;
+        AchievementPage.SearchBox.TextChanged += SearchBox_OnTextChanged;
+        AchievementPage.VersionCombo.SelectionChanged += Filter_OnChanged;
+        AchievementPage.FirstCategoryCombo.SelectionChanged += Filter_OnChanged;
+        AchievementPage.SecondCategoryCombo.SelectionChanged += Filter_OnChanged;
+        AchievementPage.StatusCombo.SelectionChanged += Filter_OnChanged;
+        AchievementPage.TrackingHelpButton.Click += ActionHelp_OnClick;
+        AchievementPage.TrackSelectedButton.Click += TrackSelected_OnClick;
+        AchievementPage.UntrackSelectedButton.Click += UntrackSelected_OnClick;
+        AchievementPage.OpenTrackerButton.Click += OpenTracker_OnClick;
+        AchievementPage.OcrHelpButton.Click += ActionHelp_OnClick;
+        AchievementPage.OcrWorkbenchButton.Click += OcrWorkbench_OnClick;
+        AchievementPage.OcrScanButton.Click += OcrScan_OnClick;
+        AchievementPage.OcrFullScanButton.Click += OcrFullScan_OnClick;
+        AchievementPage.OcrSearchSyncButton.Click += OcrSearchSync_OnClick;
+        AchievementPage.OcrPagingSettingsButton.Click += OcrPagingSettings_OnClick;
+        AchievementPage.OcrSearchSyncDebugButton.Click += OcrSearchSyncDebug_OnClick;
+        AchievementPage.OcrNavigationDebugButton.Click += OcrNavigationDebug_OnClick;
+        AchievementPage.DataHelpButton.Click += ActionHelp_OnClick;
+        AchievementPage.LegacyImportButton.Click += ImportLegacy_OnClick;
+        AchievementPage.ExchangeImportButton.Click += Import_OnClick;
+        AchievementPage.ExchangeExportButton.Click += Export_OnClick;
+        AchievementPage.WikiSyncButton.Click += Sync_OnClick;
+        AchievementPage.AchievementGrid.MouseDoubleClick += AchievementGrid_OnMouseDoubleClick;
+        AchievementPage.AchievementGrid.Sorting += AchievementGrid_OnSorting;
+        AchievementPage.AchievementGrid.PreviewMouseRightButtonUp += AchievementGrid_OnPreviewMouseRightButtonUp;
     }
 
     private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
@@ -125,7 +205,9 @@ public partial class MainWindow : Window
         _ocrScanHistory = OcrScanHistory.FromSettings(opened.Snapshot.Metadata.EffectiveSettings);
         OcrWorkbenchPage.ApplyWorkspaceState(_ocrScanHistory, opened.Snapshot.Rows);
         PopulateFilters(opened.Snapshot);
+        await RotationPage.InitializeAsync();
         RefreshView();
+        NavigateTo(ShellRoute.Dashboard);
         var captureDirectory = Environment.GetEnvironmentVariable("WUWA_NATIVE_UI_CAPTURE_DIR");
         if (!string.IsNullOrWhiteSpace(captureDirectory))
         {
@@ -173,6 +255,7 @@ public partial class MainWindow : Window
         FilterSummaryText.Text = $"显示 {_view.Rows.Count} 条";
         HintText.Text = $"显示 {_view.Rows.Count} 条 · Ctrl/Shift 多选 · 双击切换完成状态 · 右键批量设置选中项状态";
         ErrorText.Text = string.Empty;
+        ApplyDashboardSnapshot();
     }
 
     private AchievementQuery BuildQuery() => new(
@@ -338,6 +421,7 @@ public partial class MainWindow : Window
         try
         {
             _trackerWindow?.Close();
+            NavigateTo(ShellRoute.Achievements);
             Show();
             WindowState = WindowState.Normal;
             Activate();
@@ -793,8 +877,16 @@ public partial class MainWindow : Window
                 VirtualKeyM);
             _mapHotKeyLabel = _mapHotKeyRegistered ? "Ctrl+Alt+M" : "不可用";
         }
-        MapShortcutText.Text = $"地图快捷键：{_mapHotKeyLabel}";
+        GameToolsPage.SetMapShortcut(_mapHotKeyLabel);
         NativeOcrDiagnostics.Write($"Map hotkey registered={_mapHotKeyRegistered} shortcut={_mapHotKeyLabel}");
+
+        _rotationStopHotKeyRegistered = RegisterHotKey(
+            _windowSource.Handle,
+            RotationStopHotKeyId,
+            RotationStopHotKeyModifiers,
+            VirtualKeyF11);
+        RotationPage.SetStopHotKeyAvailability(_rotationStopHotKeyRegistered);
+        NativeOcrDiagnostics.Write($"Rotation stop hotkey registered={_rotationStopHotKeyRegistered} shortcut=Ctrl+Shift+F11");
     }
 
     private void MainWindow_OnClosed(object? sender, EventArgs e)
@@ -825,6 +917,11 @@ public partial class MainWindow : Window
         {
             UnregisterHotKey(_windowSource.Handle, MapHotKeyId);
             _mapHotKeyRegistered = false;
+        }
+        if (_rotationStopHotKeyRegistered)
+        {
+            UnregisterHotKey(_windowSource.Handle, RotationStopHotKeyId);
+            _rotationStopHotKeyRegistered = false;
         }
         _windowSource.RemoveHook(MainWindowMessageHook);
         _windowSource = null;
@@ -859,7 +956,11 @@ public partial class MainWindow : Window
                 handled = true;
                 break;
             case MapHotKeyId:
-                _ = ToggleMapOverlayAsync();
+                if (!_rotationRuntime.IsRunning) _ = ToggleMapOverlayAsync();
+                handled = true;
+                break;
+            case RotationStopHotKeyId:
+                if (_rotationRuntime.IsRunning) _rotationRuntime.Stop();
                 handled = true;
                 break;
         }
@@ -909,11 +1010,6 @@ public partial class MainWindow : Window
         OcrWorkbenchButton.IsEnabled = false;
         HintText.Text = message;
         NativeOcrDiagnostics.Write("OCR cancellation requested");
-    }
-
-    private async void MapOverlay_OnClick(object sender, RoutedEventArgs e)
-    {
-        await ToggleMapOverlayAsync();
     }
 
     private async Task ToggleMapOverlayAsync()
@@ -980,7 +1076,7 @@ public partial class MainWindow : Window
 
             overlay.ApplyClientBounds(bounds);
             StartMapTracking();
-            MapOverlayButton.Content = "隐藏游戏地图";
+            GameToolsPage.SetMapButtonContent("隐藏游戏地图");
             HintText.Text = $"游戏地图已打开 · {_mapHotKeyLabel} 或 Esc 隐藏";
             ErrorText.Text = string.Empty;
             NativeOcrDiagnostics.Write($"Map overlay shown handle=0x{gameWindow.Handle.ToInt64():X} client={bounds.Left},{bounds.Top},{bounds.Width}x{bounds.Height}");
@@ -1050,7 +1146,7 @@ public partial class MainWindow : Window
         _mapTrackingTimer?.Stop();
         _mapOverlay = null;
         _mapGameWindow = null;
-        MapOverlayButton.Content = "打开游戏地图";
+        GameToolsPage.SetMapButtonContent("打开游戏地图");
     }
 
     private void HideMapOverlay(bool restoreGameFocus)
@@ -1060,12 +1156,20 @@ public partial class MainWindow : Window
         {
             _mapOverlay.Hide();
         }
-        MapOverlayButton.Content = "打开游戏地图";
+        GameToolsPage.SetMapButtonContent("打开游戏地图");
         HintText.Text = "游戏地图已隐藏。";
         if (restoreGameFocus && _mapCapture is not null && _mapGameWindow is not null)
         {
             _mapCapture.TryActivateWindow(_mapGameWindow);
         }
+    }
+
+    private void HideMapOverlayForRotation()
+    {
+        _mapTrackingTimer?.Stop();
+        if (_mapOverlay?.IsVisible == true) _mapOverlay.Hide();
+        GameToolsPage.SetMapButtonContent("打开游戏地图");
+        HintText.Text = "游戏地图已隐藏，正在启动连招。";
     }
 
     private void ShowMapError(string message, string title)
@@ -1087,23 +1191,125 @@ public partial class MainWindow : Window
     private void ShowOcrWorkbenchPage()
     {
         OcrWorkbenchPage.ApplyWorkspaceState(_ocrScanHistory, _workspace.GetSnapshot().Rows);
-        WorkspacePage.Visibility = Visibility.Collapsed;
-        WorkspaceHelpPage.Visibility = Visibility.Collapsed;
+        HideAllPages();
+        _currentRoute = ShellRoute.Achievements;
         OcrWorkbenchPage.Visibility = Visibility.Visible;
+        UpdateNavigationState(ShellRoute.Achievements);
     }
 
     private void ShowWorkspaceHelpPage()
     {
-        WorkspacePage.Visibility = Visibility.Collapsed;
-        OcrWorkbenchPage.Visibility = Visibility.Collapsed;
-        WorkspaceHelpPage.Visibility = Visibility.Visible;
+        if (_currentRoute != ShellRoute.Help) _routeBeforeHelp = _currentRoute;
+        NavigateTo(ShellRoute.Help);
     }
 
-    private void ShowWorkspacePage()
+    private void DashboardNavigation_OnClick(object sender, RoutedEventArgs e) => NavigateTo(ShellRoute.Dashboard);
+    private void AchievementsNavigation_OnClick(object sender, RoutedEventArgs e) => NavigateTo(ShellRoute.Achievements);
+    private void RotationNavigation_OnClick(object sender, RoutedEventArgs e) => NavigateTo(ShellRoute.Rotation);
+    private void GameToolsNavigation_OnClick(object sender, RoutedEventArgs e) => NavigateTo(ShellRoute.GameTools);
+    private void SettingsNavigation_OnClick(object sender, RoutedEventArgs e) => NavigateTo(ShellRoute.Settings);
+
+    private void NavigateTo(ShellRoute route)
     {
+        HideAllPages();
+        _currentRoute = route;
+        switch (route)
+        {
+            case ShellRoute.Dashboard:
+                ApplyDashboardSnapshot();
+                DashboardPage.Visibility = Visibility.Visible;
+                break;
+            case ShellRoute.Achievements:
+                AchievementPage.Visibility = Visibility.Visible;
+                break;
+            case ShellRoute.Rotation:
+                RotationPage.Visibility = Visibility.Visible;
+                break;
+            case ShellRoute.GameTools:
+                GameToolsPage.Visibility = Visibility.Visible;
+                break;
+            case ShellRoute.Settings:
+                SettingsPage.Visibility = Visibility.Visible;
+                break;
+            case ShellRoute.Help:
+                WorkspaceHelpPage.Visibility = Visibility.Visible;
+                break;
+        }
+        UpdateNavigationState(route);
+    }
+
+    private void HideAllPages()
+    {
+        DashboardPage.Visibility = Visibility.Collapsed;
+        AchievementPage.Visibility = Visibility.Collapsed;
         OcrWorkbenchPage.Visibility = Visibility.Collapsed;
+        RotationPage.Visibility = Visibility.Collapsed;
+        GameToolsPage.Visibility = Visibility.Collapsed;
+        SettingsPage.Visibility = Visibility.Collapsed;
         WorkspaceHelpPage.Visibility = Visibility.Collapsed;
-        WorkspacePage.Visibility = Visibility.Visible;
+    }
+
+    private void UpdateNavigationState(ShellRoute route)
+    {
+        foreach (var button in new[] { DashboardNavigationButton, AchievementsNavigationButton, RotationNavigationButton, GameToolsNavigationButton, SettingsNavigationButton, WorkspaceHelpButton })
+            button.FontWeight = FontWeights.Normal;
+        var selected = route switch
+        {
+            ShellRoute.Dashboard => DashboardNavigationButton,
+            ShellRoute.Achievements => AchievementsNavigationButton,
+            ShellRoute.Rotation => RotationNavigationButton,
+            ShellRoute.GameTools => GameToolsNavigationButton,
+            ShellRoute.Settings => SettingsNavigationButton,
+            ShellRoute.Help => WorkspaceHelpButton,
+            _ => DashboardNavigationButton
+        };
+        selected.FontWeight = FontWeights.Bold;
+    }
+
+    private void ApplyDashboardSnapshot() =>
+        DashboardPage.ApplySnapshot(_workspace.GetSnapshot(), RotationPage.SelectedProfileName);
+
+    private async Task StartRotationAsync(RotationProfile profile, RotationSettings settings)
+    {
+        try
+        {
+            if (_ocrCancellation is not null) throw new InvalidOperationException("OCR 正在运行，请先停止 OCR 后再启动连招。");
+            if (_mapOverlay?.IsVisible == true) HideMapOverlayForRotation();
+            ErrorText.Text = string.Empty;
+            RotationPage.SetRuntimeStatus("正在查找并聚焦《鸣潮》窗口…", false);
+            await _rotationRuntime.StartAsync(profile, settings, _rotationStopHotKeyRegistered);
+        }
+        catch (Exception exception)
+        {
+            NavigateTo(ShellRoute.Rotation);
+            Show();
+            WindowState = WindowState.Normal;
+            Activate();
+            RotationPage.SetRuntimeStatus(exception.Message, true);
+            ShowError(exception.Message);
+        }
+    }
+
+    private void RestoreFromRotation(string message, bool isError)
+    {
+        if (_isClosing) return;
+        NavigateTo(ShellRoute.Rotation);
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+        RotationPage.SetRuntimeStatus(message, isError);
+        HintText.Text = message;
+        ErrorText.Text = isError ? message : string.Empty;
+    }
+
+    private static string? FindRotationResourceRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            var candidate = Path.Combine(directory.FullName, "resources", "rotation");
+            if (Directory.Exists(candidate)) return candidate;
+        }
+        return null;
     }
 
     private async Task<bool> SetSkipPreviouslyScannedAsync(bool value)
@@ -3212,6 +3418,16 @@ public partial class MainWindow : Window
         NativeOcrDiagnostics.Write($"OCR warning scope={scope} reason={reason}");
     }
 
+    private enum ShellRoute
+    {
+        Dashboard,
+        Achievements,
+        Rotation,
+        GameTools,
+        Settings,
+        Help
+    }
+
     private enum OcrPagingSurface
     {
         AchievementList,
@@ -3382,7 +3598,7 @@ public partial class MainWindow : Window
     private void SetTheme(bool light)
     {
         _isLightTheme = light;
-        ThemeButton.Content = light ? "深色主题" : "浅色主题";
+        SettingsPage.SetThemeButtonContent(light ? "深色主题" : "浅色主题");
         var colors = light
             ? new Dictionary<string, string>
             {
@@ -3411,6 +3627,7 @@ public partial class MainWindow : Window
         try
         {
             Directory.CreateDirectory(outputDirectory);
+            NavigateTo(ShellRoute.Dashboard);
             foreach (var light in new[] { false, true })
             {
                 SetTheme(light);

@@ -1,0 +1,10 @@
+<Window x:Class="Wuwa.App.RotationOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        AutomationProperties.AutomationId="RotationOverlayWindow"
+        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" ShowActivated="False" Focusable="False" Topmost="True"
+        AllowsTransparency="True" Background="Transparent" Width="720" Height="140">
+    <Border Background="#DC182124" BorderBrush="#8842D8C2" BorderThickness="1" CornerRadius="12" Padding="10" IsHitTestVisible="False">
+        <ItemsControl x:Name="PreviewItems"><ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="3"/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate><Border Background="#CC29383D" BorderBrush="#553A5055" BorderThickness="1" CornerRadius="8" Padding="12" Margin="4"><StackPanel><TextBlock Text="{Binding Badge}" Foreground="#FF42D8C2" FontWeight="Bold" FontSize="13"/><TextBlock Text="{Binding Description}" Foreground="White" FontSize="17" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,5,0,4"/><TextBlock Text="{Binding Detail}" Foreground="#FFB8CAC7" FontSize="12" TextTrimming="CharacterEllipsis"/></StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+    </Border>
+</Window>

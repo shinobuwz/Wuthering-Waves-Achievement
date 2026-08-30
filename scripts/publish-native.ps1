@@ -86,11 +86,19 @@ try {
     Copy-Item (Join-Path $repoRoot 'models/ppocrv5/ppocrv5_dict.txt') $modelTarget -Force
     Copy-Item (Join-Path $nativeRoot 'ocr/THIRD_PARTY.md') $packageOcrRoot -Force
 
-    foreach ($required in @($applicationExeName, 'resources/base_achievements.json', 'resources/category_config.json', 'resources/ocr_templates/icon_1star.png', 'resources/ocr_templates/icon_2star.png', 'resources/ocr_templates/icon_3star.png', 'ocr/Wuwa.Ocr.Native.dll')) {
+    foreach ($required in @($applicationExeName, 'resources/base_achievements.json', 'resources/category_config.json', 'resources/ocr_templates/icon_1star.png', 'resources/ocr_templates/icon_2star.png', 'resources/ocr_templates/icon_3star.png', 'resources/rotation/action-badges.json', 'ocr/Wuwa.Ocr.Native.dll')) {
         if (-not (Test-Path (Join-Path $temporaryOutput $required))) { throw "Published package is missing $required." }
     }
     Get-ChildItem $temporaryOutput -Recurse -File -Filter '*.pdb' | Remove-Item -Force
-    $forbidden = Get-ChildItem $temporaryOutput -Recurse -File | Where-Object { $_.Extension -eq '.py' -or $_.Name -like 'user_progress_*.json' -or $_.Name -eq 'config.json' }
+    $forbidden = Get-ChildItem $temporaryOutput -Recurse -File | Where-Object {
+        $relativePath = $_.FullName.Substring($temporaryOutput.Length + 1).Replace('\', '/')
+        $_.Extension -eq '.py' -or
+        $_.Name -like 'user_progress_*.json' -or
+        $_.Name -eq 'config.json' -or
+        $relativePath -like 'data/rotations/*' -or
+        $relativePath -like 'rotations/profiles/*' -or
+        $relativePath -eq 'rotations/settings.json'
+    }
     if ($forbidden) { throw "Published package contains forbidden files: $($forbidden.FullName -join ', ')" }
 
     $manifest = Get-ChildItem $temporaryOutput -Recurse -File | Sort-Object FullName | ForEach-Object {

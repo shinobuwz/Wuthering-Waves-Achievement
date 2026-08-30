@@ -1,0 +1,204 @@
+﻿<UserControl x:Class="Wuwa.App.AchievementWorkspaceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             AutomationProperties.AutomationId="AchievementsPageRoot">
+    <Grid x:Name="WorkspacePage" Margin="18">
+    <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+        <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <DockPanel Grid.Row="0" Margin="0,0,0,14">
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+            <TextBlock Text="修订 " Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+            <TextBlock x:Name="RevisionText" Text="—" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </StackPanel>
+        <StackPanel>
+            <TextBlock Text="成就工作区" FontSize="25" FontWeight="SemiBold" />
+            <TextBlock Text="本地成就库 · 本地进度追踪" Foreground="{DynamicResource MutedTextBrush}" Margin="0,3,0,0" />
+        </StackPanel>
+    </DockPanel>
+
+    <Border Grid.Row="1" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,10">
+        <StackPanel>
+            <DockPanel LastChildFill="True" Margin="0,0,0,14">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="ClearFiltersButton" Content="重置筛选" MinWidth="88" Margin="0" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="筛选成就" FontSize="14" FontWeight="SemiBold" />
+                    <Border Background="{DynamicResource PanelAltBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="9,3" Margin="10,0,0,0">
+                        <TextBlock x:Name="FilterSummaryText" Text="显示 — 条" Foreground="{DynamicResource AccentBrush}" FontSize="11" />
+                    </Border>
+                </StackPanel>
+            </DockPanel>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2.1*" />
+                    <ColumnDefinition Width="0.95*" />
+                    <ColumnDefinition Width="1.2*" />
+                    <ColumnDefinition Width="1.55*" />
+                    <ColumnDefinition Width="1.15*" />
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0" Margin="0,0,8,0">
+                    <TextBox x:Name="SearchBox" ToolTip="搜索名称或描述" Margin="0" />
+                    <TextBlock x:Name="SearchPlaceholder" Text="搜索成就名称或描述" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" Margin="11,0,8,0" IsHitTestVisible="False" />
+                </Grid>
+                <ComboBox Grid.Column="1" x:Name="VersionCombo" MaxDropDownHeight="360" />
+                <ComboBox Grid.Column="2" x:Name="FirstCategoryCombo" MaxDropDownHeight="360" />
+                <ComboBox Grid.Column="3" x:Name="SecondCategoryCombo" MaxDropDownHeight="360" />
+                <ComboBox Grid.Column="4" x:Name="StatusCombo" MaxDropDownHeight="360" Margin="0" />
+            </Grid>
+
+            <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,16,0,12" />
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="1" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                    <TextBlock Text="工作区操作" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" Margin="0,0,12,0" />
+                    <TextBlock DockPanel.Dock="Right" Text="按功能主题分区" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
+                </DockPanel>
+                <Border Grid.Row="1" Background="{DynamicResource BorderBrush}" />
+                <Grid Grid.Row="2" Margin="0,10,0,0">
+                    <Grid.Resources>
+                        <Style TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}" />
+                    </Grid.Resources>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.25*" />
+                        <ColumnDefinition Width="1" />
+                        <ColumnDefinition Width="1.55*" />
+                        <ColumnDefinition Width="1" />
+                        <ColumnDefinition Width="1.8*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                        <Grid Margin="0,0,0,7">
+                            <TextBlock Text="追踪" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <Button x:Name="TrackingHelpButton" AutomationProperties.AutomationId="TrackingHelpButton" Content="?" Tag="tracking" ToolTip="查看追踪区域说明" Width="24" MinWidth="24" Height="24" MinHeight="24" Padding="0" Margin="0" HorizontalAlignment="Right" />
+                        </Grid>
+                        <WrapPanel>
+                            <Button x:Name="TrackSelectedButton" AutomationProperties.AutomationId="TrackSelectedButton" Content="追踪选中成就" />
+                            <Button x:Name="UntrackSelectedButton" AutomationProperties.AutomationId="UntrackSelectedButton" Content="取消追踪选中" ToolTip="取消当前选中成就的追踪，不改变完成状态" />
+                            <Button x:Name="OpenTrackerButton" AutomationProperties.AutomationId="OpenTrackerButton" Content="打开追踪浮窗" />
+                        </WrapPanel>
+                    </StackPanel>
+                    <Border Grid.Column="1" Width="1" Background="{DynamicResource BorderBrush}" />
+
+                    <StackPanel Grid.Column="2" Margin="12,0,12,0">
+                        <Grid Margin="0,0,0,7">
+                            <TextBlock Text="OCR 扫描" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <Button x:Name="OcrHelpButton" AutomationProperties.AutomationId="OcrHelpButton" Content="?" Tag="ocr" ToolTip="查看 OCR 区域说明" Width="24" MinWidth="24" Height="24" MinHeight="24" Padding="0" Margin="0" HorizontalAlignment="Right" />
+                        </Grid>
+                        <WrapPanel>
+                            <Button x:Name="OcrWorkbenchButton" AutomationProperties.AutomationId="OcrWorkbenchButton" Content="打开 OCR 工具" ToolTip="集中管理扫描、翻页校准和已扫描分类记录" />
+                            <Button x:Name="OcrScanButton" AutomationProperties.AutomationId="OcrScanButton" Content="自动扫描当前分类" Visibility="Collapsed" />
+                            <Button x:Name="OcrFullScanButton" AutomationProperties.AutomationId="OcrFullScanButton" Content="全量扫描所有分类" Visibility="Collapsed" />
+                            <Button x:Name="OcrSearchSyncButton" AutomationProperties.AutomationId="OcrSearchSyncButton" Content="增量扫描未完成成就" ToolTip="逐条搜索未完成成就，将高置信完成结果加载到扫描结果列表；Ctrl+Shift+F12 停止并保留已有结果，Ctrl+Alt+F12 强制中止" Visibility="Collapsed" />
+                            <Button x:Name="OcrPagingSettingsButton" AutomationProperties.AutomationId="OcrPagingSettingsButton" Content="校准与输入设置" ToolTip="设置固定翻页距离、停稳检测和搜索框输入间隔，并手动执行校准验证" Visibility="Collapsed" />
+                            <Button x:Name="OcrSearchSyncDebugButton" AutomationProperties.AutomationId="OcrSearchSyncDebugButton" Content="DEBUG：校验前 10 个" ToolTip="仅逐条搜索当前未完成成就中的前 10 个，用于快速验证增量扫描" Visibility="Collapsed" />
+                            <Button x:Name="OcrNavigationDebugButton" AutomationProperties.AutomationId="OcrNavigationDebugButton" Content="DEBUG：测试分类切换" Visibility="Collapsed" />
+                        </WrapPanel>
+                    </StackPanel>
+                    <Border Grid.Column="3" Width="1" Background="{DynamicResource BorderBrush}" />
+
+                    <StackPanel Grid.Column="4" Margin="12,0,12,0">
+                        <Grid Margin="0,0,0,7">
+                            <TextBlock Text="数据管理" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <Button x:Name="DataHelpButton" AutomationProperties.AutomationId="DataHelpButton" Content="?" Tag="data" ToolTip="查看数据管理区域说明" Width="24" MinWidth="24" Height="24" MinHeight="24" Padding="0" Margin="0" HorizontalAlignment="Right" />
+                        </Grid>
+                        <WrapPanel>
+                            <Button x:Name="LegacyImportButton" AutomationProperties.AutomationId="LegacyImportButton" Content="导入旧版进度" />
+                            <Button x:Name="ExchangeImportButton" AutomationProperties.AutomationId="ExchangeImportButton" Content="导入 JSON/Excel" />
+                            <Button x:Name="ExchangeExportButton" AutomationProperties.AutomationId="ExchangeExportButton" Content="导出 JSON/Excel" />
+                            <Button x:Name="WikiSyncButton" AutomationProperties.AutomationId="WikiSyncButton" Content="同步 Wiki" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </StackPanel>
+    </Border>
+
+    <Grid Grid.Row="2" Margin="0,0,0,10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Border Grid.Column="0" Style="{StaticResource MetricCardStyle}" Margin="0,0,8,0">
+            <StackPanel><TextBlock Text="当前结果" Foreground="{DynamicResource MutedTextBrush}" /><TextBlock x:Name="TotalText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource MetricCardStyle}" Margin="0,0,8,0">
+            <StackPanel><TextBlock Text="已完成" Foreground="{DynamicResource MutedTextBrush}" /><TextBlock x:Name="CompletedText" FontSize="21" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" /></StackPanel>
+        </Border>
+        <Border Grid.Column="2" Style="{StaticResource MetricCardStyle}" Margin="0,0,8,0">
+            <StackPanel><TextBlock Text="未完成" Foreground="{DynamicResource MutedTextBrush}" /><TextBlock x:Name="IncompleteText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
+        </Border>
+        <Border Grid.Column="3" Style="{StaticResource MetricCardStyle}" Margin="0,0,8,0">
+            <StackPanel><TextBlock Text="暂不可获取" Foreground="{DynamicResource MutedTextBrush}" /><TextBlock x:Name="UnavailableText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
+        </Border>
+        <Border Grid.Column="4" Style="{StaticResource MetricCardStyle}" Margin="0,0,8,0">
+            <StackPanel><TextBlock Text="隐藏" Foreground="{DynamicResource MutedTextBrush}" /><TextBlock x:Name="HiddenText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
+        </Border>
+        <Border Grid.Column="5" Style="{StaticResource MetricCardStyle}">
+            <StackPanel><TextBlock Text="完成率" Foreground="{DynamicResource MutedTextBrush}" /><TextBlock x:Name="RateText" FontSize="21" FontWeight="SemiBold" /></StackPanel>
+        </Border>
+    </Grid>
+
+    <Border Grid.Row="3" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="5">
+        <DataGrid x:Name="AchievementGrid" AutomationProperties.AutomationId="AchievementGrid"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  SelectionMode="Extended"
+                  SelectionUnit="FullRow"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  EnableRowVirtualization="True"
+                  EnableColumnVirtualization="True"
+                  VirtualizingPanel.IsVirtualizing="True"
+                  VirtualizingPanel.VirtualizationMode="Recycling"
+                  ScrollViewer.IsDeferredScrollingEnabled="True"
+                  GridLinesVisibility="None"
+                  HeadersVisibility="Column"
+                  Background="{DynamicResource PanelBrush}"
+                  BorderThickness="0">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource RowBorderBrush}" />
+                    <Setter Property="BorderThickness" Value="0,0,0,1" />
+                    <Setter Property="MinHeight" Value="34" />
+                    <Style.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource SelectionBrush}" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" SortMemberPath="Status" Width="95" ElementStyle="{StaticResource AchievementStatusTextStyle}" />
+                <DataGridTextColumn Header="编号" Binding="{Binding LegacyCode}" SortMemberPath="LegacyCode" Width="105" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                <DataGridTextColumn Header="版本" Binding="{Binding Version}" SortMemberPath="Version" Width="65" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                <DataGridTextColumn Header="一级分类" Binding="{Binding FirstCategory}" SortMemberPath="FirstCategory" Width="125" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                <DataGridTextColumn Header="二级分类" Binding="{Binding SecondCategory}" SortMemberPath="SecondCategory" Width="180" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                <DataGridTextColumn Header="名称" Binding="{Binding Name}" SortMemberPath="Name" Width="190" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                <DataGridTextColumn Header="描述" Binding="{Binding Description}" SortMemberPath="Description" Width="2.2*" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                <DataGridTextColumn Header="奖励" Binding="{Binding Reward}" SortMemberPath="Reward" Width="100" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                <DataGridTextColumn Header="隐藏" Binding="{Binding HiddenText}" SortMemberPath="IsHidden" Width="60" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+                <DataGridTextColumn Header="成就组" Binding="{Binding GroupText}" SortMemberPath="GroupId" Width="75" ElementStyle="{StaticResource DataGridCellTextStyle}" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </Border>
+
+    </Grid>
+</UserControl>

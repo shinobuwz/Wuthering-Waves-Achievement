@@ -1,0 +1,19 @@
+<UserControl x:Class="Wuwa.App.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             AutomationProperties.AutomationId="SettingsPageRoot">
+    <StackPanel Margin="22">
+        <TextBlock Text="设置" FontSize="25" FontWeight="SemiBold"/>
+        <TextBlock Text="外观与应用更新。" Foreground="{DynamicResource MutedTextBrush}" Margin="0,4,0,18"/>
+        <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="18">
+            <StackPanel>
+                <TextBlock Text="外观与系统" FontSize="18" FontWeight="SemiBold"/>
+                <WrapPanel Margin="0,14,0,0">
+                    <Button x:Name="ThemeButton" AutomationProperties.AutomationId="ThemeButton" Content="浅色主题" Click="Theme_OnClick"/>
+                    <Button AutomationProperties.AutomationId="UpdateButton" Content="检查更新" Click="Update_OnClick"/>
+                    <Button AutomationProperties.AutomationId="SystemHelpButton" Content="功能说明" Click="SystemHelp_OnClick"/>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>
