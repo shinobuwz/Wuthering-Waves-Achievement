@@ -1,0 +1,36 @@
+<UserControl x:Class="Wuwa.App.GameToolsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             AutomationProperties.AutomationId="GameToolsPageRoot">
+    <StackPanel Margin="22">
+        <TextBlock Text="游戏工具" FontSize="25" FontWeight="SemiBold"/>
+        <TextBlock Text="与成就和连招状态独立的现有工具。" Foreground="{DynamicResource MutedTextBrush}" Margin="0,4,0,18"/>
+        <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="18" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="唤取记录链接" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Text="读取游戏日志并复制当前唤取记录链接。" Foreground="{DynamicResource MutedTextBrush}" Margin="0,5,0,12"/>
+                <StackPanel Orientation="Horizontal">
+                    <Button AutomationProperties.AutomationId="ConveneLinkButton" Content="获取唤取链接" Click="ConveneLink_OnClick"/>
+                    <Button AutomationProperties.AutomationId="ConveneHelpButton" Content="使用说明" Click="ConveneHelp_OnClick"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+        <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="18" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="覆盖地图" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Text="在可见的《鸣潮》客户区上打开 Kuro 地图。" Foreground="{DynamicResource MutedTextBrush}" Margin="0,5,0,12"/>
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="MapOverlayButton" AutomationProperties.AutomationId="MapOverlayButton" Content="打开游戏地图" Click="MapOverlay_OnClick"/>
+                    <TextBlock x:Name="MapShortcutText" Text="地图快捷键：注册中" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+        <Border x:Name="SceneMarkerLabCard" Visibility="Collapsed" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="18">
+            <StackPanel>
+                <TextBlock Text="场景标记实验室" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Text="冻结当前游戏画面，框选并保存供场景识别测试使用的 PNG/JSON 标记。" Foreground="{DynamicResource MutedTextBrush}" Margin="0,5,0,12" TextWrapping="Wrap"/>
+                <Button x:Name="SceneMarkerLabButton" AutomationProperties.AutomationId="SceneMarkerLabButton" Content="DEBUG：采集场景标记" ToolTip="捕获当前游戏客户区，在冻结画面 Overlay 上框选并保存场景标记 PNG/JSON" Click="SceneMarkerLab_OnClick" HorizontalAlignment="Left"/>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

@@ -75,7 +75,8 @@ recognition must not write progress directly: OCR results still become an
 ## Internal scene marker lab
 
 The WPF app also contains a capture-only test tool for preparing future scene
-templates. In Debug builds, use **DEBUG：采集场景标记** in the OCR action area.
+templates. In Debug builds, open the modular shell's **游戏工具** page and use
+**DEBUG：采集场景标记**.
 In Release builds, explicitly opt in before starting the app:
 
 ```powershell

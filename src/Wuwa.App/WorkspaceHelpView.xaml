@@ -162,9 +162,19 @@
                         </StackPanel>
                     </Border>
 
+                    <Border Style="{StaticResource HelpSectionStyle}" BorderBrush="{DynamicResource AccentBrush}">
+                        <StackPanel>
+                            <TextBlock Text="8. 连招助手（只提示、不代替操作）" Style="{StaticResource HelpTitleStyle}" />
+                            <TextBlock Text="• 连招助手只观察用户真实键盘／鼠标输入并推进提示，不会发送游戏输入，也不会读取游戏进程内存。" Style="{StaticResource HelpBodyStyle}" />
+                            <TextBlock Text="• 可从 wuwa-Hekili JSON 显式执行一次性导入；不会修改源文件、后台监视旧目录或复制旧技能素材。" Style="{StaticResource HelpBodyStyle}" />
+                            <TextBlock Text="• 运行只在可见、未最小化且位于前台的《鸣潮》窗口中推进；Alt-Tab 会暂停并隐藏提示，返回游戏后从原步骤继续。" Style="{StaticResource HelpBodyStyle}" />
+                            <TextBlock Text="• Ctrl+Shift+F11 可随时安全停止、释放键鼠监听并返回连招页面。MVP 不支持手柄、可视化流程编辑器或图标捕获。" Style="{StaticResource HelpBodyStyle}" />
+                        </StackPanel>
+                    </Border>
+
                     <Border Style="{StaticResource HelpSectionStyle}">
                         <StackPanel>
-                            <TextBlock Text="8. 安全操作与问题排查" Style="{StaticResource HelpTitleStyle}" />
+                            <TextBlock Text="9. 安全操作与问题排查" Style="{StaticResource HelpTitleStyle}" />
                             <TextBlock Text="• 大批量修改、导入、同步或升级前先导出备份；完成后检查修订号和统计是否符合预期。" Style="{StaticResource HelpBodyStyle}" />
                             <TextBlock Text="• 如果按钮没有产生预期结果，先查看主窗口底部的错误文字，不要连续重复执行导入或同步。" Style="{StaticResource HelpBodyStyle}" />
                             <TextBlock Text="• OCR、地图或唤取链接涉及游戏窗口和本地日志，出现问题时应同时检查游戏窗口状态、权限和程序日志。" Style="{StaticResource HelpBodyStyle}" />
