@@ -2,11 +2,11 @@
 
 ## Native 应用实现
 
-**Meaning**：源码位于仓库根目录、由 WPF/.NET 8 构成的 Windows 原生应用，由 WPF 界面、`Wuwa.Core` 工作区领域层、`Wuwa.Infrastructure` 适配器和 C++ OCR 动态库组成。它是仓库唯一维护的应用运行时。
+**Meaning**：源码位于仓库根目录、由 WPF/.NET 8 构成的 Windows 原生应用，由模块化 WPF 应用壳、`Wuwa.Core` 领域层、`Wuwa.Infrastructure` 适配器和 C++ OCR 动态库组成。它是仓库唯一维护的应用运行时。
 
-**Avoid**：不要把 Native 简化为 WPF 界面；`AchievementWorkspace` 才是管理、迁移、同步、交换、统计、状态变更和 OCR 结果合并的公共行为入口。
+**Avoid**：不要把 Native 简化为 WPF 界面；成就行为仍以 `AchievementWorkspace` 为公共入口，连招行为以独立的 `RotationRunSession` 和只读运行时契约为边界。
 
-**Relations**：界面通过 Core 工作区入口调用命令和查询，文件、HTTP、旧数据导入、Win32 捕获和 C ABI 由 Infrastructure 适配；可变状态存放在 `%LocalAppData%\\WutheringWavesAchievement`。
+**Relations**：界面通过 Core 入口调用命令和查询，文件、HTTP、旧数据导入、Win32 捕获/观察和 C ABI 由 Infrastructure 适配。可变状态默认存放在 `<程序目录>\\data`，测试或显式运行可用 `WUWA_NATIVE_DATA_ROOT` 覆盖；成就 generation 与 `rotations/` 连招状态彼此独立。
 
 ## Legacy 导入数据
 
@@ -14,7 +14,7 @@
 
 **Avoid**：不要修改 legacy 文件，不要把 legacy 文件当作 Native 当前状态，也不要建立后台监视或双向同步。
 
-**Relations**：Native 导入后将兼容编号映射为 `AchievementId`，可变状态存放在 `%LocalAppData%\\WutheringWavesAchievement` 的 generation 集合中。
+**Relations**：Native 导入后将兼容编号映射为 `AchievementId`，可变状态存放在当前 Native data root 的 generation 集合中；默认 data root 是 `<程序目录>\\data`，可由 `WUWA_NATIVE_DATA_ROOT` 覆盖。
 
 ## 原生成就身份（`AchievementId`）
 
@@ -71,3 +71,35 @@
 **Avoid**：不要在扫描每一页时直接改写用户进度，不要把未知状态、未访问分类或取消产生的部分结果自动当成未完成。
 
 **Relations**：原生版 OCR 预览通过 `AchievementWorkspace.ApplyOcrPreviewAsync` 在显式确认后合并为一个新 revision，并默认阻止已完成状态被低置信度结果降级。
+
+## 模块化应用壳
+
+**Meaning**：Native 主窗口的左侧导航与页面生命周期边界。启动进入总览，并路由到成就管理、连招助手、游戏工具、设置和帮助；`MainWindow` 负责导航、主题、全局快捷键和跨页面协调，不重新实现页面领域规则。
+
+**Avoid**：不要在总览或壳层复制成就统计、状态转换、连招状态机、地图或唤取链接领域逻辑；行为等价控件应保留稳定的 UI Automation 入口。
+
+**Relations**：成就视觉面由 `AchievementWorkspaceView` 承载但仍调用 `AchievementWorkspace`；连招页面调用独立 Rotation Core/Infrastructure；地图和唤取链接属于游戏工具。
+
+## 连招助手
+
+**Meaning**：Native 中“只提示、不代替操作”的前台辅助模块。它只观察用户真实键盘/鼠标输入，在验证过的《鸣潮》窗口位于前台时推进三步提示浮窗。
+
+**Avoid**：不得发送或模拟游戏输入，不得读取/写入游戏进程内存，不得吞掉玩家输入；低级 Hook 必须继续调用 `CallNextHookEx`，并忽略注入标记事件。
+
+**Relations**：`RotationRunSession` 是公共行为 seam；`WindowsRotationInputSource`、游戏窗口 monitor、`RotationRuntimeCoordinator` 和 NoActivate/点击穿透浮窗共同实现运行生命周期。Alt-Tab 暂停隐藏，`Ctrl+Shift+F11` 固定停止并恢复连招页。
+
+## 连招流程
+
+**Meaning**：带 `schemaVersion` 的 Native JSON 配置，由队伍槽位、角色别名、初始槽位、一次性 Opener 和可选 Loop 构成，并可包含安全的相对图标引用。
+
+**Avoid**：不要把流程或绑定写进成就 generation，不要保留旧 Hekili 绝对图标路径，也不要监视或双向同步旧文件。
+
+**Relations**：流程和绑定位于当前 Native data root 的 `rotations/profiles/` 与 `rotations/settings.json`；wuwa-Hekili JSON 仅通过用户显式选择执行一次性、只读、完整验证后原子导入。
+
+## 游戏工具
+
+**Meaning**：与成就状态和连招状态均无直接领域关系的独立工具页面。本项目当前只承载已有的“获取唤取链接”和“覆盖地图”能力。
+
+**Avoid**：不要把游戏工具当作新增抽卡历史解析/导出入口，也不要让地图或唤取链接修改成就或连招状态。
+
+**Relations**：工具页面只路由现有 Core/Infrastructure 行为；成就管理和连招助手保持各自的数据与运行生命周期。
