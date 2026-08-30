@@ -98,8 +98,32 @@
 
 ## 游戏工具
 
-**Meaning**：与成就状态和连招状态均无直接领域关系的独立工具页面。本项目当前只承载已有的“获取唤取链接”和“覆盖地图”能力。
+**Meaning**：模块化应用壳中与成就进度和连招运行状态均无直接领域所有权的独立工具页。当前承载获取唤取链接、Kuro 覆盖地图，以及仅在 Debug 或显式 Release 开关下显示的场景标记实验室。
 
-**Avoid**：不要把游戏工具当作新增抽卡历史解析/导出入口，也不要让地图或唤取链接修改成就或连招状态。
+**Avoid**：不要把游戏工具当作新增抽卡历史解析/导出入口或成就/连招状态写入入口，不要把场景标记实验室描述成已经接入生产的场景 matcher，也不要由该页面复制底层捕获、地图或日志解析规则。
 
-**Relations**：工具页面只路由现有 Core/Infrastructure 行为；成就管理和连招助手保持各自的数据与运行生命周期。
+**Relations**：`GameToolsView` 只暴露稳定 UI 入口并把命令路由给 `MainWindow`/Infrastructure；唤取链接、地图 Overlay 和场景标记 fixture 彼此独立，均不得绕过各自领域边界修改用户进度。
+
+## Native 数据根目录
+
+**Meaning**：Native 运行时拥有的可变数据根。默认是 `<程序目录>\data`，测试、便携验证或显式运行可通过 `WUWA_NATIVE_DATA_ROOT` 覆盖；路径解析不依赖当前工作目录。
+
+**Avoid**：不要把发布资源目录、仓库根目录或 LocalAppData 自动当作 Native data root，不要把场景标记实验室输出混入 data root，也不要让连招文件进入成就 generation。
+
+**Relations**：`JsonAppDataStore` 在该根下维护成就 generation；连招配置位于 `rotations/`，WebView2 用户数据位于 `webview2/`。`resources/`、OCR 模型和 `<程序目录>/scene-marker-lab` 具有不同所有权和生命周期。
+
+## 场景切换内核
+
+**Meaning**：由 `SceneTransitionEngine<TFrame>` 表示的泛型场景状态机契约。它按当前稳定场景的有序 transition matrix 逐个调用 matcher，首个真实命中胜出，并分别对已知场景和 synthetic unknown 执行可配置确认。
+
+**Avoid**：不要把该内核当作已经存在的 Native/OpenCV 场景识别器，不要在 Core 中写入鸣潮模板、WPF、OCR 或用户进度依赖，也不要让 synthetic unknown 伪装成真实 matcher 命中并调用 Handler。
+
+**Relations**：matcher 和 Handler 是显式适配 seam；Handler 对每次真实命中执行，`IsTransitionConfirmed` 区分转场确认。未来 Infrastructure 可适配 `OcrImageFrame`，但 OCR 结果仍须经过 `OcrScanPreview` 和工作区确认边界。
+
+## 场景标记实验室
+
+**Meaning**：游戏工具页中的内部 capture-only 测试能力。它隐藏可能污染桌面截图的应用窗口，冻结当前鸣潮客户区，让测试者框选 ROI，并输出可供未来场景 matcher 使用的 PNG 与 JSON fixture。
+
+**Avoid**：不要把实验室输出当作已发布的场景配置或 matcher 结果，不要直接写仓库 `resources`、Native data root、OCR 预览或用户进度，也不要在未显式开启 Release 开关时把它暴露给普通用户。
+
+**Relations**：Debug 默认显示，Release 由 `WUWA_SCENE_MARKER_LAB` 显式开启；默认输出到 `<程序目录>/scene-marker-lab/<scene-id>`，目录不可写时由用户选择。它复用 `WindowsGameWindowCapture` 和 `OcrImageFrame`，产物未来由 Infrastructure matcher 消费。
